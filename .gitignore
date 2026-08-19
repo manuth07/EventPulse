@@ -1,0 +1,40 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Node / React
+node_modules/
+dist/
+build/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test output
+TestResults/
+coverage/
+coverage-report/
+
+# Local databases / temporary files
+*.db
+*.sqlite
+
+# Secrets
+secrets.json
+appsettings.Development.json
