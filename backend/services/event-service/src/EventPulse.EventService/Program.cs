@@ -1,0 +1,26 @@
+var builder = WebApplication.CreateBuilder(args);
+
+// ---------------------------------------------------------------------------
+// Event Service
+// ---------------------------------------------------------------------------
+// Owns: events, categories, venues, schedules.
+// Does NOT reference: IdentityService, BookingService, PaymentService.
+// ---------------------------------------------------------------------------
+builder.Services.AddControllers();
+builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
+
+app.UseAuthorization();
+
+app.MapHealthChecks("/health");
+
+app.MapControllers();
+
+app.Run();
