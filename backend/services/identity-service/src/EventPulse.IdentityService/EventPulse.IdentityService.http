@@ -1,0 +1,6 @@
+@EventPulse.IdentityService_HostAddress = http://localhost:5282
+
+GET {{EventPulse.IdentityService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

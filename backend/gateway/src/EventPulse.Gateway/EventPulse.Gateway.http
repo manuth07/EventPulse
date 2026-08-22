@@ -1,0 +1,6 @@
+@EventPulse.Gateway_HostAddress = http://localhost:5222
+
+GET {{EventPulse.Gateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
