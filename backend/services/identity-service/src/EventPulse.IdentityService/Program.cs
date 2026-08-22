@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using EventPulse.IdentityService.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
@@ -7,6 +10,9 @@ var builder = WebApplication.CreateBuilder(args);
 //       Google OAuth later.
 // Does NOT reference: EventService, BookingService, PaymentService.
 // ---------------------------------------------------------------------------
+builder.Services.AddDbContext<IdentityDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("IdentityDatabase")));
+
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
