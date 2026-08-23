@@ -1,0 +1,55 @@
+import React from 'react';
+
+export function Header({ location = 'Colombo, LK' }) {
+  return (
+    <header style={{
+      backgroundColor: '#ffffff',
+      borderBottom: '1px solid var(--ep-border)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 100,
+    }}>
+      <div className="container" style={{
+        height: '72px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: '16px',
+        paddingRight: '16px',
+      }}>
+        {/* Brand Wordmark */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span className="ep-brand">
+            Event<span style={{ color: 'var(--ep-primary)' }}>Pulse</span>
+          </span>
+        </div>
+
+        {/* Location & Navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <div className="d-none d-md-flex" style={{
+            alignItems: 'center',
+            gap: '6px',
+            backgroundColor: 'var(--ep-canvas)',
+            padding: '6px 12px',
+            borderRadius: 'var(--ep-radius-pill)',
+            fontSize: '13px',
+            color: 'var(--ep-text-primary)',
+            fontWeight: 500
+          }}>
+            <span>📍</span>
+            <span>{location}</span>
+          </div>
+
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            style={{ fontSize: '13px', padding: '8px 16px' }}
+            onClick={() => alert('Account authentication will be available in Sprint 2.')}
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}

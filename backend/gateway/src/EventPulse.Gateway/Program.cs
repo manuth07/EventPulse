@@ -1,6 +1,19 @@
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// ---------------------------------------------------------------------------
 // YARP Reverse Proxy
 // ---------------------------------------------------------------------------
 // ReverseProxy reads its configuration from appsettings.json (ReverseProxy
@@ -25,6 +38,8 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+app.UseCors("AllowFrontend");
 
 // Health endpoint for the gateway (not proxied, resolved locally)
 app.MapHealthChecks("/health");

@@ -1,0 +1,250 @@
+@import "bootstrap/dist/css/bootstrap.min.css";
+
+:root {
+  --ep-primary: #FF5B00;
+  --ep-primary-hover: #E05000;
+  --ep-primary-pressed: #C44300;
+  --ep-soft-accent: #FFF0E6;
+  --ep-canvas: #F5F5F7;
+  --ep-card-bg: #FFFFFF;
+  --ep-border: #E5E5EA;
+  --ep-text-primary: #1D1D1F;
+  --ep-text-secondary: #86868B;
+  --ep-success: #34C759;
+  --ep-danger: #FF3B30;
+
+  --ep-font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --ep-font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --ep-radius-card: 16px;
+  --ep-radius-btn: 12px;
+  --ep-radius-badge: 8px;
+  --ep-radius-pill: 9999px;
+
+  --ep-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --ep-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.08);
+  --ep-focus-ring: 0 0 0 3px rgba(255, 91, 0, 0.25);
+
+  --ep-transition: all 150ms ease-out;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--ep-canvas);
+  color: var(--ep-text-primary);
+  font-family: var(--ep-font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings & Branding */
+.ep-brand,
+.ep-hero-title,
+.ep-h1,
+.ep-h2,
+.ep-h3,
+.ep-h4,
+h1, h2, h3, h4 {
+  font-family: var(--ep-font-heading);
+}
+
+.ep-brand {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ep-text-primary);
+}
+
+/* Typography Scale */
+.ep-hero-title {
+  font-size: 44px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ep-text-primary);
+}
+
+.ep-h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ep-text-primary);
+}
+
+.ep-h2 {
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--ep-text-primary);
+}
+
+.ep-h3 {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--ep-text-primary);
+}
+
+.ep-h4 {
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--ep-text-primary);
+}
+
+/* Body & Navigation Typography */
+.ep-body-large {
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--ep-text-secondary);
+  font-family: var(--ep-font-body);
+}
+
+.ep-body {
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--ep-text-secondary);
+  font-family: var(--ep-font-body);
+}
+
+.ep-caption {
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 500;
+  font-family: var(--ep-font-body);
+}
+
+/* Button & Form Input Styles (Inter) */
+.ep-btn-primary,
+.ep-btn-secondary,
+.ep-input,
+button,
+input,
+select,
+textarea,
+nav {
+  font-family: var(--ep-font-body);
+}
+
+.ep-btn-primary {
+  background-color: var(--ep-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--ep-radius-btn);
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--ep-transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.ep-btn-primary:hover {
+  background-color: var(--ep-primary-hover);
+  color: #ffffff;
+}
+
+.ep-btn-primary:active {
+  background-color: var(--ep-primary-pressed);
+  transform: scale(0.97);
+}
+
+.ep-btn-secondary {
+  background-color: #ffffff;
+  color: var(--ep-text-primary);
+  border: 1px solid var(--ep-border);
+  border-radius: var(--ep-radius-btn);
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--ep-transition);
+  text-decoration: none;
+}
+
+.ep-btn-secondary:hover {
+  background-color: var(--ep-canvas);
+  border-color: var(--ep-text-secondary);
+  color: var(--ep-text-primary);
+}
+
+.ep-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--ep-radius-btn);
+  border: 1px solid var(--ep-border);
+  background-color: #ffffff;
+  font-size: 15px;
+  color: var(--ep-text-primary);
+  outline: none;
+  transition: var(--ep-transition);
+}
+
+.ep-input:focus {
+  border-color: var(--ep-primary);
+  box-shadow: var(--ep-focus-ring);
+}
+
+/* Badge & Card Surface */
+.ep-card {
+  background-color: var(--ep-card-bg);
+  border-radius: var(--ep-radius-card);
+  border: 1px solid var(--ep-border);
+  box-shadow: var(--ep-shadow-card);
+  overflow: hidden;
+  transition: var(--ep-transition);
+  display: flex;
+  flex-direction: column;
+}
+
+.ep-card:hover {
+  box-shadow: var(--ep-shadow-hover);
+  transform: translateY(-2px);
+}
+
+.ep-badge-pill {
+  border-radius: var(--ep-radius-pill);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+  font-family: var(--ep-font-body);
+}
+
+.ep-badge-soft-orange {
+  background-color: var(--ep-soft-accent);
+  color: var(--ep-primary);
+}
+
+/* Skeleton Loading Animation */
+@keyframes ep-pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.ep-skeleton {
+  background-color: #EBEBEF;
+  border-radius: var(--ep-radius-badge);
+  animation: ep-pulse 1.5s infinite ease-in-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .ep-hero-title {
+    font-size: 32px;
+  }
+}
