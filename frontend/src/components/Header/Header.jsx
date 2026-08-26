@@ -44,14 +44,13 @@ export function Header({ location = 'Colombo, LK' }) {
             <span>{location}</span>
           </div>
 
-          <button
-            type="button"
+          <Link
+            to="/register"
             className="ep-btn-secondary"
-            style={{ fontSize: '13px', padding: '8px 16px' }}
-            onClick={() => alert('Account authentication will be available in Sprint 2.')}
+            style={{ fontSize: '13px', padding: '8px 16px', textDecoration: 'none' }}
           >
             Sign In
-          </button>
+          </Link>
         </div>
       </div>
     </header>
