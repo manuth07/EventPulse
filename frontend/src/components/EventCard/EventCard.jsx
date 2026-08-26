@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Ticket, MapPin } from 'lucide-react';
 
 function formatDate(dateString) {
@@ -127,17 +128,13 @@ export function EventCard({ event }) {
             </div>
           </div>
 
-          <a
-            href={`#/events/${id}`}
+          <Link
+            to={`/events/${id}`}
             className="ep-btn-secondary"
-            style={{ fontSize: '13px', padding: '6px 14px' }}
-            onClick={(e) => {
-              e.preventDefault();
-              alert(`Event Details for "${title}" will be available in EP-29.`);
-            }}
+            style={{ fontSize: '13px', padding: '6px 14px', textDecoration: 'none' }}
           >
             View Details →
-          </a>
+          </Link>
         </div>
       </div>
     </div>
