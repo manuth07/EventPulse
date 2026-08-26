@@ -1,4 +1,5 @@
 import React from 'react';
+import { MapPin } from 'lucide-react';
 
 export function Header({ location = 'Colombo, LK' }) {
   return (
@@ -36,7 +37,7 @@ export function Header({ location = 'Colombo, LK' }) {
             color: 'var(--ep-text-primary)',
             fontWeight: 500
           }}>
-            <span>📍</span>
+            <MapPin size={15} color="var(--ep-text-secondary)" />
             <span>{location}</span>
           </div>
 

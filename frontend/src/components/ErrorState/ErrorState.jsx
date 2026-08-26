@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle, RotateCcw } from 'lucide-react';
 
 export function ErrorState({ message, onRetry }) {
   return (
@@ -11,7 +12,15 @@ export function ErrorState({ message, onRetry }) {
       maxWidth: '520px',
       margin: '0 auto'
     }}>
-      <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚠️</div>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: '12px'
+      }}>
+        <AlertTriangle size={36} color="var(--ep-danger)" />
+      </div>
+
       <h3 className="ep-h3 mb-2" style={{ color: 'var(--ep-danger)' }}>
         We couldn't load events right now
       </h3>
@@ -20,7 +29,8 @@ export function ErrorState({ message, onRetry }) {
       </p>
       {onRetry && (
         <button type="button" className="ep-btn-primary" onClick={onRetry}>
-          🔄 Retry Loading
+          <RotateCcw size={15} style={{ marginRight: '6px' }} />
+          Retry Loading
         </button>
       )}
     </div>

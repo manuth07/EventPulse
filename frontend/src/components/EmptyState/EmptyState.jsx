@@ -1,4 +1,5 @@
 import React from 'react';
+import { Search, CalendarX } from 'lucide-react';
 
 export function EmptyState({ isSearchResults = false, onResetSearch }) {
   return (
@@ -11,9 +12,19 @@ export function EmptyState({ isSearchResults = false, onResetSearch }) {
       maxWidth: '560px',
       margin: '0 auto'
     }}>
-      <div style={{ fontSize: '48px', marginBottom: '16px' }}>
-        {isSearchResults ? '🔍' : '🎪'}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: '16px'
+      }}>
+        {isSearchResults ? (
+          <Search size={40} color="var(--ep-text-secondary)" />
+        ) : (
+          <CalendarX size={40} color="var(--ep-text-secondary)" />
+        )}
       </div>
+
       <h3 className="ep-h3 mb-2">
         {isSearchResults ? 'No matching events found' : 'No events available yet'}
       </h3>
