@@ -1,4 +1,5 @@
 import React from 'react';
+import { Search } from 'lucide-react';
 
 export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
   const handleSubmit = (e) => {
@@ -48,7 +49,7 @@ export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
           boxShadow: 'var(--ep-shadow-hover)'
         }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', paddingLeft: '12px' }}>
-            <span style={{ marginRight: '8px', color: 'var(--ep-text-secondary)' }}>🔍</span>
+            <Search size={18} color="var(--ep-text-secondary)" style={{ marginRight: '8px', flexShrink: 0 }} />
             <input
               type="text"
               className="ep-input"

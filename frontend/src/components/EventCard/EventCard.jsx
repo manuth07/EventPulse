@@ -1,4 +1,5 @@
 import React from 'react';
+import { Ticket, MapPin } from 'lucide-react';
 
 function formatDate(dateString) {
   if (!dateString) return 'TBA';
@@ -45,7 +46,7 @@ export function EventCard({ event }) {
           <span className="ep-badge-pill ep-badge-soft-orange">
             Upcoming
           </span>
-          <span style={{ fontSize: '20px' }}>🎟️</span>
+          <Ticket size={20} color="var(--ep-primary)" />
         </div>
 
         <div>
@@ -90,7 +91,7 @@ export function EventCard({ event }) {
           fontSize: '13px',
           marginBottom: '12px'
         }}>
-          <span>📍</span>
+          <MapPin size={14} color="var(--ep-text-secondary)" style={{ flexShrink: 0 }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {venue || 'Location TBA'}
           </span>
