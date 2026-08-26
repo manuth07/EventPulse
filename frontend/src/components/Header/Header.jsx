@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { MapPin } from 'lucide-react';
 
 export function Header({ location = 'Colombo, LK' }) {
@@ -20,9 +21,11 @@ export function Header({ location = 'Colombo, LK' }) {
       }}>
         {/* Brand Wordmark */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className="ep-brand">
-            Event<span style={{ color: 'var(--ep-primary)' }}>Pulse</span>
-          </span>
+          <Link to="/" style={{ textDecoration: 'none' }}>
+            <span className="ep-brand">
+              Event<span style={{ color: 'var(--ep-primary)' }}>Pulse</span>
+            </span>
+          </Link>
         </div>
 
         {/* Location & Navigation */}
