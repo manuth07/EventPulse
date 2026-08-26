@@ -13,15 +13,18 @@ public class RegistrationService : IRegistrationService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
+    private readonly IEmailVerificationService _emailVerificationService;
     private readonly ILogger<RegistrationService> _logger;
 
     public RegistrationService(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole<Guid>> roleManager,
+        IEmailVerificationService emailVerificationService,
         ILogger<RegistrationService> logger)
     {
         _userManager = userManager;
         _roleManager = roleManager;
+        _emailVerificationService = emailVerificationService;
         _logger = logger;
     }
 
@@ -100,12 +103,27 @@ public class RegistrationService : IRegistrationService
 
         _logger.LogInformation("Customer registered successfully: {UserId} ({Email})", user.Id, email);
 
+        // ------------------------------------------------------------------
+        // 7. Generate and send email verification OTP
+        // ------------------------------------------------------------------
+        bool emailSent = true;
+        try
+        {
+            await _emailVerificationService.SendVerificationCodeAsync(user.Id, user.Email);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send initial verification email to {Email}", user.Email);
+            emailSent = false;
+        }
+
         return RegistrationResult.Success(new RegisterResponse
         {
             Id = user.Id,
-            Email = user.Email!,
+            Email = user.Email,
             EmailConfirmed = false,
             VerificationRequired = true,
+            VerificationEmailSent = emailSent
         });
     }
 

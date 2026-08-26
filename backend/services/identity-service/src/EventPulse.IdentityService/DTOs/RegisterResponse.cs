@@ -10,4 +10,5 @@ public class RegisterResponse
     public string Email { get; set; } = string.Empty;
     public bool EmailConfirmed { get; set; }
     public bool VerificationRequired { get; set; }
+    public bool VerificationEmailSent { get; set; }
 }

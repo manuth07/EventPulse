@@ -52,6 +52,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 // ---------------------------------------------------------------------------
 // Application Services
 // ---------------------------------------------------------------------------
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("Email"));
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 
 // ---------------------------------------------------------------------------
