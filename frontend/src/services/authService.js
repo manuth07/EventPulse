@@ -37,6 +37,51 @@ export async function registerCustomer(data) {
 }
 
 /**
+ * Authenticates a user with email and password via API Gateway.
+ * @param {Object} credentials - { email, password }
+ * @returns {Promise<{accessToken, tokenType, expiresIn, user}>}
+ */
+export async function login(credentials) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(credentials),
+  });
+
+  if (response.status === 401) {
+    const err = new Error('Invalid email or password.');
+    err.status = 401;
+    err.code = 'INVALID_CREDENTIALS';
+    throw err;
+  }
+
+  if (response.status === 403) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || 'Access forbidden.');
+    err.status = 403;
+    err.code = body.code || 'FORBIDDEN';
+    throw err;
+  }
+
+  if (response.status === 400) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || 'Validation failed.');
+    err.status = 400;
+    err.code = 'INVALID_REQUEST';
+    err.errors = body.errors || [];
+    throw err;
+  }
+
+  if (!response.ok) {
+    const err = new Error('We couldn\'t sign you in right now. Please try again.');
+    err.status = response.status;
+    throw err;
+  }
+
+  return response.json();
+}
+
+/**
  * Verifies a customer's email using a 6-digit OTP.
  * @param {string} email 
  * @param {string} code 
