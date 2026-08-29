@@ -318,7 +318,7 @@ export function Register() {
         {/* Sign in link */}
         <p style={{ textAlign: 'center', marginTop: '20px', marginBottom: 0, fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
           Already have an account?{' '}
-          <Link to="/" style={{ color: 'var(--ep-primary)', fontWeight: 500, textDecoration: 'none' }}>
+          <Link to="/login" style={{ color: 'var(--ep-primary)', fontWeight: 500, textDecoration: 'none' }}>
             Sign in
           </Link>
         </p>
