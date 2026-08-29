@@ -177,4 +177,30 @@ public class LoginServiceTests
             m => m.GenerateToken(user, roles),
             Times.Once);
     }
+    [Fact]
+public async Task LoginAsync_WhenUserEmailIsNull_ReturnsEmptyStringForEmail()
+{
+    var request = ValidRequest();
+    var user = ValidUser();
+    user.Email = null; // exercise the ?? string.Empty branch
+    var roles = new List<string> { "Customer" };
+
+    _userManagerMock
+        .Setup(m => m.FindByEmailAsync(request.Email))
+        .ReturnsAsync(user);
+    _userManagerMock
+        .Setup(m => m.CheckPasswordAsync(user, request.Password))
+        .ReturnsAsync(true);
+    _userManagerMock
+        .Setup(m => m.GetRolesAsync(user))
+        .ReturnsAsync(roles);
+    _jwtTokenServiceMock
+        .Setup(m => m.GenerateToken(user, roles))
+        .Returns(("fake-jwt-token", 3600));
+
+    var result = await _sut.LoginAsync(request);
+
+    Assert.True(result.Succeeded);
+    Assert.Equal(string.Empty, result.Response!.User.Email);
+}
 }
