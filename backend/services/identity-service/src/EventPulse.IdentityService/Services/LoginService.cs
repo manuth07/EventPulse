@@ -72,7 +72,9 @@ public class LoginService : ILoginService
                 FirstName = user.FirstName,
                 LastName = user.LastName,
                 Email = user.Email ?? string.Empty,
-                Roles = roles
+                Roles = roles,
+                ProfileCompleted = user.ProfileCompleted,
+                HasPassword = !string.IsNullOrEmpty(user.PasswordHash)
             }
         };
 

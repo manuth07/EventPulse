@@ -6,6 +6,7 @@ import { EventDetails } from './pages/EventDetails/EventDetails';
 import { Register } from './pages/Register/Register';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { Login } from './pages/Login/Login';
+import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/complete-profile" element={<CompleteProfile />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </BrowserRouter>

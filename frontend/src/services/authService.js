@@ -82,6 +82,84 @@ export async function login(credentials) {
 }
 
 /**
+ * Authenticates a user via Google Identity Services ID token.
+ * On 409 ACCOUNT_LINK_REQUIRED, throws with code for the link flow.
+ * @param {string} credential - Google ID token (credential) from GIS
+ * @returns {Promise<{accessToken, tokenType, expiresIn, user}>}
+ */
+export async function googleLogin(credential) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ credential }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || 'Google sign-in failed. Please try again.');
+    err.status = response.status;
+    err.code = body.code || 'GOOGLE_AUTH_FAILED';
+    throw err;
+  }
+
+  return response.json();
+}
+
+/**
+ * Links an existing EventPulse password account to Google.
+ * Requires both the Google credential AND the existing EventPulse password.
+ * @param {Object} data - { credential, password }
+ * @returns {Promise<{accessToken, tokenType, expiresIn, user}>}
+ */
+export async function googleLinkExisting(data) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/google/link-existing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || 'Account linking failed. Please try again.');
+    err.status = response.status;
+    err.code = body.code || 'LINK_FAILED';
+    throw err;
+  }
+
+  return response.json();
+}
+
+/**
+ * Completes the profile for a Google-created user (phone + country).
+ * Requires a valid Bearer token.
+ * @param {Object} data - { phoneNumber, countryCode }
+ * @param {string} accessToken
+ * @returns {Promise<Object>}
+ */
+export async function completeProfile(data, accessToken) {
+  const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || 'Profile update failed. Please try again.');
+    err.status = response.status;
+    err.code = body.code || 'PROFILE_ERROR';
+    err.errors = body.errors || [];
+    throw err;
+  }
+
+  return response.json();
+}
+
+/**
  * Verifies a customer's email using a 6-digit OTP.
  * @param {string} email 
  * @param {string} code 
