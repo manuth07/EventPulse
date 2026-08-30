@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using EventPulse.IdentityService.DTOs;
 using EventPulse.IdentityService.Services;
 
@@ -11,13 +12,19 @@ public class AuthController : ControllerBase
 {
     private readonly IRegistrationService _registrationService;
     private readonly ILoginService _loginService;
+    private readonly IGoogleAuthService _googleAuthService;
+    private readonly ISetPasswordService _setPasswordService;
 
     public AuthController(
         IRegistrationService registrationService,
-        ILoginService loginService)
+        ILoginService loginService,
+        IGoogleAuthService googleAuthService,
+        ISetPasswordService setPasswordService)
     {
         _registrationService = registrationService;
         _loginService = loginService;
+        _googleAuthService = googleAuthService;
+        _setPasswordService = setPasswordService;
     }
 
     /// <summary>
@@ -186,5 +193,86 @@ public class AuthController : ControllerBase
             email,
             roles
         });
+    }
+
+    /// <summary>
+    /// POST /api/auth/google
+    /// Public endpoint — authenticates a user via Google Identity Services ID token.
+    /// Returns EventPulse JWT on success.
+    /// Returns 409 ACCOUNT_LINK_REQUIRED if a password account exists for the same email.
+    /// </summary>
+    [HttpPost("google")]
+    public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var result = await _googleAuthService.GoogleLoginAsync(request.Credential);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
+
+    /// <summary>
+    /// POST /api/auth/google/link-existing
+    /// Public endpoint — securely links Google to an existing password-based EventPulse account.
+    /// Requires both a valid Google credential AND the existing EventPulse password.
+    /// </summary>
+    [HttpPost("google/link-existing")]
+    public async Task<IActionResult> GoogleLinkExisting([FromBody] GoogleLinkRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var result = await _googleAuthService.LinkExistingAccountAsync(request.Credential, request.Password);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
+
+    /// <summary>
+    /// POST /api/auth/set-password
+    /// Protected endpoint — allows a Google-only user to optionally add an EventPulse password.
+    /// User identity is derived from the authenticated JWT, never from the request body.
+    /// Returns 409 PASSWORD_ALREADY_SET if a password already exists.
+    /// </summary>
+    [HttpPost("set-password")]
+    [Authorize]
+    public async Task<IActionResult> SetPassword([FromBody] SetPasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        var result = await _setPasswordService.SetPasswordAsync(userId, request.Password, request.ConfirmPassword);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(new { message = "Password set successfully." });
     }
 }

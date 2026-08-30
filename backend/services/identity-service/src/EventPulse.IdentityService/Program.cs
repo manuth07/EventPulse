@@ -50,12 +50,16 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 // ---------------------------------------------------------------------------
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("Email"));
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
+builder.Services.Configure<GoogleSettings>(builder.Configuration.GetSection("Google"));
 
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<ILoginService, LoginService>();
+builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
+builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
+builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
 // ---------------------------------------------------------------------------
 // JWT Bearer Authentication Infrastructure
