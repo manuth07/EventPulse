@@ -1,10 +1,16 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { MapPin, User } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { MapPin, User, LogOut } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export function Header({ location = 'Colombo, LK' }) {
-  const { isAuthenticated, currentUser } = useAuth();
+  const navigate = useNavigate();
+  const { isAuthenticated, currentUser, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   const displayName = currentUser?.firstName
     ? `${currentUser.firstName} ${currentUser.lastName ? currentUser.lastName.charAt(0) + '.' : ''}`
@@ -52,20 +58,40 @@ export function Header({ location = 'Colombo, LK' }) {
           </div>
 
           {isAuthenticated ? (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              backgroundColor: 'var(--ep-canvas)',
-              padding: '6px 14px',
-              borderRadius: 'var(--ep-radius-pill)',
-              fontSize: '13px',
-              fontWeight: 600,
-              color: 'var(--ep-text-primary)',
-              border: '1px solid var(--ep-border)',
-            }}>
-              <User size={15} color="var(--ep-text-secondary)" />
-              <span>{displayName}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor: 'var(--ep-canvas)',
+                padding: '6px 14px',
+                borderRadius: 'var(--ep-radius-pill)',
+                fontSize: '13px',
+                fontWeight: 600,
+                color: 'var(--ep-text-primary)',
+                border: '1px solid var(--ep-border)',
+              }}>
+                <User size={15} color="var(--ep-text-secondary)" />
+                <span>{displayName}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="ep-btn-secondary"
+                aria-label="Log out"
+                style={{
+                  fontSize: '13px',
+                  padding: '6px 14px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  borderRadius: 'var(--ep-radius-pill)',
+                }}
+              >
+                <LogOut size={14} color="var(--ep-text-secondary)" />
+                <span>Log out</span>
+              </button>
             </div>
           ) : (
             <Link
