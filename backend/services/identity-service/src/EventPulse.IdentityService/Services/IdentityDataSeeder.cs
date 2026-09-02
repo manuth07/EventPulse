@@ -7,17 +7,16 @@ namespace EventPulse.IdentityService.Services;
 
 /// <summary>
 /// Runs once on application startup to ensure the EventPulse role model is in place
-/// and to optionally provision a bootstrap Administrator account.
+/// and to optionally provision bootstrap accounts.
 ///
 /// This seeder is IDEMPOTENT:
 /// - Roles that already exist are not duplicated.
-/// - An admin account that already exists is not modified, recreated, or have
-///   its password reset.
+/// - Accounts that already exist are not modified, recreated, or have their password reset.
 /// - It is safe to restart the service with bootstrap enabled after provisioning.
 ///
 /// Security contract:
 /// - Never uses raw SQL against Identity tables.
-/// - Never hard-codes credentials — reads from AdminBootstrapSettings (User Secrets / env).
+/// - Never hard-codes credentials — reads from settings (User Secrets / env).
 /// - Does not accept credentials from API requests or frontend payloads.
 /// </summary>
 public class IdentityDataSeeder
@@ -25,17 +24,20 @@ public class IdentityDataSeeder
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly AdminBootstrapSettings _bootstrap;
+    private readonly DevOrganizerSettings _devOrganizer;
     private readonly ILogger<IdentityDataSeeder> _logger;
 
     public IdentityDataSeeder(
         RoleManager<IdentityRole<Guid>> roleManager,
         UserManager<ApplicationUser> userManager,
         IOptions<AdminBootstrapSettings> bootstrapOptions,
+        IOptions<DevOrganizerSettings> devOrganizerOptions,
         ILogger<IdentityDataSeeder> logger)
     {
         _roleManager = roleManager;
         _userManager = userManager;
         _bootstrap = bootstrapOptions.Value;
+        _devOrganizer = devOrganizerOptions.Value;
         _logger = logger;
     }
 
@@ -46,6 +48,7 @@ public class IdentityDataSeeder
     {
         await EnsureRolesAsync();
         await EnsureBootstrapAdminAsync();
+        await EnsureDevOrganizerAsync();
     }
 
     // -----------------------------------------------------------------------
@@ -145,5 +148,72 @@ public class IdentityDataSeeder
             "Consider setting 'AdminBootstrap:Enabled=false' and removing the password " +
             "from Azure configuration once provisioning is confirmed.",
             admin.Id, email);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 2: Optionally provision a development Organizer account
+    // -----------------------------------------------------------------------
+
+    private async Task EnsureDevOrganizerAsync()
+    {
+        if (!_devOrganizer.Enabled)
+        {
+            _logger.LogDebug("IdentityDataSeeder: DevOrganizer is disabled. Skipping.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_devOrganizer.Email) || string.IsNullOrWhiteSpace(_devOrganizer.Password))
+        {
+            _logger.LogWarning(
+                "IdentityDataSeeder: DevOrganizer is enabled but Email or Password is not configured. " +
+                "Set 'DevOrganizer:Email' and 'DevOrganizer:Password' via User Secrets.");
+            return;
+        }
+
+        var email = _devOrganizer.Email.Trim().ToLowerInvariant();
+
+        var existing = await _userManager.FindByEmailAsync(email);
+        if (existing is not null)
+        {
+            _logger.LogInformation(
+                "IdentityDataSeeder: DevOrganizer '{Email}' already exists (Id={Id}). No changes made.",
+                email, existing.Id);
+            return;
+        }
+
+        var organizer = new ApplicationUser
+        {
+            FirstName = string.IsNullOrWhiteSpace(_devOrganizer.FirstName) ? "Organizer" : _devOrganizer.FirstName.Trim(),
+            LastName = string.IsNullOrWhiteSpace(_devOrganizer.LastName) ? "Dev" : _devOrganizer.LastName.Trim(),
+            Email = email,
+            UserName = email,
+            EmailConfirmed = true,    // Trusted development provisioning
+            ProfileCompleted = true,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        var createResult = await _userManager.CreateAsync(organizer, _devOrganizer.Password);
+        if (!createResult.Succeeded)
+        {
+            _logger.LogError(
+                "IdentityDataSeeder: Failed to create DevOrganizer '{Email}': {Errors}",
+                email, string.Join(", ", createResult.Errors.Select(e => e.Description)));
+            return;
+        }
+
+        // Assign ONLY the Organizer role — never Customer or Administrator
+        var roleResult = await _userManager.AddToRoleAsync(organizer, AppRoles.Organizer);
+        if (!roleResult.Succeeded)
+        {
+            _logger.LogError(
+                "IdentityDataSeeder: DevOrganizer '{Email}' created but role assignment failed: {Errors}",
+                email, string.Join(", ", roleResult.Errors.Select(e => e.Description)));
+            return;
+        }
+
+        _logger.LogInformation(
+            "IdentityDataSeeder: Development Organizer provisioned. UserId={UserId}, Email={Email}",
+            organizer.Id, email);
     }
 }
