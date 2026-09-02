@@ -7,18 +7,40 @@ import { Register } from './pages/Register/Register';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { Login } from './pages/Login/Login';
 import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
+import { Forbidden } from './pages/Forbidden/Forbidden';
+import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
+import { CreateEvent } from './pages/CreateEvent/CreateEvent';
+import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
+import { PendingEvents } from './pages/PendingEvents/PendingEvents';
+import { RequireRole } from './components/RouteGuards/RouteGuards';
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          {/* Public Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/events/:id" element={<EventDetails />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/complete-profile" element={<CompleteProfile />} />
+          <Route path="/forbidden" element={<Forbidden />} />
+
+          {/* Organizer Protected Routes */}
+          <Route element={<RequireRole allowedRoles="Organizer" />}>
+            <Route path="/organizer" element={<OrganizerDashboard />} />
+            <Route path="/events/create" element={<CreateEvent />} />
+          </Route>
+
+          {/* Administrator Protected Routes */}
+          <Route element={<RequireRole allowedRoles="Administrator" />}>
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/events/pending" element={<PendingEvents />} />
+          </Route>
+
+          {/* Catch-all */}
           <Route path="*" element={<Home />} />
         </Routes>
       </BrowserRouter>

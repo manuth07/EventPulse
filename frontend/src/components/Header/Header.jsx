@@ -1,17 +1,32 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, Plus, ShieldCheck, FileCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export function Header({ location = 'Colombo, LK' }) {
   const navigate = useNavigate();
-  const { isAuthenticated, currentUser, logout } = useAuth();
+  const routerLocation = useLocation();
+  const { isAuthenticated, currentUser, logout, hasRole } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
   const displayName = currentUser?.firstName
     ? `${currentUser.firstName} ${currentUser.lastName ? currentUser.lastName.charAt(0) + '.' : ''}`
     : 'Account';
+
+  // Extract roles for display & navigation checks
+  const roles = Array.isArray(currentUser?.roles) ? currentUser.roles : [];
+  const isOrganizer = hasRole('Organizer');
+  const isAdmin = hasRole('Administrator');
+
+  // Primary display role label for dropdown
+  const primaryRoleLabel = isAdmin
+    ? (isOrganizer ? 'Administrator & Organizer' : 'Administrator')
+    : isOrganizer
+    ? 'Organizer'
+    : isAuthenticated
+    ? 'Customer'
+    : null;
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -30,6 +45,17 @@ export function Header({ location = 'Colombo, LK' }) {
     navigate('/');
   };
 
+  const navLinkStyle = (path) => ({
+    fontSize: '13px',
+    fontWeight: routerLocation.pathname === path ? 600 : 500,
+    color: routerLocation.pathname === path ? 'var(--ep-primary)' : 'var(--ep-text-primary)',
+    textDecoration: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    transition: 'var(--ep-transition)',
+  });
+
   return (
     <header style={{
       backgroundColor: '#ffffff',
@@ -46,16 +72,43 @@ export function Header({ location = 'Colombo, LK' }) {
         paddingLeft: '16px',
         paddingRight: '16px',
       }}>
-        {/* Brand Wordmark */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Left: Brand & Role-Aware Navigation Links */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
           <Link to="/" style={{ textDecoration: 'none' }}>
             <span className="ep-brand">
               Event<span style={{ color: 'var(--ep-primary)' }}>Pulse</span>
             </span>
           </Link>
+
+          {/* Nav links */}
+          {(isOrganizer || isAdmin) && (
+            <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              {/* Organizer navigation */}
+              {isOrganizer && (
+                <Link to="/organizer" style={navLinkStyle('/organizer')}>
+                  <LayoutDashboard size={14} />
+                  <span>Organizer Dashboard</span>
+                </Link>
+              )}
+
+              {/* Administrator navigation */}
+              {isAdmin && (
+                <>
+                  <Link to="/admin" style={navLinkStyle('/admin')}>
+                    <ShieldCheck size={14} />
+                    <span>Admin Dashboard</span>
+                  </Link>
+                  <Link to="/admin/events/pending" style={navLinkStyle('/admin/events/pending')}>
+                    <FileCheck size={14} />
+                    <span>Pending Events</span>
+                  </Link>
+                </>
+              )}
+            </nav>
+          )}
         </div>
 
-        {/* Location & Navigation */}
+        {/* Right: Location & Account Dropdown / Sign In */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
           <div className="d-none d-md-flex" style={{
             alignItems: 'center',
@@ -111,7 +164,7 @@ export function Header({ location = 'Colombo, LK' }) {
                 />
               </button>
 
-              {/* Dropdown */}
+              {/* Dropdown Menu */}
               {menuOpen && (
                 <div
                   role="menu"
@@ -120,7 +173,7 @@ export function Header({ location = 'Colombo, LK' }) {
                     position: 'absolute',
                     top: 'calc(100% + 8px)',
                     right: 0,
-                    minWidth: '160px',
+                    minWidth: '200px',
                     backgroundColor: '#ffffff',
                     border: '1px solid var(--ep-border)',
                     borderRadius: 'var(--ep-radius-card)',
@@ -129,14 +182,31 @@ export function Header({ location = 'Colombo, LK' }) {
                     zIndex: 200,
                   }}
                 >
-                  {/* Identity row */}
+                  {/* Identity Header */}
                   <div style={{
                     padding: '10px 14px',
                     borderBottom: '1px solid var(--ep-border)',
-                    fontSize: '12px',
-                    color: 'var(--ep-text-secondary)',
                   }}>
-                    {currentUser?.email ?? displayName}
+                    <div style={{
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: 'var(--ep-text-primary)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {currentUser?.email ?? displayName}
+                    </div>
+                    {primaryRoleLabel && (
+                      <div style={{
+                        fontSize: '11px',
+                        fontWeight: 500,
+                        color: 'var(--ep-text-secondary)',
+                        marginTop: '2px',
+                      }}>
+                        {primaryRoleLabel}
+                      </div>
+                    )}
                   </div>
 
                   {/* Log out */}
@@ -164,7 +234,7 @@ export function Header({ location = 'Colombo, LK' }) {
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <LogOut size={14} color="var(--ep-text-secondary)" />
-                    Log out
+                    <span>Log out</span>
                   </button>
                 </div>
               )}

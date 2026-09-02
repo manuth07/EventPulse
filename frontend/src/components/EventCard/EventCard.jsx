@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Ticket, MapPin } from 'lucide-react';
+import { formatPrice } from '../../utils/currencyFormatter';
 
 function formatDate(dateString) {
   if (!dateString) return 'TBA';
@@ -14,14 +15,6 @@ function formatDate(dateString) {
   } catch (e) {
     return dateString;
   }
-}
-
-function formatPrice(price) {
-  const numPrice = Number(price);
-  if (isNaN(numPrice) || numPrice === 0) {
-    return 'Free';
-  }
-  return `LKR ${numPrice.toLocaleString('en-US')}`;
 }
 
 export function EventCard({ event }) {
