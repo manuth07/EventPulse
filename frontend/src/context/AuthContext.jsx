@@ -33,12 +33,24 @@ export function AuthProvider({ children }) {
     setCurrentUser(null);
   };
 
+  const hasRole = (role) => {
+    if (!currentUser || !Array.isArray(currentUser.roles)) return false;
+    return currentUser.roles.includes(role);
+  };
+
+  const hasAnyRole = (roles) => {
+    if (!currentUser || !Array.isArray(currentUser.roles)) return false;
+    return roles.some((r) => currentUser.roles.includes(r));
+  };
+
   const value = {
     accessToken,
     currentUser,
     isAuthenticated: Boolean(accessToken),
     login: loginUser,
     logout: logoutUser,
+    hasRole,
+    hasAnyRole,
   };
 
   return (

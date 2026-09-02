@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, MapPin, Ticket, RotateCcw, CalendarX, AlertCircle } from 'lucide-react';
 import { Header } from '../../components/Header/Header';
 import { fetchEventById } from '../../services/eventService';
+import { formatPrice } from '../../utils/currencyFormatter';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
@@ -17,14 +18,6 @@ function formatDate(dateString) {
   } catch (e) {
     return dateString;
   }
-}
-
-function formatPrice(price) {
-  const numPrice = Number(price);
-  if (isNaN(numPrice) || numPrice === 0) {
-    return 'Free';
-  }
-  return `LKR ${numPrice.toLocaleString('en-US')}`;
 }
 
 export function EventDetails() {
