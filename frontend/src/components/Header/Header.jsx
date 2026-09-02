@@ -183,4 +183,3 @@ export function Header({ location = 'Colombo, LK' }) {
     </header>
   );
 }
-
