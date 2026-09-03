@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
 using EventPulse.EventService.Models;
+using EventPulse.EventService.Services;
 
 namespace EventPulse.EventService.Controllers;
 
@@ -13,11 +14,16 @@ namespace EventPulse.EventService.Controllers;
 public class EventsController : ControllerBase
 {
     private readonly EventDbContext _context;
+    private readonly IEventSubmissionService _submissionService;
     private readonly ILogger<EventsController> _logger;
 
-    public EventsController(EventDbContext context, ILogger<EventsController> logger)
+    public EventsController(
+        EventDbContext context,
+        IEventSubmissionService submissionService,
+        ILogger<EventsController> logger)
     {
         _context = context;
+        _submissionService = submissionService;
         _logger = logger;
     }
 
@@ -32,8 +38,11 @@ public class EventsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<EventListDto>>> GetEvents()
     {
+        // Only Published or Approved events are visible to public visitors.
+        // Pending and Rejected events are never exposed here.
         var events = await _context.Events
             .AsNoTracking()
+            .Where(e => e.Status == EventStatus.Published || e.Status == EventStatus.Approved)
             .Select(e => new EventListDto
             {
                 Id = e.Id,
@@ -99,7 +108,10 @@ public class EventsController : ControllerBase
     /// </summary>
     [HttpPost]
     [Authorize(Policy = AppPolicies.OrganizerOnly)]
-    public async Task<ActionResult<EventDetailsDto>> SubmitEvent([FromBody] SubmitEventRequest request)
+    [RequestSizeLimit(10 * 1024 * 1024)] // 10 MB ceiling — covers 5 MB image + form fields
+    public async Task<ActionResult<EventSubmissionResponseDto>> SubmitEvent(
+        [FromForm] CreateEventRequest request,
+        CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
         {
@@ -120,43 +132,12 @@ public class EventsController : ControllerBase
             return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
         }
 
-        if (request.EventDate <= DateTime.UtcNow)
-        {
-            return BadRequest(new { code = "INVALID_DATE", message = "Event date must be in the future." });
-        }
+        var (result, error) = await _submissionService.CreateAsync(request, organizerId, cancellationToken);
 
-        var newEvent = new Event
-        {
-            Id = Guid.NewGuid(),
-            Title = request.Title.Trim(),
-            Description = request.Description.Trim(),
-            Venue = request.Venue.Trim(),
-            EventDate = request.EventDate,
-            Price = request.Price,
-            Status = EventStatus.Pending,
-            OrganizerId = organizerId,
-            CreatedAt = DateTime.UtcNow,
-        };
+        if (result is null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
 
-        _context.Events.Add(newEvent);
-        await _context.SaveChangesAsync();
-
-        _logger.LogInformation(
-            "Event submitted. EventId={EventId}, OrganizerId={OrganizerId}, Title={Title}",
-            newEvent.Id, organizerId, newEvent.Title);
-
-        var responseDto = new EventDetailsDto
-        {
-            Id = newEvent.Id,
-            Title = newEvent.Title,
-            Description = newEvent.Description,
-            Venue = newEvent.Venue,
-            EventDate = newEvent.EventDate,
-            Price = newEvent.Price,
-            OrganizerId = newEvent.OrganizerId,
-        };
-
-        return CreatedAtAction(nameof(GetEventById), new { id = newEvent.Id.ToString() }, responseDto);
+        return CreatedAtAction(nameof(GetEventById), new { id = result.Id.ToString() }, result);
     }
 
     // =========================================================================
