@@ -47,6 +47,10 @@ public class EventDbContext : DbContext
 
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.Property(e => e.ImageBlobName)
+                .HasMaxLength(500)
+                .IsRequired(false);
         });
     }
 }

@@ -13,4 +13,10 @@ public class Event
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ReviewedAt { get; set; }
     public Guid? ReviewedBy { get; set; }
+    /// <summary>
+    /// Blob Storage reference key (e.g. "events/abc123.jpg").
+    /// Null for seeded/legacy events without a poster.
+    /// The full URL is resolved by IEventImageStorage at query time.
+    /// </summary>
+    public string? ImageBlobName { get; set; }
 }

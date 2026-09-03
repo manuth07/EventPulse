@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using EventPulse.EventService;
 using EventPulse.EventService.Data;
+using EventPulse.EventService.Services;
+using EventPulse.EventService.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,6 +75,19 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AppPolicies.AdministratorOnly, policy =>
         policy.RequireRole("Administrator"));
 });
+
+// ---------------------------------------------------------------------------
+// Application Services
+// ---------------------------------------------------------------------------
+builder.Services.AddScoped<IEventSubmissionService, EventSubmissionService>();
+
+// ---------------------------------------------------------------------------
+// Infrastructure — Blob Storage
+// ---------------------------------------------------------------------------
+// Local dev: Azurite connection string in appsettings.Development.json
+// Production: BlobStorage__ConnectionString environment variable
+// ---------------------------------------------------------------------------
+builder.Services.AddSingleton<IEventImageStorage, AzureBlobEventImageStorage>();
 
 // ---------------------------------------------------------------------------
 // API & Infrastructure
