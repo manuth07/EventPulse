@@ -15,6 +15,21 @@ services:
       - eventpulse_postgres_data:/var/lib/postgresql/data
       - ./infrastructure/docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
 
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: eventpulse-azurite
+    restart: always
+    # Blob on 10000, Queue on 10001, Table on 10002
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - eventpulse_azurite_data:/data
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose
+
 volumes:
   eventpulse_postgres_data:
     name: eventpulse_postgres_data
+  eventpulse_azurite_data:
+    name: eventpulse_azurite_data
