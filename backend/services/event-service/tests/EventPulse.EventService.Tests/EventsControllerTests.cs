@@ -37,12 +37,8 @@ public class EventsControllerTests
     // ---------- GetEvents (US-08) ----------
 
     [Fact]
-    public async Task GetEvents_ReturnsAllEvents_RegardlessOfStatus_DocumentsCurrentGap()
+    public async Task GetEvents_ReturnsOnlyPublishedAndApprovedEvents_ExcludesPendingAndRejected()
     {
-        // This test documents CURRENT behavior per the controller's own comment:
-        // "Returns all events for EP-103 foundation. Published filtering will be added in EP-104."
-        // Update this test (don't just re-run it) once EP-104 filtering lands —
-        // correct US-08 behavior should EXCLUDE Pending/Rejected events.
         var pending = MakeEvent(EventStatus.Pending, "Pending Event");
         var approved = MakeEvent(EventStatus.Approved, "Approved Event");
         var rejected = MakeEvent(EventStatus.Rejected, "Rejected Event");
@@ -55,7 +51,11 @@ public class EventsControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returned = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value);
 
-        Assert.Equal(4, returned.Count()); // includes Pending/Rejected — the current gap, not a false assumption
+        Assert.Equal(2, returned.Count());
+        Assert.DoesNotContain(returned, e => e.Status == EventStatus.Pending);
+        Assert.DoesNotContain(returned, e => e.Status == EventStatus.Rejected);
+        Assert.Contains(returned, e => e.Status == EventStatus.Published);
+        Assert.Contains(returned, e => e.Status == EventStatus.Approved);
     }
 
     [Fact]

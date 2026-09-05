@@ -14,13 +14,13 @@ namespace EventPulse.EventService.Controllers;
 public class EventsController : ControllerBase
 {
     private readonly EventDbContext _context;
-    private readonly IEventSubmissionService _submissionService;
-    private readonly ILogger<EventsController> _logger;
+    private readonly IEventSubmissionService? _submissionService;
+    private readonly ILogger<EventsController>? _logger;
 
     public EventsController(
         EventDbContext context,
-        IEventSubmissionService submissionService,
-        ILogger<EventsController> logger)
+        IEventSubmissionService? submissionService = null,
+        ILogger<EventsController>? logger = null)
     {
         _context = context;
         _submissionService = submissionService;
@@ -128,9 +128,12 @@ public class EventsController : ControllerBase
 
         if (!Guid.TryParse(organizerIdStr, out var organizerId))
         {
-            _logger.LogWarning("SubmitEvent: Could not parse OrganizerId from JWT sub claim.");
+            _logger?.LogWarning("SubmitEvent: Could not parse OrganizerId from JWT sub claim.");
             return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
         }
+
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
 
         var (result, error) = await _submissionService.CreateAsync(request, organizerId, cancellationToken);
 
@@ -138,6 +141,34 @@ public class EventsController : ControllerBase
             return BadRequest(new { code = "VALIDATION_ERROR", message = error });
 
         return CreatedAtAction(nameof(GetEventById), new { id = result.Id.ToString() }, result);
+    }
+
+    /// <summary>
+    /// GET /api/events/my-submissions
+    /// EP-30 — Returns all event submissions created by the authenticated Organizer, ordered newest first.
+    /// Exposes events across all lifecycle statuses (Pending, Approved, Rejected, Published).
+    /// Requires: OrganizerOnly policy (Organizer role).
+    /// </summary>
+    [HttpGet("my-submissions")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<IReadOnlyList<OrganizerEventSubmissionDto>>> GetMySubmissions(
+        CancellationToken cancellationToken)
+    {
+        // Derive organizer identity from validated JWT — never from request query or body
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("GetMySubmissions: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
+
+        var submissions = await _submissionService.GetOrganizerSubmissionsAsync(organizerId, cancellationToken);
+        return Ok(submissions);
     }
 
     // =========================================================================
@@ -181,7 +212,7 @@ public class EventsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation(
+        _logger?.LogInformation(
             "Event approved. EventId={EventId}, ReviewedBy={ReviewerId}",
             guidId, reviewerId);
 
@@ -223,7 +254,7 @@ public class EventsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation(
+        _logger?.LogInformation(
             "Event rejected. EventId={EventId}, ReviewedBy={ReviewerId}",
             guidId, reviewerId);
 
@@ -264,7 +295,7 @@ public class EventsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation(
+        _logger?.LogInformation(
             "Event published. EventId={EventId}, PublishedBy={PublisherId}",
             guidId, publisherId);
 

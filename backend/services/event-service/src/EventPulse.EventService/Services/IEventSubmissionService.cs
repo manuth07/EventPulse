@@ -12,4 +12,12 @@ public interface IEventSubmissionService
         CreateEventRequest request,
         Guid organizerId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves all event submissions belonging to the given organizer, ordered newest first.
+    /// Exposes all lifecycle statuses with resolved image URLs.
+    /// </summary>
+    Task<IReadOnlyList<OrganizerEventSubmissionDto>> GetOrganizerSubmissionsAsync(
+        Guid organizerId,
+        CancellationToken cancellationToken = default);
 }
