@@ -70,3 +70,30 @@ export async function submitEvent(formData, token) {
 
   return response.json();
 }
+
+export async function getMySubmissions(token) {
+  const response = await fetch(`${API_BASE_URL}/api/events/my-submissions`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load event submissions (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
