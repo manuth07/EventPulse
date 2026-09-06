@@ -128,7 +128,7 @@ export function Home() {
         fontSize: '13px'
       }}>
         <div className="container">
-          <p style={{ margin: 0 }}>© 2026 EventPulse. All rights reserved. Built with React & ASP.NET Core.</p>
+          <p style={{ margin: 0 }}>© 2026 EventPulse. All rights reserved.</p>
         </div>
       </footer>
     </div>
