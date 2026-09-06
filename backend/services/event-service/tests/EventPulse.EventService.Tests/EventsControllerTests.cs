@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using EventPulse.EventService.Controllers;
 using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
@@ -25,7 +24,7 @@ public class EventsControllerTests
 
     private static EventsController CreateController(EventDbContext context)
     {
-        return new EventsController(context, NullLogger<EventsController>.Instance);
+        return new EventsController(context, null);
     }
 
     private static Event MakeEvent(EventStatus status, string title = "Test Event") => new()
