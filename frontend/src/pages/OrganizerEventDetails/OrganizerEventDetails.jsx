@@ -148,7 +148,7 @@ export function OrganizerEventDetails() {
       setDescription(data.description || '');
       setVenue(data.venue || '');
       setEventDate(toLocalDatetimeInput(data.eventDate));
-      setPrice(String(data.price ?? '0'));
+      setPrice(String(data.price != null ? Number(data.price) : '0'));
       setImagePreview(data.imageUrl || null);
       setCoverPreview(data.coverUrl || null);
     } catch (err) {
@@ -168,7 +168,7 @@ export function OrganizerEventDetails() {
     setDescription(event.description || '');
     setVenue(event.venue || '');
     setEventDate(toLocalDatetimeInput(event.eventDate));
-    setPrice(String(event.price ?? '0'));
+    setPrice(String(event.price != null ? Number(event.price) : '0'));
     setImageFile(null);
     setImagePreview(event.imageUrl || null);
     setCoverFile(null);
@@ -249,6 +249,12 @@ export function OrganizerEventDetails() {
       return;
     }
 
+    const parsedPrice = Number(price);
+    if (isNaN(parsedPrice) || parsedPrice < 0 || !Number.isInteger(parsedPrice)) {
+      setFormError('Ticket price must be entered in whole LKR.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -257,7 +263,7 @@ export function OrganizerEventDetails() {
       formData.append('description', description.trim());
       formData.append('venue', venue.trim());
       formData.append('eventDate', new Date(eventDate).toISOString());
-      formData.append('price', parseFloat(price) || 0);
+      formData.append('price', String(parsedPrice));
 
       if (imageFile) {
         formData.append('image', imageFile);
@@ -672,7 +678,8 @@ export function OrganizerEventDetails() {
                         <input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="1"
+                          placeholder="0"
                           required
                           value={price}
                           onChange={(e) => setPrice(e.target.value)}

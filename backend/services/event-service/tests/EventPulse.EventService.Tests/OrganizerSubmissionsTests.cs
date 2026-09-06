@@ -909,4 +909,168 @@ public class OrganizerSubmissionsTests
         Assert.Equal("event-posters/original-poster.webp", existingEvent.ImageBlobName); // Retained
         Assert.Equal("event-covers/fake.webp", existingEvent.CoverBlobName); // Replaced
     }
+
+    [Theory]
+    [InlineData(1499.98)]
+    [InlineData(15000.83)]
+    [InlineData(10.5)]
+    [InlineData(0.01)]
+    public async Task CreateAsync_RejectsFractionalPrice(decimal fractionalPrice)
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var posterStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var posterFile = new FormFile(posterStream, 0, 3, "image", "poster.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+        var coverStream = new MemoryStream(new byte[] { 4, 5, 6 });
+        var coverFile = new FormFile(coverStream, 0, 3, "coverImage", "cover.webp")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/webp"
+        };
+
+        var request = new CreateEventRequest
+        {
+            Title = "Valid Event",
+            Description = "A valid event description for testing ticket price precision.",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = fractionalPrice,
+            Image = posterFile,
+            CoverImage = coverFile
+        };
+
+        var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
+
+        Assert.Null(result);
+        Assert.Equal("Ticket price must be entered in whole LKR.", error);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(500)]
+    [InlineData(15000)]
+    public async Task CreateAsync_AcceptsWholeRupeePrice(decimal wholePrice)
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var posterStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var posterFile = new FormFile(posterStream, 0, 3, "image", "poster.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+        var coverStream = new MemoryStream(new byte[] { 4, 5, 6 });
+        var coverFile = new FormFile(coverStream, 0, 3, "coverImage", "cover.webp")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/webp"
+        };
+
+        var request = new CreateEventRequest
+        {
+            Title = "Valid Event",
+            Description = "A valid event description for testing ticket price precision.",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = wholePrice,
+            Image = posterFile,
+            CoverImage = coverFile
+        };
+
+        var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
+
+        Assert.NotNull(result);
+        Assert.Null(error);
+        Assert.Equal(wholePrice, result.Price);
+    }
+
+    [Theory]
+    [InlineData(1499.98)]
+    [InlineData(15000.83)]
+    [InlineData(0.50)]
+    public async Task ResubmitAsync_RejectsFractionalPrice(decimal fractionalPrice)
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        var existingEvent = new Event
+        {
+            Id = eventId,
+            Title = "Rejected Event",
+            Description = "A valid event description for testing ticket price precision.",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = 1000,
+            Status = EventStatus.Rejected,
+            OrganizerId = organizerId,
+            ImageBlobName = "event-posters/original-poster.webp",
+            CoverBlobName = "event-covers/original-cover.webp"
+        };
+        context.Events.Add(existingEvent);
+        await context.SaveChangesAsync();
+
+        var request = new ResubmitEventRequest
+        {
+            Title = "Updated Event",
+            Description = "A valid updated description for testing price precision.",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(12),
+            Price = fractionalPrice,
+        };
+
+        var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
+
+        Assert.Null(result);
+        Assert.Equal("Ticket price must be entered in whole LKR.", error);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(15000)]
+    public async Task ResubmitAsync_AcceptsWholeRupeePrice(decimal wholePrice)
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        var existingEvent = new Event
+        {
+            Id = eventId,
+            Title = "Rejected Event",
+            Description = "A valid event description for testing ticket price precision.",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = 1000,
+            Status = EventStatus.Rejected,
+            OrganizerId = organizerId,
+            ImageBlobName = "event-posters/original-poster.webp",
+            CoverBlobName = "event-covers/original-cover.webp"
+        };
+        context.Events.Add(existingEvent);
+        await context.SaveChangesAsync();
+
+        var request = new ResubmitEventRequest
+        {
+            Title = "Updated Event",
+            Description = "A valid updated description for testing price precision.",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(12),
+            Price = wholePrice,
+        };
+
+        var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
+
+        Assert.NotNull(result);
+        Assert.Null(error);
+        Assert.Equal(wholePrice, result.Price);
+    }
 }
