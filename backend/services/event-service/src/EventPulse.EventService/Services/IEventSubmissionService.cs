@@ -20,4 +20,23 @@ public interface IEventSubmissionService
     Task<IReadOnlyList<OrganizerEventSubmissionDto>> GetOrganizerSubmissionsAsync(
         Guid organizerId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves a single event submission belonging to the given organizer.
+    /// Returns null if not found or not owned by organizer.
+    /// </summary>
+    Task<OrganizerEventSubmissionDto?> GetOrganizerSubmissionByIdAsync(
+        Guid eventId,
+        Guid organizerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Edits and resubmits a Rejected event, transitioning it back to Pending.
+    /// Preserves existing Event ID, previous review notes, and handles poster replacement.
+    /// </summary>
+    Task<(OrganizerEventSubmissionDto? Result, string? Error, bool IsNotFound, bool IsForbidden, bool IsInvalidState)> ResubmitAsync(
+        Guid eventId,
+        ResubmitEventRequest request,
+        Guid organizerId,
+        CancellationToken cancellationToken = default);
 }

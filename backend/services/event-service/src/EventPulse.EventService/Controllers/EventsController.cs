@@ -181,6 +181,97 @@ public class EventsController : ControllerBase
         return Ok(submissions);
     }
 
+    /// <summary>
+    /// GET /api/events/my-submissions/{id}
+    /// Retrieves a single event submission belonging to the authenticated Organizer.
+    /// Exposes review comments and status for Organizer inspection.
+    /// Requires: OrganizerOnly policy (Organizer role).
+    /// </summary>
+    [HttpGet("my-submissions/{id}")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<OrganizerEventSubmissionDto>> GetMySubmissionById(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("GetMySubmissionById: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
+
+        var submission = await _submissionService.GetOrganizerSubmissionByIdAsync(guidId, organizerId, cancellationToken);
+        if (submission == null)
+            return NotFound();
+
+        return Ok(submission);
+    }
+
+    /// <summary>
+    /// PUT /api/events/{id}/resubmit
+    /// Edits and resubmits a Rejected event submission for Administrator review.
+    /// Transitions status: Rejected -> Pending.
+    /// Preserves existing Event ID and previous review notes.
+    /// Requires: OrganizerOnly policy (Organizer role).
+    /// </summary>
+    [HttpPut("{id}/resubmit")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> ResubmitEvent(
+        string id,
+        [FromForm] ResubmitEventRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("ResubmitEvent: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
+
+        var (result, error, isNotFound, isForbidden, isInvalidState) =
+            await _submissionService.ResubmitAsync(guidId, request, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
+
     // =========================================================================
     // EP-31 / EP-97 — ADMINISTRATOR REVIEW ENDPOINTS
     // Require: Administrator role (AdministratorOnly policy)
@@ -284,6 +375,11 @@ public class EventsController : ControllerBase
         if (!Guid.TryParse(id, out var guidId))
             return NotFound();
 
+        if (string.IsNullOrWhiteSpace(request?.Notes))
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Rejection feedback is required." });
+        }
+
         if (_reviewService is null)
             return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
 
@@ -291,13 +387,18 @@ public class EventsController : ControllerBase
                             ?? User.FindFirst("sub")?.Value;
         Guid.TryParse(reviewerIdStr, out var reviewerId);
 
-        var (result, error, isNotFound) = await _reviewService.RejectEventAsync(guidId, reviewerId, request?.Notes, cancellationToken);
+        var (result, error, isNotFound) = await _reviewService.RejectEventAsync(guidId, reviewerId, request.Notes.Trim(), cancellationToken);
 
         if (isNotFound)
             return NotFound();
 
         if (error != null)
         {
+            if (error == "Rejection feedback is required.")
+            {
+                return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+            }
+
             return Conflict(new
             {
                 code = "INVALID_STATE",

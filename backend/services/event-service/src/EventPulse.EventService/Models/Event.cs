@@ -14,6 +14,11 @@ public class Event
     public DateTime? ReviewedAt { get; set; }
     public Guid? ReviewedBy { get; set; }
     /// <summary>
+    /// Administrator feedback or rejection reason.
+    /// Preserved across resubmissions so the Organizer can view previous feedback.
+    /// </summary>
+    public string? ReviewComment { get; set; }
+    /// <summary>
     /// Blob Storage reference key (e.g. "events/abc123.jpg").
     /// Null for seeded/legacy events without a poster.
     /// The full URL is resolved by IEventImageStorage at query time.

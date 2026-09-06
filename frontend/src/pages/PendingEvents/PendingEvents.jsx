@@ -166,12 +166,16 @@ export function PendingEvents() {
 
   const handleReject = async () => {
     if (!selectedEvent || actionInProgress) return;
+    if (!rejectionNotes.trim()) {
+      setActionError('Rejection feedback is required. Please explain what needs to be corrected.');
+      return;
+    }
     setActionInProgress(true);
     setActionError(null);
 
     const token = getEffectiveToken();
     try {
-      await rejectEvent(selectedEvent.id, token, rejectionNotes);
+      await rejectEvent(selectedEvent.id, token, rejectionNotes.trim());
       const rejectedTitle = selectedEvent.title;
       handleCloseReview();
       setFeedback({
@@ -950,7 +954,7 @@ export function PendingEvents() {
                         marginBottom: '6px',
                       }}
                     >
-                      Reviewer Notes / Rejection Reason (Optional)
+                      Reviewer Notes / Rejection Reason <span style={{ color: 'var(--ep-danger)' }}>*</span>
                     </label>
                     <textarea
                       id="rejection-notes"
@@ -975,7 +979,7 @@ export function PendingEvents() {
                     <button
                       type="button"
                       onClick={handleReject}
-                      disabled={actionInProgress}
+                      disabled={actionInProgress || !rejectionNotes.trim()}
                       style={{
                         backgroundColor: 'var(--ep-danger)',
                         color: '#ffffff',
@@ -984,8 +988,8 @@ export function PendingEvents() {
                         padding: '8px 18px',
                         fontSize: '13px',
                         fontWeight: 600,
-                        cursor: actionInProgress ? 'not-allowed' : 'pointer',
-                        opacity: actionInProgress ? 0.7 : 1,
+                        cursor: (actionInProgress || !rejectionNotes.trim()) ? 'not-allowed' : 'pointer',
+                        opacity: (actionInProgress || !rejectionNotes.trim()) ? 0.6 : 1,
                       }}
                     >
                       {actionInProgress ? 'Rejecting...' : 'Confirm Rejection'}

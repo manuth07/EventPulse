@@ -97,6 +97,11 @@ public class EventReviewService : IEventReviewService
         string? notes = null,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return (null, "Rejection feedback is required.", false);
+        }
+
         var eventItem = await _context.Events.FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
         if (eventItem == null)
         {
@@ -114,6 +119,7 @@ public class EventReviewService : IEventReviewService
         eventItem.Status = EventStatus.Rejected;
         eventItem.ReviewedAt = DateTime.UtcNow;
         eventItem.ReviewedBy = reviewerId;
+        eventItem.ReviewComment = notes.Trim();
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -140,6 +146,7 @@ public class EventReviewService : IEventReviewService
             OrganizerId = e.OrganizerId,
             ReviewedAt = e.ReviewedAt,
             ReviewedBy = e.ReviewedBy,
+            ReviewComment = e.ReviewComment,
         };
     }
 }

@@ -16,4 +16,5 @@ public class OrganizerEventSubmissionDto
     public DateTime CreatedAt { get; set; }
     public string? ImageUrl { get; set; }
     public DateTime? ReviewedAt { get; set; }
+    public string? ReviewComment { get; set; }
 }

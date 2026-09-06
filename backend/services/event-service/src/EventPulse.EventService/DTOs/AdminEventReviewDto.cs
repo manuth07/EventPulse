@@ -18,4 +18,5 @@ public class AdminEventReviewDto
     public Guid OrganizerId { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public Guid? ReviewedBy { get; set; }
+    public string? ReviewComment { get; set; }
 }

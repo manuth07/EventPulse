@@ -51,6 +51,10 @@ public class EventDbContext : DbContext
             entity.Property(e => e.ImageBlobName)
                 .HasMaxLength(500)
                 .IsRequired(false);
+
+            entity.Property(e => e.ReviewComment)
+                .HasMaxLength(1000)
+                .IsRequired(false);
         });
     }
 }

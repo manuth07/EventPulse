@@ -293,10 +293,30 @@ public class EventReviewServiceTests
         using var context = CreateContext();
         var service = new EventReviewService(context, new FakeImageStorage(), null!);
 
-        var (result, error, isNotFound) = await service.RejectEventAsync(Guid.NewGuid(), Guid.NewGuid());
+        var (result, error, isNotFound) = await service.RejectEventAsync(Guid.NewGuid(), Guid.NewGuid(), "Rejection reason");
 
         Assert.True(isNotFound);
         Assert.Null(result);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task RejectEventAsync_WhenNotesEmptyOrWhitespace_ReturnsValidationError(string? emptyNotes)
+    {
+        using var context = CreateContext();
+        var pending = MakeEvent(EventStatus.Pending, "Pending Event");
+        context.Events.Add(pending);
+        await context.SaveChangesAsync();
+
+        var service = new EventReviewService(context, new FakeImageStorage(), null!);
+
+        var (result, error, isNotFound) = await service.RejectEventAsync(pending.Id, Guid.NewGuid(), emptyNotes);
+
+        Assert.False(isNotFound);
+        Assert.Null(result);
+        Assert.Equal("Rejection feedback is required.", error);
     }
 
     // =========================================================================
@@ -411,5 +431,23 @@ public class EventReviewServiceTests
         var dto = Assert.IsType<AdminEventReviewDto>(okResult.Value);
         Assert.Equal("Rejected", dto.Status);
         Assert.NotNull(dto.ReviewedAt);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Controller_RejectEvent_WhenNotesNullOrWhitespace_ReturnsBadRequest(string? emptyNotes)
+    {
+        using var context = CreateContext();
+        var pending = MakeEvent(EventStatus.Pending, "Pending To Reject");
+        context.Events.Add(pending);
+        await context.SaveChangesAsync();
+
+        var controller = CreateControllerWithReviewService(context);
+        var actionResult = await controller.RejectEvent(pending.Id.ToString(), new ReviewEventRequest { Notes = emptyNotes });
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(actionResult);
+        Assert.NotNull(badRequestResult.Value);
     }
 }
