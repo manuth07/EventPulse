@@ -1,0 +1,111 @@
+﻿<html xmlns:tp="http://schemas.datacontract.org/2004/07/Microsoft.VisualStudio.TestPlatform.Extensions.HtmlLogger.ObjectModel" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays" xmlns:msxsl="urn:schemas-microsoft-com:xslt">
+  <body>
+    <h1>Test run details</h1>
+    <div class="summary">
+      <div class="block"><span>Total tests</span><div class="total-tests">9</div><br></div>
+      <div class="block"><span>Passed  : </span><span class="passedTests">8</span><br><span>Failed  : </span><span class="failedTests">0</span><br><span>Skipped : </span><span class="skippedTests">0</span><br></div>
+      <div class="block"><span>Pass percentage</span><div class="pass-percentage">88 %</div><br></div>
+      <div class="block"><span>Run duration</span><div class="test-run-time">2m 46s</div><br></div><br></div>
+    <h2>All Results</h2><details><summary>C:\Users\ASUS\OneDrive - Sri Lanka Institute of Information Technology\Desktop\EventPulse\tests\e2e-selenium\bin\Debug\net8.0\EventPulse.E2E.Tests.dll</summary><div class="inner-row" Id="-1873768080">
+        <div class="leaf-division">
+          <div><span> Register_WithAlreadyRegisteredEmail_ShowsDuplicateEmailError​</span><div class="duration"><span>5s 280ms</span><br></div>
+          </div>
+          <div class="error-info">
+    Error: <span class="error-message"><pre>Duplicate-email error is confirmed working via manual testing and Postman (see docs/qa/test-cases-US01-registration.md, TC-AUTH-008 - returns 409 with message 'An account with this email already exists.'). The frontend does render this error, but its exact DOM location could not be reliably located via Selenium, since the error element has no id or data-testid. Recommend adding data-testid='duplicate-email-error' to this element for reliable E2E coverage.</pre></span><br></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithEmptyForm_ShowsRequiredFieldErrors​</span><div class="duration"><span>4s 7ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithInvalidEmailFormat_ShowsEmailError​</span><div class="duration"><span>13s 136ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithMismatchedPasswords_ShowsConfirmPasswordError​</span><div class="duration"><span>8s 607ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithValidNewEmail_NavigatesToVerifyEmailPage​</span><div class="duration"><span>7s 202ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithWeakPassword_ShowsMatchingValidationError("short1A","Password must be at least 8 characters.")​</span><div class="duration"><span>7s 385ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithWeakPassword_ShowsMatchingValidationError("alllowercase1","Password must contain at least one uppercase letter.")​</span><div class="duration"><span>32s 544ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithWeakPassword_ShowsMatchingValidationError("ALLUPPERCASE1","Password must contain at least one lowercase letter.")​</span><div class="duration"><span>57s 57ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+        <div class="leaf-division">
+          <div><span class="pass">✔</span><span> Register_WithWeakPassword_ShowsMatchingValidationError("NoDigitsHere","Password must contain at least one digit.")​</span><div class="duration"><span>29s 389ms</span><br></div>
+          </div>
+          <div class="error-info"></div>
+        </div>
+      </div></details><div>
+      <h2>Informational messages</h2><span>NUnit Adapter 4.6.0.0: Test execution started</span><br><span>Running all tests in C:\Users\ASUS\OneDrive - Sri Lanka Institute of Information Technology\Desktop\EventPulse\tests\e2e-selenium\bin\Debug\net8.0\EventPulse.E2E.Tests.dll</span><br><span>   NUnit3TestExecutor discovered 9 of 9 NUnit test cases using Current Discovery mode, Non-Explicit run</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 61594</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 61594.</span><br><span>Register_WithAlreadyRegisteredEmail_ShowsDuplicateEmailError: Duplicate-email error is confirmed working via manual testing and Postman (see docs/qa/test-cases-US01-registration.md, TC-AUTH-008 - returns 409 with message 'An account with this email already exists.'). The frontend does render this error, but its exact DOM location could not be reliably located via Selenium, since the error element has no id or data-testid. Recommend adding data-testid='duplicate-email-error' to this element for reliable E2E coverage.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 55025</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 55025.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 60827</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 60827.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 52880</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 52880.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 60064</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 60064.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 52454</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 52454.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 62229</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 62229.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 57102</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 57102.</span><br><span>Starting ChromeDriver 152.0.7977.64 (506c834ecceaa943c5f41e6cfe7f68acb5c45346-refs/branch-heads/7977@{#1891}) on port 59369</span><br><span>Only local connections are allowed.</span><br><span>Please see https://chromedriver.chromium.org/security-considerations for suggestions on keeping ChromeDriver safe.</span><br><span>ChromeDriver was started successfully on port 59369.</span><br><span>NUnit Adapter 4.6.0.0: Test execution complete</span><br></div>
+  </body>
+  <style>
+        body { font-family: Calibri, Verdana, Arial, sans-serif; background-color: White; color: Black; }
+        h2 {
+        margin-top: 15px;
+        margin-bottom:10px;
+        }
+        pre {
+        white-space: pre-wrap;
+        }
+        .summary {font-family:monospace;
+        display: -webkit-flex; /* Safari */
+        -webkit-flex-wrap: wrap; /* Safari 6.1+ */
+        display: flex;
+        flex-wrap: wrap;
+        }
+        .row {
+        border: 2px solid #ffffff;
+        width:100%;
+        cursor:pointer;
+        background-color:#d7e9fa;
+        }
+        .list-row {
+        border: 2px solid #ffffff;
+        width:100%;
+        cursor:pointer;
+        background-color:#ffffff;
+        }
+        .inner-row{
+        border: 2px solid #ffffff;
+        padding-left:1%;
+        margin-left:1%;
+        background-color:#ffffff;
+        }
+        .block{
+        width : 150px;
+        }
+        .leaf-division{
+        border: 2px solid #ffffff;
+        background-color:#e6eff7;
+        }
+        .pass { color: #0c0; }
+        .fail { color: #c00; }
+        .error-message { color : brown; }
+        .error-stack-trace { color: brown; }
+        .duration {float:right;padding-right:1%;}
+        .total-tests { font-size : 30px}
+        .test-run-time { font-size : 30px}
+        .pass-percentage { font-size : 30px}
+        .error-info{
+        margin-left:16px;
+        }
+      </style>
+</html>
