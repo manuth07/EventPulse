@@ -11,4 +11,5 @@ public class EventListDto
     public DateTime EventDate { get; set; }
     public decimal Price { get; set; }
     public EventStatus Status { get; set; }
+    public string? ImageUrl { get; set; }
 }
