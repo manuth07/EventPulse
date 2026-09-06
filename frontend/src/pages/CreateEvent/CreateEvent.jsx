@@ -87,6 +87,12 @@ export function CreateEvent() {
       return;
     }
 
+    const parsedPrice = Number(price);
+    if (isNaN(parsedPrice) || parsedPrice < 0 || !Number.isInteger(parsedPrice)) {
+      setError('Ticket price must be entered in whole LKR.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -95,7 +101,7 @@ export function CreateEvent() {
       formData.append('description', description);
       formData.append('venue', venue);
       formData.append('eventDate', new Date(eventDate).toISOString());
-      formData.append('price', parseFloat(price) || 0);
+      formData.append('price', String(parsedPrice));
       formData.append('image', image);
       formData.append('coverImage', coverImage);
 
@@ -311,11 +317,11 @@ export function CreateEvent() {
                     <input
                       type="number"
                       min="0"
-                      step="0.01"
+                      step="1"
                       required
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
-                      placeholder="0.00"
+                      placeholder="0"
                       style={{
                         width: '100%',
                         padding: '10px 14px 10px 48px',

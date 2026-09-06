@@ -68,6 +68,9 @@ public class EventSubmissionService : IEventSubmissionService
         if (request.Price < 0)
             return (null, "Price must be 0 or greater.");
 
+        if (request.Price != decimal.Truncate(request.Price))
+            return (null, "Ticket price must be entered in whole LKR.");
+
         // ---- Poster Validation -----------------------------------------------
         if (request.Image is null || request.Image.Length == 0)
             return (null, "Event poster image is required.");
@@ -302,6 +305,9 @@ public class EventSubmissionService : IEventSubmissionService
 
         if (request.Price < 0)
             return (null, "Price must be 0 or greater.", false, false, false);
+
+        if (request.Price != decimal.Truncate(request.Price))
+            return (null, "Ticket price must be entered in whole LKR.", false, false, false);
 
         string? oldImageBlobName = null;
         string? newImageBlobName = null;
