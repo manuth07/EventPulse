@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
 using EventPulse.EventService.Models;
@@ -147,5 +148,31 @@ public class EventSubmissionService : IEventSubmissionService
         };
 
         return (response, null);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<OrganizerEventSubmissionDto>> GetOrganizerSubmissionsAsync(
+        Guid organizerId,
+        CancellationToken cancellationToken = default)
+    {
+        var events = await _context.Events
+            .AsNoTracking()
+            .Where(e => e.OrganizerId == organizerId)
+            .OrderByDescending(e => e.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return events.Select(e => new OrganizerEventSubmissionDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Description = e.Description,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            Price = e.Price,
+            Status = e.Status.ToString(),
+            CreatedAt = e.CreatedAt,
+            ImageUrl = _imageStorage.GetPublicUrl(e.ImageBlobName),
+            ReviewedAt = e.ReviewedAt,
+        }).ToList();
     }
 }
