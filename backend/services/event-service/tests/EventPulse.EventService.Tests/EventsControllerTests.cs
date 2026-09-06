@@ -71,6 +71,51 @@ public class EventsControllerTests
         Assert.Empty(returned);
     }
 
+    private class FakeImageStorage : Storage.IEventImageStorage
+    {
+        public Task<string> UploadAsync(Stream imageStream, string contentType, string originalFileName, CancellationToken cancellationToken = default)
+            => Task.FromResult("events/fake.webp");
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+        public string? GetPublicUrl(string? blobName)
+            => string.IsNullOrEmpty(blobName) ? null : $"http://127.0.0.1:10000/devstoreaccount1/event-posters/{blobName}";
+    }
+
+    [Fact]
+    public async Task GetEvents_WithPosterImage_PopulatesImageUrl()
+    {
+        var approvedWithImage = MakeEvent(EventStatus.Approved, "Approved With Image");
+        approvedWithImage.ImageBlobName = "events/test.jpg";
+        var approvedWithoutImage = MakeEvent(EventStatus.Approved, "Approved Without Image");
+
+        using var context = CreateContextWithEvents(approvedWithImage, approvedWithoutImage);
+        var controller = new EventsController(context, imageStorage: new FakeImageStorage());
+
+        var result = await controller.GetEvents();
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var returned = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        var withImage = returned.First(e => e.Title == "Approved With Image");
+        Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/events/test.jpg", withImage.ImageUrl);
+
+        var withoutImage = returned.First(e => e.Title == "Approved Without Image");
+        Assert.Null(withoutImage.ImageUrl);
+    }
+
+    [Fact]
+    public async Task GetEventById_WithPosterImage_PopulatesImageUrl()
+    {
+        var approved = MakeEvent(EventStatus.Approved, "Approved Event");
+        approved.ImageBlobName = "events/detail.png";
+        using var context = CreateContextWithEvents(approved);
+        var controller = new EventsController(context, imageStorage: new FakeImageStorage());
+
+        var result = await controller.GetEventById(approved.Id.ToString());
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<EventDetailsDto>(okResult.Value);
+        Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/events/detail.png", dto.ImageUrl);
+    }
+
     // ---------- GetEventById (US-09) ----------
 
     [Fact]

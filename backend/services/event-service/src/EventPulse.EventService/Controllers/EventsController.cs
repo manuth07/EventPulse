@@ -6,6 +6,7 @@ using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
 using EventPulse.EventService.Models;
 using EventPulse.EventService.Services;
+using EventPulse.EventService.Storage;
 
 namespace EventPulse.EventService.Controllers;
 
@@ -16,17 +17,20 @@ public class EventsController : ControllerBase
     private readonly EventDbContext _context;
     private readonly IEventSubmissionService? _submissionService;
     private readonly IEventReviewService? _reviewService;
+    private readonly IEventImageStorage? _imageStorage;
     private readonly ILogger<EventsController>? _logger;
 
     public EventsController(
         EventDbContext context,
         IEventSubmissionService? submissionService = null,
         IEventReviewService? reviewService = null,
+        IEventImageStorage? imageStorage = null,
         ILogger<EventsController>? logger = null)
     {
         _context = context;
         _submissionService = submissionService;
         _reviewService = reviewService;
+        _imageStorage = imageStorage;
         _logger = logger;
     }
 
@@ -46,19 +50,21 @@ public class EventsController : ControllerBase
         var events = await _context.Events
             .AsNoTracking()
             .Where(e => e.Status == EventStatus.Published || e.Status == EventStatus.Approved)
-            .Select(e => new EventListDto
-            {
-                Id = e.Id,
-                Title = e.Title,
-                Description = e.Description,
-                Venue = e.Venue,
-                EventDate = e.EventDate,
-                Price = e.Price,
-                Status = e.Status
-            })
             .ToListAsync();
 
-        return Ok(events);
+        var dtos = events.Select(e => new EventListDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Description = e.Description,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            Price = e.Price,
+            Status = e.Status,
+            ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
+        }).ToList();
+
+        return Ok(dtos);
     }
 
     /// <summary>
@@ -91,7 +97,8 @@ public class EventsController : ControllerBase
             Venue = eventItem.Venue,
             EventDate = eventItem.EventDate,
             Price = eventItem.Price,
-            OrganizerId = eventItem.OrganizerId
+            OrganizerId = eventItem.OrganizerId,
+            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName)
         };
 
         return Ok(details);
