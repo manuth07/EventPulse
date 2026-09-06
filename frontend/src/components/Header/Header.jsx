@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, Plus, ShieldCheck, FileCheck } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, Plus, ShieldCheck, FileCheck, UserCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export function Header({ location = 'Colombo, LK' }) {
@@ -81,6 +81,15 @@ export function Header({ location = 'Colombo, LK' }) {
           </Link>
 
           {/* Nav links */}
+          {(!isOrganizer && !isAdmin) && (
+            <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <Link to="/list-your-event" style={navLinkStyle('/list-your-event')}>
+                <Plus size={14} />
+                <span>List Your Event</span>
+              </Link>
+            </nav>
+          )}
+
           {(isOrganizer || isAdmin) && (
             <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
               {/* Organizer navigation */}
@@ -97,6 +106,10 @@ export function Header({ location = 'Colombo, LK' }) {
                   <Link to="/admin" style={navLinkStyle('/admin')}>
                     <ShieldCheck size={14} />
                     <span>Admin Dashboard</span>
+                  </Link>
+                  <Link to="/admin/organizer-applications" style={navLinkStyle('/admin/organizer-applications')}>
+                    <UserCheck size={14} />
+                    <span>Organizer Applications</span>
                   </Link>
                   <Link to="/admin/events/pending" style={navLinkStyle('/admin/events/pending')}>
                     <FileCheck size={14} />
@@ -209,6 +222,130 @@ export function Header({ location = 'Colombo, LK' }) {
                     )}
                   </div>
 
+                  {/* Role-Specific Navigation Item in Dropdown */}
+                  {!isOrganizer && !isAdmin && (
+                    <Link
+                      to="/list-your-event"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'none',
+                        borderBottom: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'var(--ep-text-primary)',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
+                        fontFamily: 'var(--ep-font-body)',
+                        textAlign: 'left',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <Plus size={14} color="var(--ep-primary)" />
+                      <span>List Your Event</span>
+                    </Link>
+                  )}
+
+                  {isOrganizer && (
+                    <Link
+                      to="/organizer"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'none',
+                        borderBottom: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'var(--ep-text-primary)',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
+                        fontFamily: 'var(--ep-font-body)',
+                        textAlign: 'left',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <LayoutDashboard size={14} color="var(--ep-text-secondary)" />
+                      <span>Organizer Dashboard</span>
+                    </Link>
+                  )}
+
+                  {isAdmin && (
+                    <>
+                      <Link
+                        to="/admin"
+                        role="menuitem"
+                        onClick={() => setMenuOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'none',
+                          borderBottom: '1px solid var(--ep-border)',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          color: 'var(--ep-text-primary)',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                          transition: 'var(--ep-transition)',
+                          fontFamily: 'var(--ep-font-body)',
+                          textAlign: 'left',
+                          boxSizing: 'border-box',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <ShieldCheck size={14} color="var(--ep-text-secondary)" />
+                        <span>Admin Dashboard</span>
+                      </Link>
+                      <Link
+                        to="/admin/organizer-applications"
+                        role="menuitem"
+                        onClick={() => setMenuOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'none',
+                          borderBottom: '1px solid var(--ep-border)',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          color: 'var(--ep-text-primary)',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                          transition: 'var(--ep-transition)',
+                          fontFamily: 'var(--ep-font-body)',
+                          textAlign: 'left',
+                          boxSizing: 'border-box',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <UserCheck size={14} color="var(--ep-text-secondary)" />
+                        <span>Organizer Applications</span>
+                      </Link>
+                    </>
+                  )}
+
                   {/* Log out */}
                   <button
                     type="button"
@@ -240,13 +377,32 @@ export function Header({ location = 'Colombo, LK' }) {
               )}
             </div>
           ) : (
-            <Link
-              to="/login"
-              className="ep-btn-secondary"
-              style={{ fontSize: '13px', padding: '8px 16px', textDecoration: 'none' }}
-            >
-              Sign In
-            </Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <Link
+                to="/list-your-event"
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: 'var(--ep-text-primary)',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'var(--ep-transition)',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--ep-primary)'}
+                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--ep-text-primary)'}
+              >
+                <span>List Your Event</span>
+              </Link>
+              <Link
+                to="/login"
+                className="ep-btn-secondary"
+                style={{ fontSize: '13px', padding: '8px 16px', textDecoration: 'none' }}
+              >
+                Sign In
+              </Link>
+            </div>
           )}
         </div>
       </div>

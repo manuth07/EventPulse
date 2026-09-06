@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { registerCustomer } from '../../services/authService';
 import { COUNTRIES, DIAL_CODES } from '../../data/countries';
@@ -26,6 +26,7 @@ const INITIAL = {
 
 export function Register() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [form, setForm] = useState(INITIAL);
   const [showPassword, setShowPassword] = useState(false);
@@ -110,7 +111,13 @@ export function Register() {
       });
 
       // Phase 3 readiness: navigate to verify-email with registered email in state
-      navigate('/verify-email', { state: { email: result.email }, replace: true });
+      navigate('/verify-email', {
+        state: {
+          email: result.email,
+          returnTo: location.state?.returnTo,
+        },
+        replace: true,
+      });
     } catch (err) {
       if (err.status === 409) {
         setFieldErrors((prev) => ({ ...prev, email: 'An account with this email already exists.' }));
@@ -318,7 +325,7 @@ export function Register() {
         {/* Sign in link */}
         <p style={{ textAlign: 'center', marginTop: '20px', marginBottom: 0, fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
           Already have an account?{' '}
-          <Link to="/login" style={{ color: 'var(--ep-primary)', fontWeight: 500, textDecoration: 'none' }}>
+          <Link to="/login" state={location.state} style={{ color: 'var(--ep-primary)', fontWeight: 500, textDecoration: 'none' }}>
             Sign in
           </Link>
         </p>
