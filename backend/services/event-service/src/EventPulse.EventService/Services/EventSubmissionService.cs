@@ -56,7 +56,13 @@ public class EventSubmissionService : IEventSubmissionService
         if (string.IsNullOrWhiteSpace(request.Venue))
             return (null, "Venue is required.");
 
-        if (request.EventDate <= DateTime.UtcNow)
+        var eventDateUtc = request.EventDate.Kind == DateTimeKind.Utc
+            ? request.EventDate
+            : (request.EventDate.Kind == DateTimeKind.Local
+                ? request.EventDate.ToUniversalTime()
+                : DateTime.SpecifyKind(request.EventDate, DateTimeKind.Utc));
+
+        if (eventDateUtc <= DateTime.UtcNow)
             return (null, "EventDate must be in the future.");
 
         if (request.Price < 0)
@@ -66,12 +72,23 @@ public class EventSubmissionService : IEventSubmissionService
         if (request.Image is null || request.Image.Length == 0)
             return (null, "Event poster image is required.");
 
-        var contentType = request.Image.ContentType?.Trim() ?? string.Empty;
-        if (!AllowedContentTypes.Contains(contentType))
-            return (null, $"Unsupported image type '{contentType}'. Accepted: JPEG, PNG, WebP.");
+        var posterContentType = request.Image.ContentType?.Trim() ?? string.Empty;
+        if (!AllowedContentTypes.Contains(posterContentType))
+            return (null, $"Unsupported poster image type '{posterContentType}'. Accepted: JPEG, PNG, WebP.");
 
         if (request.Image.Length > MaxFileSizeBytes)
-            return (null, $"Image exceeds the 5 MB maximum (received {request.Image.Length:N0} bytes).");
+            return (null, $"Poster image exceeds the 5 MB maximum (received {request.Image.Length:N0} bytes).");
+
+        // ---- Cover Validation ------------------------------------------------
+        if (request.CoverImage is null || request.CoverImage.Length == 0)
+            return (null, "Event cover image is required.");
+
+        var coverContentType = request.CoverImage.ContentType?.Trim() ?? string.Empty;
+        if (!AllowedContentTypes.Contains(coverContentType))
+            return (null, $"Unsupported cover image type '{coverContentType}'. Accepted: JPEG, PNG, WebP.");
+
+        if (request.CoverImage.Length > MaxFileSizeBytes)
+            return (null, $"Cover image exceeds the 5 MB maximum (received {request.CoverImage.Length:N0} bytes).");
 
         // ---- Upload Poster ---------------------------------------------------
         string imageBlobName;
@@ -80,8 +97,9 @@ public class EventSubmissionService : IEventSubmissionService
             await using var stream = request.Image.OpenReadStream();
             imageBlobName = await _imageStorage.UploadAsync(
                 stream,
-                contentType,
+                posterContentType,
                 request.Image.FileName,
+                "event-posters",
                 cancellationToken);
         }
         catch (InvalidOperationException ex)
@@ -95,6 +113,29 @@ public class EventSubmissionService : IEventSubmissionService
             return (null, "Failed to upload event poster. Please try again.");
         }
 
+        // ---- Upload Cover (Compensates Poster on failure) ---------------------
+        string coverBlobName;
+        try
+        {
+            await using var stream = request.CoverImage.OpenReadStream();
+            coverBlobName = await _imageStorage.UploadAsync(
+                stream,
+                coverContentType,
+                request.CoverImage.FileName,
+                "event-covers",
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Cover upload failed. Performing compensating deletion of poster blob {BlobName}", imageBlobName);
+            await _imageStorage.DeleteAsync(imageBlobName, cancellationToken);
+
+            if (ex is InvalidOperationException)
+                return (null, ex.Message);
+
+            return (null, "Failed to upload event cover banner. Please try again.");
+        }
+
         // ---- Persist Event ---------------------------------------------------
         var newEvent = new Event
         {
@@ -102,13 +143,14 @@ public class EventSubmissionService : IEventSubmissionService
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
             Venue = request.Venue.Trim(),
-            EventDate = request.EventDate,
+            EventDate = eventDateUtc,
             Price = request.Price,
             // Server-controlled — never from frontend
             Status = EventStatus.Pending,
             OrganizerId = organizerId,
             CreatedAt = DateTime.UtcNow,
             ImageBlobName = imageBlobName,
+            CoverBlobName = coverBlobName,
         };
 
         _context.Events.Add(newEvent);
@@ -120,18 +162,19 @@ public class EventSubmissionService : IEventSubmissionService
         catch (Exception ex)
         {
             _logger?.LogError(ex,
-                "DB save failed after poster upload. Attempting compensating blob deletion. BlobName={BlobName}",
-                imageBlobName);
+                "DB save failed after image uploads. Attempting compensating blob deletions. PosterBlobName={PosterBlob} CoverBlobName={CoverBlob}",
+                imageBlobName, coverBlobName);
 
-            // Compensating cleanup: remove the orphaned blob
+            // Compensating cleanup: remove both newly uploaded blobs
             await _imageStorage.DeleteAsync(imageBlobName, cancellationToken);
+            await _imageStorage.DeleteAsync(coverBlobName, cancellationToken);
 
             return (null, "Failed to save event. Please try again.");
         }
 
         _logger?.LogInformation(
-            "Event submitted. EventId={EventId} OrganizerId={OrganizerId} Status={Status} ImageBlobName={BlobName}",
-            newEvent.Id, organizerId, newEvent.Status, imageBlobName);
+            "Event submitted. EventId={EventId} OrganizerId={OrganizerId} Status={Status} ImageBlobName={BlobName} CoverBlobName={CoverBlob}",
+            newEvent.Id, organizerId, newEvent.Status, imageBlobName, coverBlobName);
 
         var response = new EventSubmissionResponseDto
         {
@@ -145,6 +188,7 @@ public class EventSubmissionService : IEventSubmissionService
             OrganizerId = newEvent.OrganizerId,
             CreatedAt = newEvent.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(imageBlobName),
+            CoverUrl = _imageStorage.GetPublicUrl(coverBlobName),
         };
 
         return (response, null);
@@ -172,6 +216,7 @@ public class EventSubmissionService : IEventSubmissionService
             Status = e.Status.ToString(),
             CreatedAt = e.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(e.ImageBlobName),
+            CoverUrl = _imageStorage.GetPublicUrl(e.CoverBlobName),
             ReviewedAt = e.ReviewedAt,
             ReviewComment = e.ReviewComment,
         }).ToList();
@@ -201,6 +246,7 @@ public class EventSubmissionService : IEventSubmissionService
             Status = eventItem.Status.ToString(),
             CreatedAt = eventItem.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage.GetPublicUrl(eventItem.CoverBlobName),
             ReviewedAt = eventItem.ReviewedAt,
             ReviewComment = eventItem.ReviewComment,
         };
@@ -259,6 +305,8 @@ public class EventSubmissionService : IEventSubmissionService
 
         string? oldImageBlobName = null;
         string? newImageBlobName = null;
+        string? oldCoverBlobName = null;
+        string? newCoverBlobName = null;
 
         // Poster replacement if new image is provided
         if (request.Image is not null && request.Image.Length > 0)
@@ -277,6 +325,7 @@ public class EventSubmissionService : IEventSubmissionService
                     stream,
                     contentType,
                     request.Image.FileName,
+                    "event-posters",
                     cancellationToken);
             }
             catch (InvalidOperationException ex)
@@ -289,9 +338,60 @@ public class EventSubmissionService : IEventSubmissionService
                 _logger?.LogError(ex, "Unexpected error during poster replacement upload.");
                 return (null, "Failed to upload replacement poster. Please try again.", false, false, false);
             }
+        }
 
+        // Cover replacement if new cover is provided
+        if (request.CoverImage is not null && request.CoverImage.Length > 0)
+        {
+            var contentType = request.CoverImage.ContentType?.Trim() ?? string.Empty;
+            if (!AllowedContentTypes.Contains(contentType))
+            {
+                if (newImageBlobName != null)
+                    await _imageStorage.DeleteAsync(newImageBlobName, cancellationToken);
+                return (null, $"Unsupported cover image type '{contentType}'. Accepted: JPEG, PNG, WebP.", false, false, false);
+            }
+
+            if (request.CoverImage.Length > MaxFileSizeBytes)
+            {
+                if (newImageBlobName != null)
+                    await _imageStorage.DeleteAsync(newImageBlobName, cancellationToken);
+                return (null, $"Cover image exceeds the 5 MB maximum (received {request.CoverImage.Length:N0} bytes).", false, false, false);
+            }
+
+            try
+            {
+                await using var stream = request.CoverImage.OpenReadStream();
+                newCoverBlobName = await _imageStorage.UploadAsync(
+                    stream,
+                    contentType,
+                    request.CoverImage.FileName,
+                    "event-covers",
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Cover replacement upload failed.");
+                if (newImageBlobName != null)
+                    await _imageStorage.DeleteAsync(newImageBlobName, cancellationToken);
+
+                if (ex is InvalidOperationException)
+                    return (null, ex.Message, false, false, false);
+
+                return (null, "Failed to upload replacement cover banner. Please try again.", false, false, false);
+            }
+        }
+
+        // Update entity blob references if replacements occurred
+        if (newImageBlobName != null)
+        {
             oldImageBlobName = eventItem.ImageBlobName;
             eventItem.ImageBlobName = newImageBlobName;
+        }
+
+        if (newCoverBlobName != null)
+        {
+            oldCoverBlobName = eventItem.CoverBlobName;
+            eventItem.CoverBlobName = newCoverBlobName;
         }
 
         // Update fields
@@ -312,7 +412,7 @@ public class EventSubmissionService : IEventSubmissionService
         {
             _logger?.LogError(ex, "DB save failed during event resubmission. EventId={EventId}", eventId);
 
-            // If a new poster was uploaded, compensate by deleting it
+            // Compensate by deleting newly uploaded blobs; keep old blobs intact!
             if (newImageBlobName != null)
             {
                 try
@@ -321,14 +421,26 @@ public class EventSubmissionService : IEventSubmissionService
                 }
                 catch (Exception cleanupEx)
                 {
-                    _logger?.LogWarning(cleanupEx, "Failed to clean up newly uploaded blob {BlobName}", newImageBlobName);
+                    _logger?.LogWarning(cleanupEx, "Failed to clean up newly uploaded poster blob {BlobName}", newImageBlobName);
+                }
+            }
+
+            if (newCoverBlobName != null)
+            {
+                try
+                {
+                    await _imageStorage.DeleteAsync(newCoverBlobName, cancellationToken);
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger?.LogWarning(cleanupEx, "Failed to clean up newly uploaded cover blob {BlobName}", newCoverBlobName);
                 }
             }
 
             return (null, "Failed to save resubmitted event. Please try again.", false, false, false);
         }
 
-        // DB update succeeded — best-effort cleanup of old blob if it was replaced
+        // DB update succeeded — best-effort cleanup of old blobs if they were replaced
         if (oldImageBlobName != null)
         {
             try
@@ -337,7 +449,19 @@ public class EventSubmissionService : IEventSubmissionService
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Best-effort cleanup of old blob failed: {BlobName}", oldImageBlobName);
+                _logger?.LogWarning(ex, "Best-effort cleanup of old poster blob failed: {BlobName}", oldImageBlobName);
+            }
+        }
+
+        if (oldCoverBlobName != null)
+        {
+            try
+            {
+                await _imageStorage.DeleteAsync(oldCoverBlobName, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Best-effort cleanup of old cover blob failed: {BlobName}", oldCoverBlobName);
             }
         }
 
@@ -356,6 +480,7 @@ public class EventSubmissionService : IEventSubmissionService
             Status = eventItem.Status.ToString(),
             CreatedAt = eventItem.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage.GetPublicUrl(eventItem.CoverBlobName),
             ReviewedAt = eventItem.ReviewedAt,
             ReviewComment = eventItem.ReviewComment,
         };

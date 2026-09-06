@@ -16,8 +16,8 @@ public class OrganizerSubmissionsTests
 {
     private class FakeImageStorage : IEventImageStorage
     {
-        public Task<string> UploadAsync(Stream imageStream, string contentType, string originalFileName, CancellationToken cancellationToken = default)
-            => Task.FromResult("events/fake.webp");
+        public Task<string> UploadAsync(Stream imageStream, string contentType, string originalFileName, string folderPrefix = "event-posters", CancellationToken cancellationToken = default)
+            => Task.FromResult($"{folderPrefix}/fake.webp");
 
         public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
@@ -750,7 +750,163 @@ public class OrganizerSubmissionsTests
         Assert.NotNull(resubmitImgResult);
         Assert.Equal("Pending", resubmitImgResult.Status);
         Assert.Equal(secondRejection, resubmitImgResult.ReviewComment);
-        Assert.Equal("events/fake.webp", dbSecondReject.ImageBlobName);
+        Assert.Equal("event-posters/fake.webp", dbSecondReject.ImageBlobName);
         Assert.NotNull(resubmitImgResult.ImageUrl);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenPosterMissing_ReturnsValidationError()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var coverStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var coverFile = new FormFile(coverStream, 0, 3, "coverImage", "cover.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var request = new CreateEventRequest
+        {
+            Title = "Valid Title",
+            Description = "Long enough event description for validation",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = 1000,
+            Image = null!, // Missing poster
+            CoverImage = coverFile
+        };
+
+        var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
+        Assert.Null(result);
+        Assert.Equal("Event poster image is required.", error);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenCoverMissing_ReturnsValidationError()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var posterStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var posterFile = new FormFile(posterStream, 0, 3, "image", "poster.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var request = new CreateEventRequest
+        {
+            Title = "Valid Title",
+            Description = "Long enough event description for validation",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = 1000,
+            Image = posterFile,
+            CoverImage = null! // Missing cover
+        };
+
+        var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
+        Assert.Null(result);
+        Assert.Equal("Event cover image is required.", error);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenBothPosterAndCoverProvided_PersistsBothBlobsAndPopulatesBothUrls()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var posterStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var posterFile = new FormFile(posterStream, 0, 3, "image", "poster.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var coverStream = new MemoryStream(new byte[] { 4, 5, 6 });
+        var coverFile = new FormFile(coverStream, 0, 3, "coverImage", "cover.webp")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/webp"
+        };
+
+        var organizerId = Guid.NewGuid();
+        var request = new CreateEventRequest
+        {
+            Title = "Valid Dual Image Event",
+            Description = "Long enough event description for validation",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = 1000,
+            Image = posterFile,
+            CoverImage = coverFile
+        };
+
+        var (result, error) = await service.CreateAsync(request, organizerId);
+
+        Assert.Null(error);
+        Assert.NotNull(result);
+        Assert.NotNull(result.ImageUrl);
+        Assert.NotNull(result.CoverUrl);
+        Assert.Contains("event-posters/fake.webp", result.ImageUrl);
+        Assert.Contains("event-covers/fake.webp", result.CoverUrl);
+
+        var dbEvent = await context.Events.FindAsync(result.Id);
+        Assert.NotNull(dbEvent);
+        Assert.Equal("event-posters/fake.webp", dbEvent.ImageBlobName);
+        Assert.Equal("event-covers/fake.webp", dbEvent.CoverBlobName);
+    }
+
+    [Fact]
+    public async Task ResubmitAsync_WhenOnlyCoverReplaced_RetainsPosterAndReplacesCover()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var eventId = Guid.NewGuid();
+        var organizerId = Guid.NewGuid();
+        var existingEvent = new Event
+        {
+            Id = eventId,
+            Title = "Event with Poster",
+            Description = "Description long enough",
+            Venue = "Colombo",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = 1000,
+            Status = EventStatus.Rejected,
+            OrganizerId = organizerId,
+            ImageBlobName = "event-posters/original-poster.webp",
+            CoverBlobName = "event-covers/original-cover.webp"
+        };
+        context.Events.Add(existingEvent);
+        await context.SaveChangesAsync();
+
+        var coverStream = new MemoryStream(new byte[] { 7, 8, 9 });
+        var newCoverFile = new FormFile(coverStream, 0, 3, "coverImage", "new-cover.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var request = new ResubmitEventRequest
+        {
+            Title = "Updated Event with New Cover",
+            Description = "Description long enough",
+            Venue = "Colombo",
+            EventDate = DateTime.UtcNow.AddDays(12),
+            Price = 1200,
+            Image = null, // No replacement poster
+            CoverImage = newCoverFile // Replacement cover provided
+        };
+
+        var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
+
+        Assert.Null(error);
+        Assert.NotNull(result);
+        Assert.Equal("Pending", result.Status);
+        Assert.Equal("event-posters/original-poster.webp", existingEvent.ImageBlobName); // Retained
+        Assert.Equal("event-covers/fake.webp", existingEvent.CoverBlobName); // Replaced
     }
 }

@@ -29,9 +29,17 @@ public class CreateEventRequest
     public decimal Price { get; set; }
 
     /// <summary>
-    /// Event poster image. Required for new submissions.
+    /// Event poster image (portrait, ~4:5 ratio). Required for new submissions.
     /// Accepted: JPEG, PNG, WebP. Maximum: 5 MB.
     /// </summary>
     [Required]
     public IFormFile Image { get; set; } = null!;
+
+    /// <summary>
+    /// Event cover/banner image (wide, ~1920x720 ratio). Required for new submissions.
+    /// Used as the hero image on the public Event Details page.
+    /// Accepted: JPEG, PNG, WebP. Maximum: 5 MB.
+    /// </summary>
+    [Required]
+    public IFormFile CoverImage { get; set; } = null!;
 }

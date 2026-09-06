@@ -16,8 +16,8 @@ public class EventReviewServiceTests
 {
     private class FakeImageStorage : IEventImageStorage
     {
-        public Task<string> UploadAsync(Stream imageStream, string contentType, string originalFileName, CancellationToken cancellationToken = default)
-            => Task.FromResult("events/fake.webp");
+        public Task<string> UploadAsync(Stream imageStream, string contentType, string originalFileName, string folderPrefix = "event-posters", CancellationToken cancellationToken = default)
+            => Task.FromResult($"{folderPrefix}/fake.webp");
 
         public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
             => Task.CompletedTask;

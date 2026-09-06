@@ -98,7 +98,8 @@ public class EventsController : ControllerBase
             EventDate = eventItem.EventDate,
             Price = eventItem.Price,
             OrganizerId = eventItem.OrganizerId,
-            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName)
+            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage?.GetPublicUrl(eventItem.CoverBlobName)
         };
 
         return Ok(details);
@@ -118,7 +119,7 @@ public class EventsController : ControllerBase
     /// </summary>
     [HttpPost]
     [Authorize(Policy = AppPolicies.OrganizerOnly)]
-    [RequestSizeLimit(10 * 1024 * 1024)] // 10 MB ceiling — covers 5 MB image + form fields
+    [RequestSizeLimit(20 * 1024 * 1024)] // 20 MB ceiling — covers 2x 5 MB images (poster + cover) + form fields
     public async Task<ActionResult<EventSubmissionResponseDto>> SubmitEvent(
         [FromForm] CreateEventRequest request,
         CancellationToken cancellationToken)
@@ -224,7 +225,7 @@ public class EventsController : ControllerBase
     /// </summary>
     [HttpPut("{id}/resubmit")]
     [Authorize(Policy = AppPolicies.OrganizerOnly)]
-    [RequestSizeLimit(10 * 1024 * 1024)]
+    [RequestSizeLimit(20 * 1024 * 1024)]
     public async Task<IActionResult> ResubmitEvent(
         string id,
         [FromForm] ResubmitEventRequest request,

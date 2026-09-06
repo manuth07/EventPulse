@@ -44,6 +44,8 @@ export function EventDetails() {
     loadEventDetails();
   }, [id]);
 
+  const heroImage = event?.coverUrl || event?.imageUrl;
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--ep-canvas)' }}>
       <Header />
@@ -143,10 +145,11 @@ export function EventDetails() {
             <div className="row g-4">
               {/* Left Column: Event Visual & Information */}
               <div className="col-12 col-lg-8">
-                {/* Visual Header Banner / Poster */}
-                {event.imageUrl ? (
+                {/* Visual Header Banner (Wide Hero / Poster Fallback) */}
+                {heroImage ? (
                   <div style={{
-                    height: '240px',
+                    width: '100%',
+                    height: '320px',
                     borderRadius: 'var(--ep-radius-card)',
                     overflow: 'hidden',
                     border: '1px solid var(--ep-border)',
@@ -154,7 +157,7 @@ export function EventDetails() {
                     backgroundColor: 'var(--ep-canvas)'
                   }}>
                     <img
-                      src={event.imageUrl}
+                      src={heroImage}
                       alt={event.title}
                       style={{
                         width: '100%',

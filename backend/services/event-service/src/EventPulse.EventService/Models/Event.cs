@@ -19,9 +19,17 @@ public class Event
     /// </summary>
     public string? ReviewComment { get; set; }
     /// <summary>
-    /// Blob Storage reference key (e.g. "events/abc123.jpg").
+    /// Blob Storage reference key for the portrait event poster (e.g. "event-posters/abc123.webp").
     /// Null for seeded/legacy events without a poster.
     /// The full URL is resolved by IEventImageStorage at query time.
     /// </summary>
     public string? ImageBlobName { get; set; }
+
+    /// <summary>
+    /// Blob Storage reference key for the wide event cover/banner (e.g. "event-covers/xyz789.webp").
+    /// Used as the hero header on the public Event Details page.
+    /// Null for seeded/legacy events without a dedicated cover banner.
+    /// The full URL is resolved by IEventImageStorage at query time.
+    /// </summary>
+    public string? CoverBlobName { get; set; }
 }

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http;
 
 namespace EventPulse.EventService.DTOs;
@@ -34,4 +34,11 @@ public class ResubmitEventRequest
     /// Accepted: JPEG, PNG, WebP. Maximum: 5 MB.
     /// </summary>
     public IFormFile? Image { get; set; }
+
+    /// <summary>
+    /// Optional replacement wide event cover/banner image.
+    /// If omitted, the existing cover banner is preserved.
+    /// Accepted: JPEG, PNG, WebP. Maximum: 5 MB.
+    /// </summary>
+    public IFormFile? CoverImage { get; set; }
 }

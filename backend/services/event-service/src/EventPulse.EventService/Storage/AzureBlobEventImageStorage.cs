@@ -67,6 +67,7 @@ public class AzureBlobEventImageStorage : IEventImageStorage
         Stream imageStream,
         string contentType,
         string originalFileName,
+        string folderPrefix = "event-posters",
         CancellationToken cancellationToken = default)
     {
         // ---- Validate content type ----
@@ -83,7 +84,8 @@ public class AzureBlobEventImageStorage : IEventImageStorage
         if (!ContentTypeToExtension.TryGetValue(contentType, out var ext))
             ext = ".jpg";
 
-        var blobName = $"events/{Guid.NewGuid()}{ext}";
+        var sanitizedPrefix = string.IsNullOrWhiteSpace(folderPrefix) ? "event-posters" : folderPrefix.Trim().TrimEnd('/');
+        var blobName = $"{sanitizedPrefix}/{Guid.NewGuid()}{ext}";
 
         // ---- Ensure container exists (lazy, idempotent) ----
         await EnsureContainerAsync(cancellationToken);
@@ -95,7 +97,7 @@ public class AzureBlobEventImageStorage : IEventImageStorage
         await blobClient.UploadAsync(imageStream, new BlobHttpHeaders { ContentType = contentType },
             cancellationToken: cancellationToken);
 
-        _logger.LogInformation("Poster uploaded. BlobName={BlobName}", blobName);
+        _logger.LogInformation("Image asset uploaded. BlobName={BlobName}", blobName);
         return blobName;
     }
 

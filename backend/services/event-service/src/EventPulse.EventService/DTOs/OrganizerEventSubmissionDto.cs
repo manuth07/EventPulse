@@ -15,6 +15,7 @@ public class OrganizerEventSubmissionDto
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public string? ImageUrl { get; set; }
+    public string? CoverUrl { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public string? ReviewComment { get; set; }
 }

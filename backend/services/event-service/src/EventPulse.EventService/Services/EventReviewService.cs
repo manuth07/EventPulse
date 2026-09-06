@@ -143,6 +143,7 @@ public class EventReviewService : IEventReviewService
             Status = e.Status.ToString(),
             CreatedAt = e.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(e.ImageBlobName),
+            CoverUrl = _imageStorage.GetPublicUrl(e.CoverBlobName),
             OrganizerId = e.OrganizerId,
             ReviewedAt = e.ReviewedAt,
             ReviewedBy = e.ReviewedBy,

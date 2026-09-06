@@ -52,6 +52,10 @@ public class EventDbContext : DbContext
                 .HasMaxLength(500)
                 .IsRequired(false);
 
+            entity.Property(e => e.CoverBlobName)
+                .HasMaxLength(500)
+                .IsRequired(false);
+
             entity.Property(e => e.ReviewComment)
                 .HasMaxLength(1000)
                 .IsRequired(false);

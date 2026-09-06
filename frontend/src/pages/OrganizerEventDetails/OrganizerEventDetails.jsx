@@ -112,6 +112,8 @@ export function OrganizerEventDetails() {
   const [price, setPrice] = useState('0');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [coverFile, setCoverFile] = useState(null);
+  const [coverPreview, setCoverPreview] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -122,8 +124,11 @@ export function OrganizerEventDetails() {
       if (imagePreview && imagePreview.startsWith('blob:')) {
         URL.revokeObjectURL(imagePreview);
       }
+      if (coverPreview && coverPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(coverPreview);
+      }
     };
-  }, [imagePreview]);
+  }, [imagePreview, coverPreview]);
 
   const loadSubmission = useCallback(async () => {
     setLoading(true);
@@ -145,6 +150,7 @@ export function OrganizerEventDetails() {
       setEventDate(toLocalDatetimeInput(data.eventDate));
       setPrice(String(data.price ?? '0'));
       setImagePreview(data.imageUrl || null);
+      setCoverPreview(data.coverUrl || null);
     } catch (err) {
       setError(err.message || 'Unable to load event details.');
     } finally {
@@ -165,6 +171,8 @@ export function OrganizerEventDetails() {
     setPrice(String(event.price ?? '0'));
     setImageFile(null);
     setImagePreview(event.imageUrl || null);
+    setCoverFile(null);
+    setCoverPreview(event.coverUrl || null);
     setFormError(null);
     setIsEditing(true);
   };
@@ -174,6 +182,8 @@ export function OrganizerEventDetails() {
     setFormError(null);
     setImageFile(null);
     setImagePreview(event?.imageUrl || null);
+    setCoverFile(null);
+    setCoverPreview(event?.coverUrl || null);
   };
 
   const handleImageChange = (e) => {
@@ -181,18 +191,37 @@ export function OrganizerEventDetails() {
     if (!file) return;
 
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setFormError('Please select a valid image file (JPEG, PNG, or WebP).');
+      setFormError('Please select a valid image file (JPEG, PNG, or WebP) for the poster.');
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setFormError('Image must be less than 5 MB.');
+      setFormError('Poster image must be less than 5 MB.');
       return;
     }
 
     setFormError(null);
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleCoverChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setFormError('Please select a valid image file (JPEG, PNG, or WebP) for the cover banner.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFormError('Cover image must be less than 5 MB.');
+      return;
+    }
+
+    setFormError(null);
+    setCoverFile(file);
+    setCoverPreview(URL.createObjectURL(file));
   };
 
   const handleResubmit = async (e) => {
@@ -232,6 +261,10 @@ export function OrganizerEventDetails() {
 
       if (imageFile) {
         formData.append('image', imageFile);
+      }
+
+      if (coverFile) {
+        formData.append('coverImage', coverFile);
       }
 
       const token = accessToken || sessionStorage.getItem('ep_access_token');
@@ -734,6 +767,84 @@ export function OrganizerEventDetails() {
                     )}
                   </div>
 
+                  {/* Cover Banner Section */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                      Event Cover / Banner
+                    </label>
+                    <p style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', margin: '0 0 10px 0' }}>
+                      Leave unchanged to keep the existing cover banner, or select a new file to replace it.
+                    </p>
+
+                    {coverPreview ? (
+                      <div style={{ position: 'relative', width: '100%' }}>
+                        <img
+                          src={coverPreview}
+                          alt="Cover banner preview"
+                          style={{
+                            width: '100%',
+                            borderRadius: 'var(--ep-radius-container, 8px)',
+                            display: 'block',
+                            border: '1px solid var(--ep-border)',
+                            maxHeight: '180px',
+                            objectFit: 'cover',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCoverFile(null);
+                            setCoverPreview(null);
+                          }}
+                          title="Remove cover banner"
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            background: 'rgba(255, 255, 255, 0.9)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                          }}
+                        >
+                          <X size={15} color="var(--ep-text-primary)" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '24px',
+                        border: '2px dashed var(--ep-border)',
+                        borderRadius: 'var(--ep-radius-container, 8px)',
+                        backgroundColor: 'var(--ep-canvas)',
+                        cursor: 'pointer',
+                      }}>
+                        <UploadCloud size={28} color="var(--ep-text-secondary)" style={{ marginBottom: '8px' }} />
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--ep-text-primary)', marginBottom: '4px' }}>
+                          Select replacement cover banner
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--ep-text-secondary)' }}>
+                          Wide banner ratio (~1920×720) • JPEG, PNG or WebP • Max 5 MB
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handleCoverChange}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    )}
+                  </div>
+
                   {/* Form Action Buttons */}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
                     <button
@@ -765,6 +876,30 @@ export function OrganizerEventDetails() {
             ) : (
               /* READ-ONLY EVENT DETAILS VIEW */
               <div style={{ padding: '32px' }}>
+                {/* Dedicated Event Cover Banner (if present) */}
+                {event.coverUrl && (
+                  <div style={{
+                    width: '100%',
+                    height: '180px',
+                    borderRadius: 'var(--ep-radius-card)',
+                    overflow: 'hidden',
+                    border: '1px solid var(--ep-border)',
+                    backgroundColor: 'var(--ep-canvas)',
+                    marginBottom: '24px',
+                  }}>
+                    <img
+                      src={event.coverUrl}
+                      alt={`${event.title} cover banner`}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block',
+                      }}
+                    />
+                  </div>
+                )}
+
                 <div style={{
                   display: 'flex',
                   gap: '32px',
