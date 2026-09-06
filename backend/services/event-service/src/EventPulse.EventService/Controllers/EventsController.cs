@@ -15,15 +15,18 @@ public class EventsController : ControllerBase
 {
     private readonly EventDbContext _context;
     private readonly IEventSubmissionService? _submissionService;
+    private readonly IEventReviewService? _reviewService;
     private readonly ILogger<EventsController>? _logger;
 
     public EventsController(
         EventDbContext context,
         IEventSubmissionService? submissionService = null,
+        IEventReviewService? reviewService = null,
         ILogger<EventsController>? logger = null)
     {
         _context = context;
         _submissionService = submissionService;
+        _reviewService = reviewService;
         _logger = logger;
     }
 
@@ -172,93 +175,130 @@ public class EventsController : ControllerBase
     }
 
     // =========================================================================
-    // EP-97 — ADMINISTRATOR ENDPOINTS
+    // EP-31 / EP-97 — ADMINISTRATOR REVIEW ENDPOINTS
     // Require: Administrator role (AdministratorOnly policy)
     // No JWT → 401. Valid JWT, wrong role (Customer / Organizer) → 403.
     // =========================================================================
 
     /// <summary>
-    /// PUT /api/events/{id}/approve
-    /// EP-97 — Administrator approves a Pending event submission.
+    /// GET /api/events/admin/pending
+    /// EP-31 — Retrieves all event submissions awaiting Administrator review.
     /// Requires: AdministratorOnly policy.
     /// </summary>
-    [HttpPut("{id}/approve")]
+    [HttpGet("admin/pending")]
     [Authorize(Policy = AppPolicies.AdministratorOnly)]
-    public async Task<IActionResult> ApproveEvent(string id, [FromBody] ReviewEventRequest request)
+    public async Task<ActionResult<IReadOnlyList<AdminEventReviewDto>>> GetPendingEvents(
+        CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(id, out var guidId))
-            return NotFound();
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
 
-        var eventItem = await _context.Events.FindAsync(guidId);
-        if (eventItem == null)
-            return NotFound();
-
-        if (eventItem.Status != EventStatus.Pending)
-        {
-            return Conflict(new
-            {
-                code = "INVALID_STATE",
-                message = $"Only Pending events can be approved. Current status: {eventItem.Status}."
-            });
-        }
-
-        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                            ?? User.FindFirst("sub")?.Value;
-        Guid.TryParse(reviewerIdStr, out var reviewerId);
-
-        eventItem.Status = EventStatus.Approved;
-        eventItem.ReviewedAt = DateTime.UtcNow;
-        eventItem.ReviewedBy = reviewerId;
-
-        await _context.SaveChangesAsync();
-
-        _logger?.LogInformation(
-            "Event approved. EventId={EventId}, ReviewedBy={ReviewerId}",
-            guidId, reviewerId);
-
-        return Ok(new { message = "Event approved successfully.", eventId = guidId, status = "Approved" });
+        var pendingEvents = await _reviewService.GetPendingEventsAsync(cancellationToken);
+        return Ok(pendingEvents);
     }
 
     /// <summary>
-    /// PUT /api/events/{id}/reject
-    /// EP-97 — Administrator rejects a Pending event submission.
+    /// GET /api/events/admin/pending/{id}
+    /// EP-31 — Retrieves a single Pending event submission by ID for Administrator review.
     /// Requires: AdministratorOnly policy.
     /// </summary>
-    [HttpPut("{id}/reject")]
+    [HttpGet("admin/pending/{id}")]
     [Authorize(Policy = AppPolicies.AdministratorOnly)]
-    public async Task<IActionResult> RejectEvent(string id, [FromBody] ReviewEventRequest request)
+    public async Task<ActionResult<AdminEventReviewDto>> GetPendingEventById(
+        string id,
+        CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(id, out var guidId))
             return NotFound();
 
-        var eventItem = await _context.Events.FindAsync(guidId);
-        if (eventItem == null)
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
+
+        var eventDto = await _reviewService.GetPendingEventByIdAsync(guidId, cancellationToken);
+        if (eventDto == null)
             return NotFound();
 
-        if (eventItem.Status != EventStatus.Pending)
-        {
-            return Conflict(new
-            {
-                code = "INVALID_STATE",
-                message = $"Only Pending events can be rejected. Current status: {eventItem.Status}."
-            });
-        }
+        return Ok(eventDto);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/{id}/approve
+    /// EP-31 / EP-97 — Administrator approves a Pending event submission.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("{id}/approve")]
+    [HttpPut("{id}/approve")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> ApproveEvent(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
 
         var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                             ?? User.FindFirst("sub")?.Value;
         Guid.TryParse(reviewerIdStr, out var reviewerId);
 
-        eventItem.Status = EventStatus.Rejected;
-        eventItem.ReviewedAt = DateTime.UtcNow;
-        eventItem.ReviewedBy = reviewerId;
+        var (result, error, isNotFound) = await _reviewService.ApproveEventAsync(guidId, reviewerId, cancellationToken);
 
-        await _context.SaveChangesAsync();
+        if (isNotFound)
+            return NotFound();
 
-        _logger?.LogInformation(
-            "Event rejected. EventId={EventId}, ReviewedBy={ReviewerId}",
-            guidId, reviewerId);
+        if (error != null)
+        {
+            return Conflict(new
+            {
+                code = "INVALID_STATE",
+                message = error
+            });
+        }
 
-        return Ok(new { message = "Event rejected.", eventId = guidId, status = "Rejected" });
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/{id}/reject
+    /// EP-31 / EP-97 — Administrator rejects a Pending event submission.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("{id}/reject")]
+    [HttpPut("{id}/reject")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> RejectEvent(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound) = await _reviewService.RejectEventAsync(guidId, reviewerId, request?.Notes, cancellationToken);
+
+        if (isNotFound)
+            return NotFound();
+
+        if (error != null)
+        {
+            return Conflict(new
+            {
+                code = "INVALID_STATE",
+                message = error
+            });
+        }
+
+        return Ok(result);
     }
 
     /// <summary>

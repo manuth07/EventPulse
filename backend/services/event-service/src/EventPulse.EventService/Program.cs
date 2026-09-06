@@ -80,6 +80,7 @@ builder.Services.AddAuthorization(options =>
 // Application Services
 // ---------------------------------------------------------------------------
 builder.Services.AddScoped<IEventSubmissionService, EventSubmissionService>();
+builder.Services.AddScoped<IEventReviewService, EventReviewService>();
 
 // ---------------------------------------------------------------------------
 // Infrastructure — Blob Storage

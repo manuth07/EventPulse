@@ -97,3 +97,121 @@ export async function getMySubmissions(token) {
 
   return response.json();
 }
+
+export async function getPendingEvents(token) {
+  const response = await fetch(`${API_BASE_URL}/api/events/admin/pending`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load pending events (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+export async function getPendingEventById(id, token) {
+  const response = await fetch(`${API_BASE_URL}/api/events/admin/pending/${id}`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 404) {
+    const error = new Error('Pending event submission not found.');
+    error.status = 404;
+    throw error;
+  }
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load pending event details (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+export async function approveEvent(id, token) {
+  const response = await fetch(`${API_BASE_URL}/api/events/${id}/approve`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to approve event (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+export async function rejectEvent(id, token, notes = '') {
+  const response = await fetch(`${API_BASE_URL}/api/events/${id}/reject`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ notes }),
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to reject event (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
