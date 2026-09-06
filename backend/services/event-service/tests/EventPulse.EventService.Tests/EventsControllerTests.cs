@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using EventPulse.EventService.Controllers;
 using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
@@ -20,6 +21,11 @@ public class EventsControllerTests
         context.Events.AddRange(events);
         context.SaveChanges();
         return context;
+    }
+
+    private static EventsController CreateController(EventDbContext context)
+    {
+        return new EventsController(context, NullLogger<EventsController>.Instance);
     }
 
     private static Event MakeEvent(EventStatus status, string title = "Test Event") => new()
@@ -49,7 +55,7 @@ public class EventsControllerTests
         var published = MakeEvent(EventStatus.Published, "Published Event");
 
         using var context = CreateContextWithEvents(pending, approved, rejected, published);
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEvents();
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
@@ -62,7 +68,7 @@ public class EventsControllerTests
     public async Task GetEvents_WithNoEvents_ReturnsEmptyArrayNot404()
     {
         using var context = CreateContextWithEvents();
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEvents();
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
@@ -78,7 +84,7 @@ public class EventsControllerTests
     {
         var approved = MakeEvent(EventStatus.Approved, "Approved Event");
         using var context = CreateContextWithEvents(approved);
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEventById(approved.Id.ToString());
 
@@ -93,7 +99,7 @@ public class EventsControllerTests
     {
         var published = MakeEvent(EventStatus.Published, "Published Event");
         using var context = CreateContextWithEvents(published);
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEventById(published.Id.ToString());
 
@@ -107,7 +113,7 @@ public class EventsControllerTests
     {
         var pending = MakeEvent(EventStatus.Pending);
         using var context = CreateContextWithEvents(pending);
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEventById(pending.Id.ToString());
 
@@ -119,7 +125,7 @@ public class EventsControllerTests
     {
         var rejected = MakeEvent(EventStatus.Rejected);
         using var context = CreateContextWithEvents(rejected);
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEventById(rejected.Id.ToString());
 
@@ -130,7 +136,7 @@ public class EventsControllerTests
     public async Task GetEventById_WithNonExistentId_Returns404()
     {
         using var context = CreateContextWithEvents(MakeEvent(EventStatus.Approved));
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEventById(Guid.NewGuid().ToString());
 
@@ -143,7 +149,7 @@ public class EventsControllerTests
         // See TC-EVT-008 discrepancy note: matrix expects 400, code returns 404.
         // This test documents ACTUAL behavior — flag the mismatch separately, don't silently "fix" the test to hide it.
         using var context = CreateContextWithEvents(MakeEvent(EventStatus.Approved));
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEventById("not-a-guid");
 
@@ -155,7 +161,7 @@ public class EventsControllerTests
     {
         // TC-EVT-011 — Critical priority in your matrix
         using var context = CreateContextWithEvents(MakeEvent(EventStatus.Approved));
-        var controller = new EventsController(context);
+        var controller = CreateController(context);
 
         var result = await controller.GetEventById("' OR '1'='1");
 
