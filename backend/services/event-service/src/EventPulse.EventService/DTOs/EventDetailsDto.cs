@@ -10,4 +10,5 @@ public class EventDetailsDto
     public decimal Price { get; set; }
     public Guid OrganizerId { get; set; }
     public string? ImageUrl { get; set; }
+    public string? CoverUrl { get; set; }
 }

@@ -16,31 +16,36 @@ export function CreateEvent() {
   const [price, setPrice] = useState('0');
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [coverImage, setCoverImage] = useState(null);
+  const [coverImagePreview, setCoverImagePreview] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
-  // Cleanup object URL to prevent memory leaks
+  // Cleanup object URLs to prevent memory leaks
   React.useEffect(() => {
     return () => {
       if (imagePreview) {
         URL.revokeObjectURL(imagePreview);
       }
+      if (coverImagePreview) {
+        URL.revokeObjectURL(coverImagePreview);
+      }
     };
-  }, [imagePreview]);
+  }, [imagePreview, coverImagePreview]);
 
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setError('Please select a valid image file (JPEG, PNG, or WebP).');
+      setError('Please select a valid image file (JPEG, PNG, or WebP) for the poster.');
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be less than 5 MB.');
+      setError('Event poster must be less than 5 MB.');
       return;
     }
 
@@ -49,12 +54,36 @@ export function CreateEvent() {
     setImagePreview(URL.createObjectURL(file));
   };
 
+  const handleCoverChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Please select a valid image file (JPEG, PNG, or WebP) for the cover banner.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Event cover image must be less than 5 MB.');
+      return;
+    }
+
+    setError(null);
+    setCoverImage(file);
+    setCoverImagePreview(URL.createObjectURL(file));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
 
     if (!image) {
       setError('Please provide an event poster.');
+      return;
+    }
+
+    if (!coverImage) {
+      setError('Please provide an event cover image.');
       return;
     }
 
@@ -68,6 +97,7 @@ export function CreateEvent() {
       formData.append('eventDate', new Date(eventDate).toISOString());
       formData.append('price', parseFloat(price) || 0);
       formData.append('image', image);
+      formData.append('coverImage', coverImage);
 
       const token = accessToken || sessionStorage.getItem('ep_access_token');
       await submitEvent(formData, token);
@@ -304,7 +334,7 @@ export function CreateEvent() {
                   Event Poster *
                 </label>
                 {imagePreview ? (
-                  <div style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
+                  <div style={{ position: 'relative', width: '100%', maxWidth: '280px' }}>
                     <img
                       src={imagePreview}
                       alt="Event poster preview"
@@ -342,25 +372,98 @@ export function CreateEvent() {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    padding: '32px',
+                    padding: '28px',
                     border: '2px dashed var(--ep-border)',
                     borderRadius: 'var(--ep-radius-container)',
                     backgroundColor: 'var(--ep-canvas)',
                     cursor: 'pointer',
                     transition: 'border-color 0.2s',
                   }}>
-                    <UploadCloud size={32} color="var(--ep-text-secondary)" style={{ marginBottom: '12px' }} />
+                    <UploadCloud size={30} color="var(--ep-text-secondary)" style={{ marginBottom: '10px' }} />
                     <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--ep-text-primary)', marginBottom: '4px' }}>
                       Click to upload poster
                     </span>
-                    <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
-                      JPEG, PNG or WebP • Maximum 5 MB<br/>
-                      Recommended portrait poster ratio: 4:5
+                    <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', textAlign: 'center' }}>
+                      Portrait ratio (~4:5) • JPEG, PNG or WebP • Max 5 MB
                     </span>
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       onChange={handleImageChange}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                  Event Cover / Banner *
+                </label>
+                {coverImagePreview ? (
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <img
+                      src={coverImagePreview}
+                      alt="Event cover preview"
+                      style={{
+                        width: '100%',
+                        maxHeight: '220px',
+                        objectFit: 'cover',
+                        borderRadius: 'var(--ep-radius-container)',
+                        display: 'block',
+                        border: '1px solid var(--ep-border)',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoverImage(null);
+                        setCoverImagePreview(null);
+                        URL.revokeObjectURL(coverImagePreview);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        background: 'rgba(255, 255, 255, 0.9)',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '32px',
+                        height: '32px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                      }}
+                    >
+                      <X size={16} color="var(--ep-text-primary)" />
+                    </button>
+                  </div>
+                ) : (
+                  <label style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '28px',
+                    border: '2px dashed var(--ep-border)',
+                    borderRadius: 'var(--ep-radius-container)',
+                    backgroundColor: 'var(--ep-canvas)',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s',
+                  }}>
+                    <UploadCloud size={30} color="var(--ep-text-secondary)" style={{ marginBottom: '10px' }} />
+                    <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--ep-text-primary)', marginBottom: '4px' }}>
+                      Click to upload wide cover banner
+                    </span>
+                    <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', textAlign: 'center' }}>
+                      Wide banner ratio (~1920×720) • JPEG, PNG or WebP • Max 5 MB
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleCoverChange}
                       style={{ display: 'none' }}
                     />
                   </label>

@@ -1,14 +1,14 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace EventPulse.EventService.DTOs;
 
 /// <summary>
-/// Multipart/form-data request for an Organizer to submit a new event with a poster image.
-/// Replaces SubmitEventRequest for the POST /api/events endpoint.
-/// The submitting Organizer's identity is derived from the authenticated JWT — not this body.
-/// Status, OrganizerUserId, and ImageBlobName are server-controlled and must NOT be provided.
+/// Multipart/form-data request for an Organizer to edit and resubmit a Rejected event.
+/// Organizer identity is derived from the authenticated JWT.
+/// If Image is provided, it replaces the current poster; if null, the existing poster is retained.
 /// </summary>
-public class CreateEventRequest
+public class ResubmitEventRequest
 {
     [Required]
     [StringLength(200, MinimumLength = 3)]
@@ -29,17 +29,16 @@ public class CreateEventRequest
     public decimal Price { get; set; }
 
     /// <summary>
-    /// Event poster image (portrait, ~4:5 ratio). Required for new submissions.
+    /// Optional replacement event poster image.
+    /// If omitted, the existing poster is preserved.
     /// Accepted: JPEG, PNG, WebP. Maximum: 5 MB.
     /// </summary>
-    [Required]
-    public IFormFile Image { get; set; } = null!;
+    public IFormFile? Image { get; set; }
 
     /// <summary>
-    /// Event cover/banner image (wide, ~1920x720 ratio). Required for new submissions.
-    /// Used as the hero image on the public Event Details page.
+    /// Optional replacement wide event cover/banner image.
+    /// If omitted, the existing cover banner is preserved.
     /// Accepted: JPEG, PNG, WebP. Maximum: 5 MB.
     /// </summary>
-    [Required]
-    public IFormFile CoverImage { get; set; } = null!;
+    public IFormFile? CoverImage { get; set; }
 }

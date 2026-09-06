@@ -166,12 +166,16 @@ export function PendingEvents() {
 
   const handleReject = async () => {
     if (!selectedEvent || actionInProgress) return;
+    if (!rejectionNotes.trim()) {
+      setActionError('Rejection feedback is required. Please explain what needs to be corrected.');
+      return;
+    }
     setActionInProgress(true);
     setActionError(null);
 
     const token = getEffectiveToken();
     try {
-      await rejectEvent(selectedEvent.id, token, rejectionNotes);
+      await rejectEvent(selectedEvent.id, token, rejectionNotes.trim());
       const rejectedTitle = selectedEvent.title;
       handleCloseReview();
       setFeedback({
@@ -712,38 +716,110 @@ export function PendingEvents() {
                 </div>
               )}
 
-              {/* Poster Preview */}
+              {/* Image Assets Preview: Poster & Cover */}
               <div style={{
-                width: '100%',
-                height: '240px',
-                borderRadius: 'var(--ep-radius-container, 12px)',
-                overflow: 'hidden',
-                backgroundColor: 'var(--ep-canvas)',
-                border: '1px solid var(--ep-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '16px',
+                alignItems: 'stretch',
               }}>
-                {selectedEvent.imageUrl ? (
-                  <img
-                    src={selectedEvent.imageUrl}
-                    alt={selectedEvent.title}
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover',
-                    }}
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.parentElement.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--ep-text-secondary);font-size:13px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span>Poster image unavailable</span></div>';
-                    }}
-                  />
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--ep-text-secondary)', fontSize: '13px' }}>
-                    <ImageIcon size={24} />
-                    <span>No poster image attached</span>
+                {/* Poster Preview */}
+                <div>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: 'var(--ep-text-secondary)',
+                    marginBottom: '6px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}>
+                    Event Poster (Portrait)
                   </div>
-                )}
+                  <div style={{
+                    width: '100%',
+                    height: '210px',
+                    borderRadius: 'var(--ep-radius-container, 10px)',
+                    overflow: 'hidden',
+                    backgroundColor: 'var(--ep-canvas)',
+                    border: '1px solid var(--ep-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {selectedEvent.imageUrl ? (
+                      <img
+                        src={selectedEvent.imageUrl}
+                        alt={`${selectedEvent.title} poster`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block',
+                        }}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.parentElement.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--ep-text-secondary);font-size:12px;padding:8px;text-align:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span>Poster image unavailable</span></div>';
+                        }}
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--ep-text-secondary)', fontSize: '12px' }}>
+                        <ImageIcon size={20} />
+                        <span>No poster image attached</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cover Preview */}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: 'var(--ep-text-secondary)',
+                    marginBottom: '6px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}>
+                    Event Cover / Banner (Wide)
+                  </div>
+                  <div style={{
+                    width: '100%',
+                    flex: 1,
+                    minHeight: '140px',
+                    borderRadius: 'var(--ep-radius-container, 10px)',
+                    overflow: 'hidden',
+                    backgroundColor: 'var(--ep-canvas)',
+                    border: '1px solid var(--ep-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: selectedEvent.coverUrl ? '0' : '16px',
+                    boxSizing: 'border-box',
+                  }}>
+                    {selectedEvent.coverUrl ? (
+                      <img
+                        src={selectedEvent.coverUrl}
+                        alt={`${selectedEvent.title} cover banner`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          maxHeight: '210px',
+                          objectFit: 'cover',
+                          display: 'block',
+                        }}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.parentElement.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--ep-text-secondary);font-size:12px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span>Cover image unavailable</span></div>';
+                        }}
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: 'var(--ep-text-secondary)', fontSize: '13px', textAlign: 'center' }}>
+                        <ImageIcon size={22} />
+                        <span>No dedicated event cover uploaded.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Title & Status */}
@@ -950,7 +1026,7 @@ export function PendingEvents() {
                         marginBottom: '6px',
                       }}
                     >
-                      Reviewer Notes / Rejection Reason (Optional)
+                      Reviewer Notes / Rejection Reason <span style={{ color: 'var(--ep-danger)' }}>*</span>
                     </label>
                     <textarea
                       id="rejection-notes"
@@ -975,7 +1051,7 @@ export function PendingEvents() {
                     <button
                       type="button"
                       onClick={handleReject}
-                      disabled={actionInProgress}
+                      disabled={actionInProgress || !rejectionNotes.trim()}
                       style={{
                         backgroundColor: 'var(--ep-danger)',
                         color: '#ffffff',
@@ -984,8 +1060,8 @@ export function PendingEvents() {
                         padding: '8px 18px',
                         fontSize: '13px',
                         fontWeight: 600,
-                        cursor: actionInProgress ? 'not-allowed' : 'pointer',
-                        opacity: actionInProgress ? 0.7 : 1,
+                        cursor: (actionInProgress || !rejectionNotes.trim()) ? 'not-allowed' : 'pointer',
+                        opacity: (actionInProgress || !rejectionNotes.trim()) ? 0.6 : 1,
                       }}
                     >
                       {actionInProgress ? 'Rejecting...' : 'Confirm Rejection'}

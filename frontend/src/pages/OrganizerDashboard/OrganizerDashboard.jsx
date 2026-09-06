@@ -12,6 +12,7 @@ import {
   RefreshCw,
   AlertCircle,
   Image as ImageIcon,
+  ChevronRight,
 } from 'lucide-react';
 
 function formatEventDateTime(dateString) {
@@ -452,14 +453,36 @@ export function OrganizerDashboard() {
                             flexWrap: 'wrap',
                             marginBottom: '8px',
                           }}>
-                            <h3 style={{
-                              fontSize: '18px',
-                              fontWeight: 700,
-                              color: 'var(--ep-text-primary)',
-                              margin: 0,
-                            }}>
-                              {item.title}
-                            </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <Link
+                                to={`/organizer/events/${item.id}`}
+                                style={{
+                                  fontSize: '18px',
+                                  fontWeight: 700,
+                                  color: 'var(--ep-text-primary)',
+                                  margin: 0,
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                {item.title}
+                              </Link>
+                              {item.status === 'Rejected' && (
+                                <span style={{
+                                  backgroundColor: '#FEF2F2',
+                                  color: '#DC2626',
+                                  border: '1px solid #FECACA',
+                                  borderRadius: 'var(--ep-radius-pill)',
+                                  padding: '2px 8px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}>
+                                  Action required
+                                </span>
+                              )}
+                            </div>
 
                             {/* Status Chip */}
                             <span style={{
@@ -542,6 +565,25 @@ export function OrganizerDashboard() {
                             {item.createdAt && (
                               <span>{formatSubmittedDate(item.createdAt)}</span>
                             )}
+                            <Link
+                              to={`/organizer/events/${item.id}`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '13px',
+                                fontWeight: 600,
+                                color: 'var(--ep-primary)',
+                                textDecoration: 'none',
+                                padding: '4px 10px',
+                                borderRadius: 'var(--ep-radius-btn)',
+                                backgroundColor: '#FFF0E6',
+                                transition: 'var(--ep-transition)',
+                              }}
+                            >
+                              <span>View Details</span>
+                              <ChevronRight size={14} />
+                            </Link>
                           </div>
                         </div>
                       </div>

@@ -8,10 +8,11 @@ public interface IEventImageStorage
 {
     /// <summary>
     /// Validates and uploads an image stream to blob storage.
-    /// Returns the generated blob name (e.g. "events/abc123.jpg") on success.
+    /// Returns the generated blob name (e.g. "event-posters/abc123.webp" or "event-covers/xyz789.webp") on success.
     /// Throws InvalidOperationException for type/size violations.
     /// </summary>
     Task<string> UploadAsync(Stream imageStream, string contentType, string originalFileName,
+        string folderPrefix = "event-posters",
         CancellationToken cancellationToken = default);
 
     /// <summary>

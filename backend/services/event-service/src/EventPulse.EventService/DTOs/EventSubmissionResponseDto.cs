@@ -18,4 +18,7 @@ public class EventSubmissionResponseDto
     public DateTime CreatedAt { get; set; }
     /// <summary>Public URL to the event poster. Null if no poster was uploaded.</summary>
     public string? ImageUrl { get; set; }
+
+    /// <summary>Public URL to the event cover/banner. Null if no cover was uploaded.</summary>
+    public string? CoverUrl { get; set; }
 }
