@@ -26,10 +26,67 @@
   --ep-focus-ring: 0 0 0 3px rgba(255, 91, 0, 0.25);
 
   --ep-transition: all 150ms ease-out;
+
+  /* Global Scrollbar Tokens */
+  --ep-scrollbar-width: 6px;
+  --ep-scrollbar-track: transparent;
+  --ep-scrollbar-thumb: #C7C7CC;
+  --ep-scrollbar-thumb-hover: #AEAEB2;
+}
+
+/* Future Dark Mode (Scoped to app theme attribute, not OS preference) */
+[data-theme="dark"] {
+  --ep-scrollbar-thumb: #48484A;
+  --ep-scrollbar-thumb-hover: #636366;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Modern Thin Scrollbar — Global & Internal Containers (Firefox standard) */
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ep-scrollbar-thumb) var(--ep-scrollbar-track);
+}
+
+/* WebKit / Blink (Chrome, Edge, Safari, Opera) */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: var(--ep-scrollbar-width);
+  height: var(--ep-scrollbar-width);
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: var(--ep-scrollbar-track);
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background-color: var(--ep-scrollbar-thumb);
+  border-radius: var(--ep-radius-pill);
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ep-scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 body {
