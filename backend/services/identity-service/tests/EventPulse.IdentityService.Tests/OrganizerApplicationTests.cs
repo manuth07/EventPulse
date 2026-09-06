@@ -450,4 +450,342 @@ public class OrganizerApplicationTests
         Assert.Equal("VALIDATION_ERROR", errorCode);
         Assert.Contains("Individual", error);
     }
+
+    // -----------------------------------------------------------------------
+    // Phase 3 Tests: Customer Resubmission
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task ResubmitApplication_RejectedApplication_TransitionsToPending_Returns200()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+        var userId = Guid.NewGuid();
+        var customer = new ApplicationUser { Id = userId, Email = "resubmit@example.com", IsActive = true };
+
+        userManagerMock.Setup(m => m.FindByIdAsync(userId.ToString())).ReturnsAsync(customer);
+        userManagerMock.Setup(m => m.GetRolesAsync(customer)).ReturnsAsync(new List<string> { AppRoles.Customer });
+
+        var initialAppId = Guid.NewGuid();
+        context.OrganizerApplications.Add(new OrganizerApplication
+        {
+            Id = initialAppId,
+            UserId = userId,
+            OrganizerName = "Old Org",
+            OrganizerType = OrganizerType.Individual,
+            ContactNumber = "+94 77 111 2222",
+            Description = "Old description.",
+            Status = OrganizerApplicationStatus.Rejected,
+            ReviewComment = "Please provide business details.",
+            SubmittedAt = DateTime.UtcNow.AddDays(-2)
+        });
+        await context.SaveChangesAsync();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var request = new CreateOrganizerApplicationRequest
+        {
+            OrganizerName = "Updated Org Ltd",
+            OrganizerType = "Organization",
+            ContactNumber = "+94 77 999 8888",
+            Description = "Updated comprehensive description of the organization.",
+            Website = "https://updated-org.com"
+        };
+
+        var (result, error, statusCode, errorCode) = await service.ResubmitApplicationAsync(userId, request);
+
+        Assert.NotNull(result);
+        Assert.Equal(200, statusCode);
+        Assert.Null(error);
+        Assert.Null(errorCode);
+        Assert.Equal(initialAppId, result.Id); // Same ID, not a new row
+        Assert.Equal("Pending", result.Status);
+        Assert.Equal("Updated Org Ltd", result.OrganizerName);
+        Assert.Equal("Organization", result.OrganizerType);
+
+        // Verify DB persistence
+        var dbApp = await context.OrganizerApplications.FirstOrDefaultAsync(a => a.UserId == userId);
+        Assert.NotNull(dbApp);
+        Assert.Equal(OrganizerApplicationStatus.Pending, dbApp.Status);
+        Assert.Equal("Updated Org Ltd", dbApp.OrganizerName);
+        Assert.Equal(1, await context.OrganizerApplications.CountAsync(a => a.UserId == userId));
+    }
+
+    [Fact]
+    public async Task ResubmitApplication_PendingApplication_Returns409Conflict()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+        var userId = Guid.NewGuid();
+        var customer = new ApplicationUser { Id = userId, IsActive = true };
+
+        userManagerMock.Setup(m => m.FindByIdAsync(userId.ToString())).ReturnsAsync(customer);
+        userManagerMock.Setup(m => m.GetRolesAsync(customer)).ReturnsAsync(new List<string> { AppRoles.Customer });
+
+        context.OrganizerApplications.Add(new OrganizerApplication
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            OrganizerName = "Pending Org",
+            OrganizerType = OrganizerType.Individual,
+            ContactNumber = "+94 77 111 2222",
+            Description = "Pending description",
+            Status = OrganizerApplicationStatus.Pending
+        });
+        await context.SaveChangesAsync();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var (result, error, statusCode, errorCode) = await service.ResubmitApplicationAsync(userId, ValidRequest());
+
+        Assert.Null(result);
+        Assert.Equal(409, statusCode);
+        Assert.Equal("INVALID_STATE_TRANSITION", errorCode);
+    }
+
+    [Fact]
+    public async Task ResubmitApplication_ApprovedApplication_Returns409Conflict()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+        var userId = Guid.NewGuid();
+        var customer = new ApplicationUser { Id = userId, IsActive = true };
+
+        userManagerMock.Setup(m => m.FindByIdAsync(userId.ToString())).ReturnsAsync(customer);
+        userManagerMock.Setup(m => m.GetRolesAsync(customer)).ReturnsAsync(new List<string> { AppRoles.Customer });
+
+        context.OrganizerApplications.Add(new OrganizerApplication
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            OrganizerName = "Approved Org",
+            OrganizerType = OrganizerType.Organization,
+            ContactNumber = "+94 77 111 2222",
+            Description = "Approved description",
+            Status = OrganizerApplicationStatus.Approved
+        });
+        await context.SaveChangesAsync();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var (result, error, statusCode, errorCode) = await service.ResubmitApplicationAsync(userId, ValidRequest());
+
+        Assert.Null(result);
+        Assert.Equal(409, statusCode);
+        Assert.Equal("INVALID_STATE_TRANSITION", errorCode);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 3 Tests: Admin Queue & Review
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetAdminApplications_ReturnsEnrichedDtosWithAccountEmail()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+
+        var user1 = new ApplicationUser { Id = Guid.NewGuid(), Email = "applicant1@example.com", FirstName = "A", LastName = "One" };
+        var user2 = new ApplicationUser { Id = Guid.NewGuid(), Email = "applicant2@example.com", FirstName = "B", LastName = "Two" };
+        context.Users.AddRange(user1, user2);
+
+        context.OrganizerApplications.AddRange(
+            new OrganizerApplication
+            {
+                Id = Guid.NewGuid(),
+                UserId = user1.Id,
+                OrganizerName = "App 1",
+                OrganizerType = OrganizerType.Individual,
+                ContactNumber = "0771234567",
+                Description = "Desc 1",
+                Status = OrganizerApplicationStatus.Pending,
+                SubmittedAt = DateTime.UtcNow.AddHours(-1)
+            },
+            new OrganizerApplication
+            {
+                Id = Guid.NewGuid(),
+                UserId = user2.Id,
+                OrganizerName = "App 2",
+                OrganizerType = OrganizerType.Organization,
+                ContactNumber = "0777654321",
+                Description = "Desc 2",
+                Status = OrganizerApplicationStatus.Approved,
+                SubmittedAt = DateTime.UtcNow.AddHours(-2)
+            }
+        );
+        await context.SaveChangesAsync();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var pendingOnly = await service.GetAdminApplicationsAsync(OrganizerApplicationStatus.Pending);
+
+        Assert.Single(pendingOnly);
+        Assert.Equal("App 1", pendingOnly[0].OrganizerName);
+        Assert.Equal("applicant1@example.com", pendingOnly[0].AccountEmail);
+
+        var allApps = await service.GetAdminApplicationsAsync(null);
+        Assert.Equal(2, allApps.Count);
+    }
+
+    [Fact]
+    public async Task ApproveApplication_Pending_AtomicallyApprovesAndAssignsRole()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+        var adminId = Guid.NewGuid();
+        var applicantId = Guid.NewGuid();
+        var applicant = new ApplicationUser { Id = applicantId, Email = "applicant@example.com" };
+        context.Users.Add(applicant);
+
+        var appId = Guid.NewGuid();
+        context.OrganizerApplications.Add(new OrganizerApplication
+        {
+            Id = appId,
+            UserId = applicantId,
+            OrganizerName = "Pending Org",
+            OrganizerType = OrganizerType.Organization,
+            ContactNumber = "0771234567",
+            Description = "Desc",
+            Status = OrganizerApplicationStatus.Pending
+        });
+        await context.SaveChangesAsync();
+
+        userManagerMock.Setup(m => m.FindByIdAsync(applicantId.ToString())).ReturnsAsync(applicant);
+        userManagerMock.Setup(m => m.GetRolesAsync(applicant)).ReturnsAsync(new List<string> { AppRoles.Customer });
+        userManagerMock.Setup(m => m.AddToRoleAsync(applicant, AppRoles.Organizer)).ReturnsAsync(IdentityResult.Success);
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var request = new ApproveOrganizerApplicationRequest { ReviewComment = "Approved - welcome aboard!" };
+
+        var (result, error, statusCode, errorCode) = await service.ApproveApplicationAsync(appId, adminId, request);
+
+        Assert.NotNull(result);
+        Assert.Equal(200, statusCode);
+        Assert.Null(error);
+        Assert.Equal("Approved", result.Status);
+        Assert.Equal("Approved - welcome aboard!", result.ReviewComment);
+
+        // Verify DB update
+        var dbApp = await context.OrganizerApplications.FindAsync(appId);
+        Assert.NotNull(dbApp);
+        Assert.Equal(OrganizerApplicationStatus.Approved, dbApp.Status);
+        Assert.Equal(adminId, dbApp.ReviewedBy);
+        Assert.NotNull(dbApp.ReviewedAt);
+
+        // Verify AddToRoleAsync was called
+        userManagerMock.Verify(m => m.AddToRoleAsync(applicant, AppRoles.Organizer), Times.Once);
+    }
+
+    [Fact]
+    public async Task ApproveApplication_AlreadyApproved_Returns409Conflict()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+        var appId = Guid.NewGuid();
+
+        context.OrganizerApplications.Add(new OrganizerApplication
+        {
+            Id = appId,
+            UserId = Guid.NewGuid(),
+            OrganizerName = "Approved Org",
+            OrganizerType = OrganizerType.Organization,
+            ContactNumber = "0771234567",
+            Description = "Desc",
+            Status = OrganizerApplicationStatus.Approved
+        });
+        await context.SaveChangesAsync();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var (result, error, statusCode, errorCode) = await service.ApproveApplicationAsync(appId, Guid.NewGuid(), null);
+
+        Assert.Null(result);
+        Assert.Equal(409, statusCode);
+        Assert.Equal("INVALID_STATE_TRANSITION", errorCode);
+    }
+
+    [Fact]
+    public async Task RejectApplication_Pending_RequiresComment_SetsStatusRejected()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+        var adminId = Guid.NewGuid();
+        var applicantId = Guid.NewGuid();
+        var applicant = new ApplicationUser { Id = applicantId, Email = "applicant@example.com" };
+        context.Users.Add(applicant);
+
+        var appId = Guid.NewGuid();
+        context.OrganizerApplications.Add(new OrganizerApplication
+        {
+            Id = appId,
+            UserId = applicantId,
+            OrganizerName = "Incomplete Org",
+            OrganizerType = OrganizerType.Individual,
+            ContactNumber = "0771234567",
+            Description = "Desc",
+            Status = OrganizerApplicationStatus.Pending
+        });
+        await context.SaveChangesAsync();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var request = new RejectOrganizerApplicationRequest
+        {
+            ReviewComment = "Please provide more details on past event experience."
+        };
+
+        var (result, error, statusCode, errorCode) = await service.RejectApplicationAsync(appId, adminId, request);
+
+        Assert.NotNull(result);
+        Assert.Equal(200, statusCode);
+        Assert.Null(error);
+        Assert.Equal("Rejected", result.Status);
+        Assert.Equal("Please provide more details on past event experience.", result.ReviewComment);
+
+        var dbApp = await context.OrganizerApplications.FindAsync(appId);
+        Assert.NotNull(dbApp);
+        Assert.Equal(OrganizerApplicationStatus.Rejected, dbApp.Status);
+        Assert.Equal(adminId, dbApp.ReviewedBy);
+        Assert.Equal("Please provide more details on past event experience.", dbApp.ReviewComment);
+    }
+
+    [Fact]
+    public async Task RejectApplication_BlankComment_Returns400BadRequest()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var request = new RejectOrganizerApplicationRequest { ReviewComment = "   " };
+
+        var (result, error, statusCode, errorCode) = await service.RejectApplicationAsync(Guid.NewGuid(), Guid.NewGuid(), request);
+
+        Assert.Null(result);
+        Assert.Equal(400, statusCode);
+        Assert.Equal("VALIDATION_ERROR", errorCode);
+        Assert.Contains("Rejection feedback comment is required", error);
+    }
+
+    [Fact]
+    public async Task RejectApplication_AlreadyRejected_Returns409Conflict()
+    {
+        using var context = CreateContext();
+        var userManagerMock = CreateUserManagerMock();
+        var appId = Guid.NewGuid();
+
+        context.OrganizerApplications.Add(new OrganizerApplication
+        {
+            Id = appId,
+            UserId = Guid.NewGuid(),
+            OrganizerName = "Rejected Org",
+            OrganizerType = OrganizerType.Individual,
+            ContactNumber = "0771234567",
+            Description = "Desc",
+            Status = OrganizerApplicationStatus.Rejected
+        });
+        await context.SaveChangesAsync();
+
+        var service = new OrganizerApplicationService(context, userManagerMock.Object, Mock.Of<ILogger<OrganizerApplicationService>>());
+        var request = new RejectOrganizerApplicationRequest { ReviewComment = "Some comment" };
+
+        var (result, error, statusCode, errorCode) = await service.RejectApplicationAsync(appId, Guid.NewGuid(), request);
+
+        Assert.Null(result);
+        Assert.Equal(409, statusCode);
+        Assert.Equal("INVALID_STATE_TRANSITION", errorCode);
+    }
 }

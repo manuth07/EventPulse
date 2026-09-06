@@ -15,6 +15,7 @@ import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
 import { PendingEvents } from './pages/PendingEvents/PendingEvents';
 import { RequireRole } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
+import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
           <Route element={<RequireRole allowedRoles="Administrator" />}>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/events/pending" element={<PendingEvents />} />
+            <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
           </Route>
 
           {/* Catch-all */}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
-import { ShieldCheck, FileCheck, Users } from 'lucide-react';
+import { ShieldCheck, FileCheck, Users, UserCheck } from 'lucide-react';
 
 export function AdminDashboard() {
   return (
@@ -62,23 +62,43 @@ export function AdminDashboard() {
             </p>
           </div>
 
-          <Link
-            to="/admin/events/pending"
-            className="ep-btn-primary"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 20px',
-              fontSize: '14px',
-              fontWeight: 600,
-              textDecoration: 'none',
-              borderRadius: 'var(--ep-radius-btn)',
-            }}
-          >
-            <FileCheck size={16} />
-            <span>Pending Events</span>
-          </Link>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <Link
+              to="/admin/organizer-applications"
+              className="ep-btn-primary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                borderRadius: 'var(--ep-radius-btn)',
+              }}
+            >
+              <UserCheck size={16} />
+              <span>Organizer Applications</span>
+            </Link>
+
+            <Link
+              to="/admin/events/pending"
+              className="ep-btn-secondary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                borderRadius: 'var(--ep-radius-btn)',
+              }}
+            >
+              <FileCheck size={16} />
+              <span>Pending Events</span>
+            </Link>
+          </div>
         </div>
 
         {/* Overview Grid */}
@@ -88,6 +108,31 @@ export function AdminDashboard() {
           gap: '20px',
           marginBottom: '32px',
         }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 'var(--ep-radius-card)',
+            border: '1px solid var(--ep-border)',
+            padding: '24px',
+            boxShadow: 'var(--ep-shadow-card)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <UserCheck size={20} color="var(--ep-primary)" />
+              <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--ep-text-primary)', margin: 0 }}>
+                Organizer Applications
+              </h3>
+            </div>
+            <p style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              Review customer requests to list events, verify organizer details, and grant Organizer role permissions.
+            </p>
+            <Link
+              to="/admin/organizer-applications"
+              className="ep-btn-secondary"
+              style={{ fontSize: '13px', padding: '6px 14px', textDecoration: 'none', display: 'inline-block' }}
+            >
+              Review Applications →
+            </Link>
+          </div>
+
           <div style={{
             backgroundColor: '#ffffff',
             borderRadius: 'var(--ep-radius-card)',

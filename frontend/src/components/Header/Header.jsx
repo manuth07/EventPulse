@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, Plus, ShieldCheck, FileCheck } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, Plus, ShieldCheck, FileCheck, UserCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export function Header({ location = 'Colombo, LK' }) {
@@ -106,6 +106,10 @@ export function Header({ location = 'Colombo, LK' }) {
                   <Link to="/admin" style={navLinkStyle('/admin')}>
                     <ShieldCheck size={14} />
                     <span>Admin Dashboard</span>
+                  </Link>
+                  <Link to="/admin/organizer-applications" style={navLinkStyle('/admin/organizer-applications')}>
+                    <UserCheck size={14} />
+                    <span>Organizer Applications</span>
                   </Link>
                   <Link to="/admin/events/pending" style={navLinkStyle('/admin/events/pending')}>
                     <FileCheck size={14} />
@@ -282,34 +286,64 @@ export function Header({ location = 'Colombo, LK' }) {
                   )}
 
                   {isAdmin && (
-                    <Link
-                      to="/admin"
-                      role="menuitem"
-                      onClick={() => setMenuOpen(false)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        width: '100%',
-                        padding: '10px 14px',
-                        background: 'none',
-                        borderBottom: '1px solid var(--ep-border)',
-                        fontSize: '13px',
-                        fontWeight: 500,
-                        color: 'var(--ep-text-primary)',
-                        textDecoration: 'none',
-                        cursor: 'pointer',
-                        transition: 'var(--ep-transition)',
-                        fontFamily: 'var(--ep-font-body)',
-                        textAlign: 'left',
-                        boxSizing: 'border-box',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <ShieldCheck size={14} color="var(--ep-text-secondary)" />
-                      <span>Admin Dashboard</span>
-                    </Link>
+                    <>
+                      <Link
+                        to="/admin"
+                        role="menuitem"
+                        onClick={() => setMenuOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'none',
+                          borderBottom: '1px solid var(--ep-border)',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          color: 'var(--ep-text-primary)',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                          transition: 'var(--ep-transition)',
+                          fontFamily: 'var(--ep-font-body)',
+                          textAlign: 'left',
+                          boxSizing: 'border-box',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <ShieldCheck size={14} color="var(--ep-text-secondary)" />
+                        <span>Admin Dashboard</span>
+                      </Link>
+                      <Link
+                        to="/admin/organizer-applications"
+                        role="menuitem"
+                        onClick={() => setMenuOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'none',
+                          borderBottom: '1px solid var(--ep-border)',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          color: 'var(--ep-text-primary)',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                          transition: 'var(--ep-transition)',
+                          fontFamily: 'var(--ep-font-body)',
+                          textAlign: 'left',
+                          boxSizing: 'border-box',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <UserCheck size={14} color="var(--ep-text-secondary)" />
+                        <span>Organizer Applications</span>
+                      </Link>
+                    </>
                   )}
 
                   {/* Log out */}

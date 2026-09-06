@@ -53,3 +53,64 @@ public class OrganizerApplicationDto
 
     public string? ReviewComment { get; set; }
 }
+
+/// <summary>
+/// Enriched DTO returned to Administrators for application review.
+/// Includes applicant account email and reviewer metadata.
+/// Never exposes password hash, secrets, or internal user properties.
+/// </summary>
+public class AdminOrganizerApplicationDto
+{
+    public Guid Id { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public string AccountEmail { get; set; } = string.Empty;
+
+    public string OrganizerName { get; set; } = string.Empty;
+
+    public string OrganizerType { get; set; } = string.Empty;
+
+    public string ContactNumber { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+
+    public string? Website { get; set; }
+
+    public string Status { get; set; } = string.Empty;
+
+    public DateTime SubmittedAt { get; set; }
+
+    public DateTime? ReviewedAt { get; set; }
+
+    public Guid? ReviewedBy { get; set; }
+
+    public string? ReviewComment { get; set; }
+}
+
+/// <summary>
+/// Optional request payload for approving an organizer application.
+/// </summary>
+public class ApproveOrganizerApplicationRequest
+{
+    [StringLength(1000, ErrorMessage = "Approval comment cannot exceed 1000 characters.")]
+    public string? ReviewComment { get; set; }
+}
+
+/// <summary>
+/// Required request payload for rejecting an organizer application.
+/// Rejection comment is mandatory to give actionable feedback to the customer.
+/// </summary>
+public class RejectOrganizerApplicationRequest
+{
+    [Required(ErrorMessage = "Rejection feedback comment is required.")]
+    [StringLength(1000, ErrorMessage = "Rejection comment cannot exceed 1000 characters.")]
+    public string ReviewComment { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Customer resubmission request payload.
+/// </summary>
+public class ResubmitOrganizerApplicationRequest : CreateOrganizerApplicationRequest
+{
+}

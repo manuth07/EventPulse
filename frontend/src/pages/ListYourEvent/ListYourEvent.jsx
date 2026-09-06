@@ -19,6 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   getMyOrganizerApplication,
   submitOrganizerApplication,
+  resubmitOrganizerApplication,
 } from '../../services/organizerApplicationService';
 
 export function ListYourEvent() {
@@ -40,6 +41,7 @@ export function ListYourEvent() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditingResubmit, setIsEditingResubmit] = useState(false);
 
   // -------------------------------------------------------------------------
   // Authentication & Role Redirection
@@ -179,11 +181,14 @@ export function ListYourEvent() {
         website: website.trim() ? website.trim() : null,
       };
 
-      const created = await submitOrganizerApplication(payload, accessToken);
+      const result = isEditingResubmit
+        ? await resubmitOrganizerApplication(payload, accessToken)
+        : await submitOrganizerApplication(payload, accessToken);
 
-      // On 201 Created: Immediately transition to pending review card
-      setApplication(created);
+      // On 200/201: Immediately transition to pending review card
+      setApplication(result);
       setAppState('pending');
+      setIsEditingResubmit(false);
     } catch (err) {
       if (err.status === 400 && err.errors?.length > 0) {
         setFormError(err.errors.join(' '));
@@ -489,7 +494,7 @@ export function ListYourEvent() {
   // -------------------------------------------------------------------------
   // Render: Rejected State
   // -------------------------------------------------------------------------
-  if (appState === 'rejected' && application) {
+  if (appState === 'rejected' && application && !isEditingResubmit) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: 'var(--ep-canvas)' }}>
         <Header />
@@ -615,7 +620,25 @@ export function ListYourEvent() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrganizerName(application.organizerName || '');
+                  setOrganizerType(application.organizerType || 'Individual');
+                  setContactNumber(application.contactNumber || '');
+                  setDescription(application.description || '');
+                  setWebsite(application.website || '');
+                  setFieldErrors({});
+                  setFormError('');
+                  setIsEditingResubmit(true);
+                }}
+                className="ep-btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+              >
+                <RotateCcw size={15} />
+                <span>Edit & Resubmit Application</span>
+              </button>
               <Link to="/" className="ep-btn-secondary" style={{ textDecoration: 'none' }}>
                 Return to Home
               </Link>
@@ -733,17 +756,47 @@ export function ListYourEvent() {
                 marginBottom: '8px',
               }}
             >
-              <Sparkles size={13} />
-              <span>List Your Event</span>
+              {isEditingResubmit ? <RotateCcw size={13} /> : <Sparkles size={13} />}
+              <span>{isEditingResubmit ? 'Resubmit Application' : 'List Your Event'}</span>
             </div>
             <h1 className="ep-h2" style={{ marginBottom: '8px' }}>
-              Become an EventPulse Organizer
+              {isEditingResubmit ? 'Update Organizer Application' : 'Become an EventPulse Organizer'}
             </h1>
             <p className="ep-body" style={{ margin: 0, color: 'var(--ep-text-secondary)' }}>
-              Tell us a little about yourself or your organization. An EventPulse administrator
-              will review your application before Organizer features are activated.
+              {isEditingResubmit
+                ? 'Update your details below to address administrator feedback and resubmit your application for review.'
+                : 'Tell us a little about yourself or your organization. An EventPulse administrator will review your application before Organizer features are activated.'}
             </p>
           </div>
+
+          {/* Feedback from Administrator when editing a rejected application */}
+          {isEditingResubmit && application?.reviewComment && (
+            <div
+              style={{
+                backgroundColor: '#FFF8F7',
+                border: '1px solid #FFEBEA',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                marginBottom: '24px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: 'var(--ep-danger)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  marginBottom: '6px',
+                }}
+              >
+                Administrator Feedback to Address
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--ep-text-primary)', lineHeight: '1.5' }}>
+                {application.reviewComment}
+              </p>
+            </div>
+          )}
 
           {/* Form-level Error Alert */}
           {formError && (
@@ -1075,13 +1128,29 @@ export function ListYourEvent() {
 
             {/* Form Actions */}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', alignItems: 'center' }}>
-              <Link
-                to="/"
-                className="ep-btn-secondary"
-                style={{ textDecoration: 'none', padding: '10px 18px', fontSize: '14px' }}
-              >
-                Cancel
-              </Link>
+              {isEditingResubmit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingResubmit(false);
+                    setFormError('');
+                    setFieldErrors({});
+                  }}
+                  className="ep-btn-secondary"
+                  style={{ padding: '10px 18px', fontSize: '14px' }}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+              ) : (
+                <Link
+                  to="/"
+                  className="ep-btn-secondary"
+                  style={{ textDecoration: 'none', padding: '10px 18px', fontSize: '14px' }}
+                >
+                  Cancel
+                </Link>
+              )}
               <button
                 type="submit"
                 className="ep-btn-primary"
@@ -1106,7 +1175,12 @@ export function ListYourEvent() {
                         animation: 'ep-spin 0.8s linear infinite',
                       }}
                     />
-                    <span>Submitting Application…</span>
+                    <span>{isEditingResubmit ? 'Resubmitting…' : 'Submitting Application…'}</span>
+                  </>
+                ) : isEditingResubmit ? (
+                  <>
+                    <RotateCcw size={15} />
+                    <span>Submit Updated Application</span>
                   </>
                 ) : (
                   <>
