@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, Plus, ShieldCheck, FileCheck, UserCheck } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export function Header({ location = 'Colombo, LK' }) {
@@ -79,16 +79,6 @@ export function Header({ location = 'Colombo, LK' }) {
               Event<span style={{ color: 'var(--ep-primary)' }}>Pulse</span>
             </span>
           </Link>
-
-          {/* Nav links */}
-          {(!isOrganizer && !isAdmin) && (
-            <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              <Link to="/list-your-event" style={navLinkStyle('/list-your-event')}>
-                <Plus size={14} />
-                <span>List Your Event</span>
-              </Link>
-            </nav>
-          )}
 
           {(isOrganizer || isAdmin) && (
             <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -222,38 +212,6 @@ export function Header({ location = 'Colombo, LK' }) {
                     )}
                   </div>
 
-                  {/* Role-Specific Navigation Item in Dropdown */}
-                  {!isOrganizer && !isAdmin && (
-                    <Link
-                      to="/list-your-event"
-                      role="menuitem"
-                      onClick={() => setMenuOpen(false)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        width: '100%',
-                        padding: '10px 14px',
-                        background: 'none',
-                        borderBottom: '1px solid var(--ep-border)',
-                        fontSize: '13px',
-                        fontWeight: 500,
-                        color: 'var(--ep-text-primary)',
-                        textDecoration: 'none',
-                        cursor: 'pointer',
-                        transition: 'var(--ep-transition)',
-                        fontFamily: 'var(--ep-font-body)',
-                        textAlign: 'left',
-                        boxSizing: 'border-box',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <Plus size={14} color="var(--ep-primary)" />
-                      <span>List Your Event</span>
-                    </Link>
-                  )}
-
                   {isOrganizer && (
                     <Link
                       to="/organizer"
@@ -346,6 +304,52 @@ export function Header({ location = 'Colombo, LK' }) {
                     </>
                   )}
 
+                  {/* Role-Specific Navigation Item in Dropdown */}
+                  {!isOrganizer && !isAdmin && (
+                    <Link
+                      to="/list-your-event"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'none',
+                        borderBottom: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'var(--ep-text-primary)',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
+                        fontFamily: 'var(--ep-font-body)',
+                        textAlign: 'left',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--ep-soft-accent)';
+                        e.currentTarget.style.color = 'var(--ep-primary)';
+                        const svg = e.currentTarget.querySelector('svg');
+                        if (svg) svg.style.color = 'var(--ep-primary)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--ep-text-primary)';
+                        const svg = e.currentTarget.querySelector('svg');
+                        if (svg) svg.style.color = 'var(--ep-text-secondary)';
+                      }}
+                    >
+                      <Ticket
+                        size={14}
+                        color="var(--ep-text-secondary)"
+                        style={{ transition: 'var(--ep-transition)' }}
+                      />
+                      <span>List Your Event</span>
+                    </Link>
+                  )}
+
                   {/* Log out */}
                   <button
                     type="button"
@@ -377,24 +381,7 @@ export function Header({ location = 'Colombo, LK' }) {
               )}
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <Link
-                to="/list-your-event"
-                style={{
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  color: 'var(--ep-text-primary)',
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  transition: 'var(--ep-transition)',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--ep-primary)'}
-                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--ep-text-primary)'}
-              >
-                <span>List Your Event</span>
-              </Link>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
               <Link
                 to="/login"
                 className="ep-btn-secondary"
