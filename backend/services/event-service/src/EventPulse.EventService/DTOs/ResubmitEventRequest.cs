@@ -28,6 +28,14 @@ public class ResubmitEventRequest
     [Range(0, 1_000_000)]
     public decimal Price { get; set; }
 
+    [Required(ErrorMessage = "Category is required.")]
+    [StringLength(100)]
+    public string Category { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "VenueType is required.")]
+    [StringLength(50)]
+    public string VenueType { get; set; } = string.Empty;
+
     /// <summary>
     /// Optional replacement event poster image.
     /// If omitted, the existing poster is preserved.

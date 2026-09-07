@@ -61,6 +61,8 @@ public class EventsController : ControllerBase
             EventDate = e.EventDate,
             Price = e.Price,
             Status = e.Status,
+            Category = e.Category,
+            VenueType = e.VenueType,
             ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
         }).ToList();
 
@@ -97,6 +99,8 @@ public class EventsController : ControllerBase
             Venue = eventItem.Venue,
             EventDate = eventItem.EventDate,
             Price = eventItem.Price,
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
             OrganizerId = eventItem.OrganizerId,
             ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName),
             CoverUrl = _imageStorage?.GetPublicUrl(eventItem.CoverBlobName)

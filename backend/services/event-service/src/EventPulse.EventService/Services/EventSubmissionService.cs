@@ -28,6 +28,23 @@ public class EventSubmissionService : IEventSubmissionService
         "image/webp",
     };
 
+    public static readonly HashSet<string> AllowedCategories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Musical Concert",
+        "Conference",
+        "Workshop",
+        "Festival",
+        "Sports",
+        "Theatre / Performance",
+        "Other",
+    };
+
+    public static readonly HashSet<string> AllowedVenueTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Indoor",
+        "Outdoor",
+    };
+
     private const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
 
     public EventSubmissionService(
@@ -70,6 +87,21 @@ public class EventSubmissionService : IEventSubmissionService
 
         if (request.Price != decimal.Truncate(request.Price))
             return (null, "Ticket price must be entered in whole LKR.");
+
+        if (string.IsNullOrWhiteSpace(request.Category))
+            return (null, "Category is required.");
+
+        if (!AllowedCategories.Contains(request.Category.Trim()))
+            return (null, $"Unsupported event category '{request.Category}'.");
+
+        if (string.IsNullOrWhiteSpace(request.VenueType))
+            return (null, "Venue type is required.");
+
+        if (!AllowedVenueTypes.Contains(request.VenueType.Trim()))
+            return (null, $"Unsupported venue type '{request.VenueType}'. Supported values: Indoor, Outdoor.");
+
+        var canonicalCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
+        var canonicalVenueType = AllowedVenueTypes.First(v => string.Equals(v, request.VenueType.Trim(), StringComparison.OrdinalIgnoreCase));
 
         // ---- Poster Validation -----------------------------------------------
         if (request.Image is null || request.Image.Length == 0)
@@ -148,6 +180,8 @@ public class EventSubmissionService : IEventSubmissionService
             Venue = request.Venue.Trim(),
             EventDate = eventDateUtc,
             Price = request.Price,
+            Category = canonicalCategory,
+            VenueType = canonicalVenueType,
             // Server-controlled — never from frontend
             Status = EventStatus.Pending,
             OrganizerId = organizerId,
@@ -188,6 +222,8 @@ public class EventSubmissionService : IEventSubmissionService
             EventDate = newEvent.EventDate,
             Price = newEvent.Price,
             Status = newEvent.Status.ToString(),
+            Category = newEvent.Category,
+            VenueType = newEvent.VenueType,
             OrganizerId = newEvent.OrganizerId,
             CreatedAt = newEvent.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(imageBlobName),
@@ -217,6 +253,8 @@ public class EventSubmissionService : IEventSubmissionService
             EventDate = e.EventDate,
             Price = e.Price,
             Status = e.Status.ToString(),
+            Category = e.Category,
+            VenueType = e.VenueType,
             CreatedAt = e.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(e.ImageBlobName),
             CoverUrl = _imageStorage.GetPublicUrl(e.CoverBlobName),
@@ -247,6 +285,8 @@ public class EventSubmissionService : IEventSubmissionService
             EventDate = eventItem.EventDate,
             Price = eventItem.Price,
             Status = eventItem.Status.ToString(),
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
             CreatedAt = eventItem.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(eventItem.ImageBlobName),
             CoverUrl = _imageStorage.GetPublicUrl(eventItem.CoverBlobName),
@@ -308,6 +348,21 @@ public class EventSubmissionService : IEventSubmissionService
 
         if (request.Price != decimal.Truncate(request.Price))
             return (null, "Ticket price must be entered in whole LKR.", false, false, false);
+
+        if (string.IsNullOrWhiteSpace(request.Category))
+            return (null, "Category is required.", false, false, false);
+
+        if (!AllowedCategories.Contains(request.Category.Trim()))
+            return (null, $"Unsupported event category '{request.Category}'.", false, false, false);
+
+        if (string.IsNullOrWhiteSpace(request.VenueType))
+            return (null, "Venue type is required.", false, false, false);
+
+        if (!AllowedVenueTypes.Contains(request.VenueType.Trim()))
+            return (null, $"Unsupported venue type '{request.VenueType}'. Supported values: Indoor, Outdoor.", false, false, false);
+
+        var canonicalResubmitCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
+        var canonicalResubmitVenueType = AllowedVenueTypes.First(v => string.Equals(v, request.VenueType.Trim(), StringComparison.OrdinalIgnoreCase));
 
         string? oldImageBlobName = null;
         string? newImageBlobName = null;
@@ -406,6 +461,8 @@ public class EventSubmissionService : IEventSubmissionService
         eventItem.Venue = request.Venue.Trim();
         eventItem.EventDate = eventDateUtc;
         eventItem.Price = request.Price;
+        eventItem.Category = canonicalResubmitCategory;
+        eventItem.VenueType = canonicalResubmitVenueType;
 
         // State transition: Server controls status to Pending
         eventItem.Status = EventStatus.Pending;
@@ -484,6 +541,8 @@ public class EventSubmissionService : IEventSubmissionService
             EventDate = eventItem.EventDate,
             Price = eventItem.Price,
             Status = eventItem.Status.ToString(),
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
             CreatedAt = eventItem.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(eventItem.ImageBlobName),
             CoverUrl = _imageStorage.GetPublicUrl(eventItem.CoverBlobName),
