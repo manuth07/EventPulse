@@ -501,6 +501,26 @@ export function OrganizerDashboard() {
                             </span>
                           </div>
 
+                          {(item.category || item.venueType) && (
+                            <div style={{ marginBottom: '8px' }}>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                backgroundColor: '#FFF0E6',
+                                color: '#1D1D1F',
+                                border: '1px solid rgba(255, 91, 0, 0.18)',
+                                borderRadius: 'var(--ep-radius-pill, 9999px)',
+                                padding: '3px 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                              }}>
+                                {item.venueType && item.category
+                                  ? `${item.venueType} • ${item.category}`
+                                  : (item.category || item.venueType)}
+                              </span>
+                            </div>
+                          )}
+
                           <div style={{
                             display: 'flex',
                             flexDirection: 'column',

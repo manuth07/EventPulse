@@ -5,12 +5,26 @@ import { useAuth } from '../../context/AuthContext';
 import { Calendar, MapPin, ArrowLeft, CheckCircle, UploadCloud, X } from 'lucide-react';
 import { submitEvent } from '../../services/eventService';
 
+const EVENT_CATEGORIES = [
+  'Musical Concert',
+  'Conference',
+  'Workshop',
+  'Festival',
+  'Sports',
+  'Theatre / Performance',
+  'Other',
+];
+
+const VENUE_TYPES = ['Indoor', 'Outdoor'];
+
 export function CreateEvent() {
   const navigate = useNavigate();
   const { accessToken } = useAuth();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState(EVENT_CATEGORIES[0]);
+  const [venueType, setVenueType] = useState('Indoor');
   const [venue, setVenue] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [price, setPrice] = useState('0');
@@ -77,6 +91,16 @@ export function CreateEvent() {
     e.preventDefault();
     setError(null);
 
+    if (!category) {
+      setError('Please select an event category.');
+      return;
+    }
+
+    if (!venueType) {
+      setError('Please select a venue type.');
+      return;
+    }
+
     if (!image) {
       setError('Please provide an event poster.');
       return;
@@ -99,6 +123,8 @@ export function CreateEvent() {
       const formData = new FormData();
       formData.append('title', title);
       formData.append('description', description);
+      formData.append('category', category);
+      formData.append('venueType', venueType);
       formData.append('venue', venue);
       formData.append('eventDate', new Date(eventDate).toISOString());
       formData.append('price', String(parsedPrice));
@@ -248,6 +274,65 @@ export function CreateEvent() {
                     fontFamily: 'inherit',
                   }}
                 />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                    Event Category *
+                  </label>
+                  <select
+                    required
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      fontSize: '14px',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      border: '1px solid var(--ep-border)',
+                      backgroundColor: '#ffffff',
+                      boxSizing: 'border-box',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {EVENT_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                    Venue Type *
+                  </label>
+                  <select
+                    required
+                    value={venueType}
+                    onChange={(e) => setVenueType(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      fontSize: '14px',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      border: '1px solid var(--ep-border)',
+                      backgroundColor: '#ffffff',
+                      boxSizing: 'border-box',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {VENUE_TYPES.map((vt) => (
+                      <option key={vt} value={vt}>
+                        {vt}
+                      </option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: '11px', color: 'var(--ep-text-secondary)', margin: '4px 0 0 0' }}>
+                    Select whether the event venue is primarily indoors or outdoors.
+                  </p>
+                </div>
               </div>
 
               <div>

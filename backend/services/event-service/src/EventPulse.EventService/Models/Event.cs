@@ -26,6 +26,18 @@ public class Event
     public string? ImageBlobName { get; set; }
 
     /// <summary>
+    /// Event category (e.g. "Musical Concert", "Conference", "Workshop", etc.).
+    /// Nullable for legacy events created prior to this field.
+    /// </summary>
+    public string? Category { get; set; }
+
+    /// <summary>
+    /// Event venue environment type ("Indoor" or "Outdoor").
+    /// Nullable for legacy events created prior to this field.
+    /// </summary>
+    public string? VenueType { get; set; }
+
+    /// <summary>
     /// Blob Storage reference key for the wide event cover/banner (e.g. "event-covers/xyz789.webp").
     /// Used as the hero header on the public Event Details page.
     /// Null for seeded/legacy events without a dedicated cover banner.

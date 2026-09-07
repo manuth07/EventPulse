@@ -25,7 +25,7 @@ function parseDateParts(dateString) {
 }
 
 export function EventCard({ event }) {
-  const { id, title, venue, eventDate, price, category, imageUrl, imagePath } = event;
+  const { id, title, venue, eventDate, price, category, venueType, imageUrl, imagePath } = event;
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -34,6 +34,13 @@ export function EventCard({ event }) {
 
   const posterUrl = imageUrl || imagePath;
   const hasPoster = Boolean(posterUrl) && !imageError;
+
+  // Format metadata chip (e.g. "Indoor • Musical Concert")
+  // For legacy events without venueType, display only category.
+  // If neither exists, metadataLabel is null and chip collapses cleanly.
+  const metadataLabel = venueType && category
+    ? `${venueType} • ${category}`
+    : (category || (venueType ? venueType : null));
 
   return (
     <Link
@@ -162,38 +169,42 @@ export function EventCard({ event }) {
             {venue || 'Location TBA'}
           </div>
 
-          {/* Category Chip & Small Crown Icon */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginBottom: '22px',
-          }}>
-            <span style={{
-              backgroundColor: '#EEF2FF',
-              color: '#6366F1',
-              borderRadius: '9999px',
-              padding: '5px 14px',
-              fontSize: '12px',
-              fontWeight: 600,
-              letterSpacing: '0.01em',
-            }}>
-              {category || 'Indoor Musical Concert'}
-            </span>
-            <span style={{
-              width: '26px',
-              height: '26px',
-              borderRadius: '50%',
-              backgroundColor: '#DCFCE7',
-              display: 'inline-flex',
+          {/* Category / VenueType Chip */}
+          {metadataLabel && (
+            <div style={{
+              display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              color: '#16A34A',
-              flexShrink: 0,
+              gap: '8px',
+              marginBottom: '22px',
             }}>
-              <Crown size={14} />
-            </span>
-          </div>
+              <span style={{
+                backgroundColor: '#FFF0E6',
+                color: '#1D1D1F',
+                border: '1px solid rgba(255, 91, 0, 0.18)',
+                borderRadius: '9999px',
+                padding: '5px 14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                letterSpacing: '0.01em',
+              }}>
+                {metadataLabel}
+              </span>
+              <span style={{
+                width: '26px',
+                height: '26px',
+                borderRadius: '50%',
+                backgroundColor: '#FFF0E6',
+                border: '1px solid rgba(255, 91, 0, 0.18)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--ep-primary, #FF5B00)',
+                flexShrink: 0,
+              }}>
+                <Crown size={13} />
+              </span>
+            </div>
+          )}
 
           {/* Date / Time & Price Row */}
           <div style={{
@@ -260,7 +271,7 @@ export function EventCard({ event }) {
               <div style={{
                 fontSize: '19px',
                 fontWeight: 800,
-                color: '#6366F1',
+                color: 'var(--ep-primary, #FF5B00)',
                 lineHeight: 1.2,
                 letterSpacing: '-0.01em',
                 overflow: 'hidden',

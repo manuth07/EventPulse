@@ -140,6 +140,8 @@ public class EventReviewService : IEventReviewService
             Venue = e.Venue,
             EventDate = e.EventDate,
             Price = e.Price,
+            Category = e.Category,
+            VenueType = e.VenueType,
             Status = e.Status.ToString(),
             CreatedAt = e.CreatedAt,
             ImageUrl = _imageStorage.GetPublicUrl(e.ImageBlobName),

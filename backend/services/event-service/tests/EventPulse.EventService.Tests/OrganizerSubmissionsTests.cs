@@ -269,6 +269,8 @@ public class OrganizerSubmissionsTests
             Venue = "Colombo Exhibition Center, Hall A",
             EventDate = DateTime.UtcNow.AddDays(20),
             Price = 2500,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null // Keep existing image
         };
 
@@ -334,6 +336,8 @@ public class OrganizerSubmissionsTests
             Venue = "Nelum Pokuna",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = formFile
         };
 
@@ -377,7 +381,9 @@ public class OrganizerSubmissionsTests
             Description = "Valid event description for unit test purposes",
             Venue = "Venue",
             EventDate = DateTime.UtcNow.AddDays(5),
-            Price = 500
+            Price = 500,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var (result, error, isNotFound, isForbidden, isInvalidState) =
@@ -417,7 +423,9 @@ public class OrganizerSubmissionsTests
             Description = "Valid event description for unit test purposes",
             Venue = "Venue",
             EventDate = DateTime.UtcNow.AddDays(5),
-            Price = 500
+            Price = 500,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var (result, error, isNotFound, isForbidden, isInvalidState) =
@@ -560,7 +568,9 @@ public class OrganizerSubmissionsTests
             Description = "Updated event description with sufficient characters",
             Venue = "New Venue, Colombo",
             EventDate = DateTime.UtcNow.AddDays(15),
-            Price = 1200
+            Price = 1200,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var result = await controller.ResubmitEvent(eventId.ToString(), request, CancellationToken.None);
@@ -606,7 +616,9 @@ public class OrganizerSubmissionsTests
             Description = "Updated Description long enough",
             Venue = "Venue",
             EventDate = DateTime.UtcNow.AddDays(10),
-            Price = 1000
+            Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var result = await controller.ResubmitEvent(eventId.ToString(), request, CancellationToken.None);
@@ -685,6 +697,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH Hall 3, Colombo",
             EventDate = DateTime.UtcNow.AddDays(35),
             Price = 4500,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null // No replacement poster
         };
 
@@ -740,6 +754,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH Hall 3, Colombo",
             EventDate = DateTime.UtcNow.AddDays(40),
             Price = 4500,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = formFile
         };
 
@@ -774,6 +790,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null!, // Missing poster
             CoverImage = coverFile
         };
@@ -803,6 +821,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = null! // Missing cover
         };
@@ -840,6 +860,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = coverFile
         };
@@ -897,6 +919,8 @@ public class OrganizerSubmissionsTests
             Venue = "Colombo",
             EventDate = DateTime.UtcNow.AddDays(12),
             Price = 1200,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null, // No replacement poster
             CoverImage = newCoverFile // Replacement cover provided
         };
@@ -940,6 +964,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = fractionalPrice,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = coverFile
         };
@@ -979,6 +1005,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = wholePrice,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = coverFile
         };
@@ -1024,6 +1052,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(12),
             Price = fractionalPrice,
+            Category = "Conference",
+            VenueType = "Indoor",
         };
 
         var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
@@ -1065,6 +1095,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(12),
             Price = wholePrice,
+            Category = "Conference",
+            VenueType = "Indoor",
         };
 
         var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
@@ -1072,5 +1104,179 @@ public class OrganizerSubmissionsTests
         Assert.NotNull(result);
         Assert.Null(error);
         Assert.Equal(wholePrice, result.Price);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithValidCategoryAndVenueType_PersistsCorrectly()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var posterStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var posterFile = new FormFile(posterStream, 0, 3, "image", "poster.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var coverStream = new MemoryStream(new byte[] { 4, 5, 6 });
+        var coverFile = new FormFile(coverStream, 0, 3, "coverImage", "cover.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var request = new CreateEventRequest
+        {
+            Title = "Concert Night",
+            Description = "A wonderful musical concert in Colombo",
+            Venue = "Nelum Pokuna",
+            EventDate = DateTime.UtcNow.AddDays(15),
+            Price = 2500,
+            Category = "Musical Concert",
+            VenueType = "Indoor",
+            Image = posterFile,
+            CoverImage = coverFile
+        };
+
+        var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
+
+        Assert.Null(error);
+        Assert.NotNull(result);
+        Assert.Equal("Musical Concert", result.Category);
+        Assert.Equal("Indoor", result.VenueType);
+
+        var saved = await context.Events.FindAsync(result.Id);
+        Assert.NotNull(saved);
+        Assert.Equal("Musical Concert", saved.Category);
+        Assert.Equal("Indoor", saved.VenueType);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithInvalidCategory_ReturnsValidationError()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var posterStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var posterFile = new FormFile(posterStream, 0, 3, "image", "poster.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var coverStream = new MemoryStream(new byte[] { 4, 5, 6 });
+        var coverFile = new FormFile(coverStream, 0, 3, "coverImage", "cover.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var request = new CreateEventRequest
+        {
+            Title = "Invalid Category Event",
+            Description = "Testing invalid category validation",
+            Venue = "Nelum Pokuna",
+            EventDate = DateTime.UtcNow.AddDays(15),
+            Price = 2500,
+            Category = "Rock Music NonExistent",
+            VenueType = "Indoor",
+            Image = posterFile,
+            CoverImage = coverFile
+        };
+
+        var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
+
+        Assert.Null(result);
+        Assert.Contains("Unsupported event category", error);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WithInvalidVenueType_ReturnsValidationError()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+
+        var posterStream = new MemoryStream(new byte[] { 1, 2, 3 });
+        var posterFile = new FormFile(posterStream, 0, 3, "image", "poster.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var coverStream = new MemoryStream(new byte[] { 4, 5, 6 });
+        var coverFile = new FormFile(coverStream, 0, 3, "coverImage", "cover.jpg")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/jpeg"
+        };
+
+        var request = new CreateEventRequest
+        {
+            Title = "Invalid VenueType Event",
+            Description = "Testing invalid venue type validation",
+            Venue = "Nelum Pokuna",
+            EventDate = DateTime.UtcNow.AddDays(15),
+            Price = 2500,
+            Category = "Musical Concert",
+            VenueType = "Underwater",
+            Image = posterFile,
+            CoverImage = coverFile
+        };
+
+        var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
+
+        Assert.Null(result);
+        Assert.Contains("Unsupported venue type", error);
+    }
+
+    [Fact]
+    public async Task ResubmitAsync_WhenCategoryAndVenueTypeUpdated_PersistsCorrectly()
+    {
+        using var context = CreateContext();
+        var service = new EventSubmissionService(context, new FakeImageStorage(), null!);
+        var organizerId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        var existingEvent = new Event
+        {
+            Id = eventId,
+            Title = "Original Event",
+            Description = "Original description before resubmission",
+            Venue = "BMICH",
+            EventDate = DateTime.UtcNow.AddDays(10),
+            Price = 1000,
+            Status = EventStatus.Rejected,
+            OrganizerId = organizerId,
+            Category = "Conference",
+            VenueType = "Indoor",
+            ImageBlobName = "event-posters/original.webp",
+            CoverBlobName = "event-covers/original.webp"
+        };
+        context.Events.Add(existingEvent);
+        await context.SaveChangesAsync();
+
+        var request = new ResubmitEventRequest
+        {
+            Title = "Updated Event",
+            Description = "Updated description for resubmission",
+            Venue = "Galle Face Green",
+            EventDate = DateTime.UtcNow.AddDays(12),
+            Price = 1500,
+            Category = "Festival",
+            VenueType = "Outdoor"
+        };
+
+        var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
+
+        Assert.Null(error);
+        Assert.NotNull(result);
+        Assert.Equal("Festival", result.Category);
+        Assert.Equal("Outdoor", result.VenueType);
+
+        var saved = await context.Events.FindAsync(eventId);
+        Assert.NotNull(saved);
+        Assert.Equal("Festival", saved.Category);
+        Assert.Equal("Outdoor", saved.VenueType);
     }
 }
