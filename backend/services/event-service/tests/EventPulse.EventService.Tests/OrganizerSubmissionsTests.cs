@@ -269,6 +269,8 @@ public class OrganizerSubmissionsTests
             Venue = "Colombo Exhibition Center, Hall A",
             EventDate = DateTime.UtcNow.AddDays(20),
             Price = 2500,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null // Keep existing image
         };
 
@@ -334,6 +336,8 @@ public class OrganizerSubmissionsTests
             Venue = "Nelum Pokuna",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = formFile
         };
 
@@ -377,7 +381,9 @@ public class OrganizerSubmissionsTests
             Description = "Valid event description for unit test purposes",
             Venue = "Venue",
             EventDate = DateTime.UtcNow.AddDays(5),
-            Price = 500
+            Price = 500,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var (result, error, isNotFound, isForbidden, isInvalidState) =
@@ -417,7 +423,9 @@ public class OrganizerSubmissionsTests
             Description = "Valid event description for unit test purposes",
             Venue = "Venue",
             EventDate = DateTime.UtcNow.AddDays(5),
-            Price = 500
+            Price = 500,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var (result, error, isNotFound, isForbidden, isInvalidState) =
@@ -560,7 +568,9 @@ public class OrganizerSubmissionsTests
             Description = "Updated event description with sufficient characters",
             Venue = "New Venue, Colombo",
             EventDate = DateTime.UtcNow.AddDays(15),
-            Price = 1200
+            Price = 1200,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var result = await controller.ResubmitEvent(eventId.ToString(), request, CancellationToken.None);
@@ -606,7 +616,9 @@ public class OrganizerSubmissionsTests
             Description = "Updated Description long enough",
             Venue = "Venue",
             EventDate = DateTime.UtcNow.AddDays(10),
-            Price = 1000
+            Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor"
         };
 
         var result = await controller.ResubmitEvent(eventId.ToString(), request, CancellationToken.None);
@@ -685,6 +697,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH Hall 3, Colombo",
             EventDate = DateTime.UtcNow.AddDays(35),
             Price = 4500,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null // No replacement poster
         };
 
@@ -740,6 +754,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH Hall 3, Colombo",
             EventDate = DateTime.UtcNow.AddDays(40),
             Price = 4500,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = formFile
         };
 
@@ -774,6 +790,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null!, // Missing poster
             CoverImage = coverFile
         };
@@ -803,6 +821,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = null! // Missing cover
         };
@@ -840,6 +860,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = 1000,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = coverFile
         };
@@ -897,6 +919,8 @@ public class OrganizerSubmissionsTests
             Venue = "Colombo",
             EventDate = DateTime.UtcNow.AddDays(12),
             Price = 1200,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = null, // No replacement poster
             CoverImage = newCoverFile // Replacement cover provided
         };
@@ -940,6 +964,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = fractionalPrice,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = coverFile
         };
@@ -979,6 +1005,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(10),
             Price = wholePrice,
+            Category = "Conference",
+            VenueType = "Indoor",
             Image = posterFile,
             CoverImage = coverFile
         };
@@ -1024,6 +1052,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(12),
             Price = fractionalPrice,
+            Category = "Conference",
+            VenueType = "Indoor",
         };
 
         var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
@@ -1065,6 +1095,8 @@ public class OrganizerSubmissionsTests
             Venue = "BMICH",
             EventDate = DateTime.UtcNow.AddDays(12),
             Price = wholePrice,
+            Category = "Conference",
+            VenueType = "Indoor",
         };
 
         var (result, error, _, _, _) = await service.ResubmitAsync(eventId, request, organizerId);
