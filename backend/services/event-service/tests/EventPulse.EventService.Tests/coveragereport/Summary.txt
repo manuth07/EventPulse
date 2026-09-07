@@ -1,0 +1,48 @@
+Summary
+  Generated on: 9/7/2026 - 8:32:00 PM
+  Coverage date: 9/7/2026 - 8:30:32 PM
+  Parser: Cobertura
+  Assemblies: 1
+  Classes: 26
+  Files: 30
+  Line coverage: 34.9%
+  Covered lines: 705
+  Uncovered lines: 1311
+  Coverable lines: 2016
+  Total lines: 3301
+  Branch coverage: 30.7% (176 of 572)
+  Covered branches: 176
+  Total branches: 572
+  Method coverage: 68.5% (124 of 181)
+  Full method coverage: 63.5% (115 of 181)
+  Covered methods: 124
+  Fully covered methods: 115
+  Total methods: 181
+
+EventPulse.EventService                                                34.9%
+  EventPulse.EventService.Controllers.EventsController                 63.2%
+  EventPulse.EventService.Controllers.EventsHealthController              0%
+  EventPulse.EventService.Data.EventDbContext                           100%
+  EventPulse.EventService.Data.EventDbSeeder                              0%
+  EventPulse.EventService.DTOs.AdminEventReviewDto                      100%
+  EventPulse.EventService.DTOs.CreateEventRequest                       100%
+  EventPulse.EventService.DTOs.EventDetailsDto                          100%
+  EventPulse.EventService.DTOs.EventListDto                             100%
+  EventPulse.EventService.DTOs.EventSubmissionResponseDto               100%
+  EventPulse.EventService.DTOs.OrganizerEventSubmissionDto              100%
+  EventPulse.EventService.DTOs.ResubmitEventRequest                     100%
+  EventPulse.EventService.DTOs.ReviewEventRequest                       100%
+  EventPulse.EventService.DTOs.SubmitEventRequest                         0%
+  EventPulse.EventService.Migrations.AddCategoryAndVenueTypeToEvents      0%
+  EventPulse.EventService.Migrations.AddEventCoverBlobName                0%
+  EventPulse.EventService.Migrations.AddEventPosterReference              0%
+  EventPulse.EventService.Migrations.AddEventReviewComment                0%
+  EventPulse.EventService.Migrations.EventDbContextModelSnapshot          0%
+  EventPulse.EventService.Migrations.InitialEventSchema                   0%
+  EventPulse.EventService.Models.Event                                  100%
+  EventPulse.EventService.Services.EventReviewService                   100%
+  EventPulse.EventService.Services.EventSubmissionService              78.3%
+  EventPulse.EventService.Storage.AzureBlobEventImageStorage              0%
+  Microsoft.AspNetCore.OpenApi.Generated                                  0%
+  Program                                                                 0%
+  System.Runtime.CompilerServices                                         0%

@@ -12,7 +12,7 @@ public class EventsIntegrationTests
     [Fact]
     public async Task GetEvents_ReturnsOnlyApprovedOrPublishedEvents_NotPendingOrRejected()
     {
-        // Expected to FAIL against current dev code — this is evidence for the US-08 report, not a test bug.
+        
         var response = await _client.GetAsync("/api/events");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 

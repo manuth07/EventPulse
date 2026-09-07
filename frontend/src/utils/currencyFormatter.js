@@ -1,20 +1,19 @@
 /**
  * Utility helper to format event prices consistently across EventPulse.
- * Format: "LKR 5,000" or "Free" when amount is 0.
+ * Format: "LKR 15,000", "LKR 1,499", or "LKR 0" when amount is 0.
  *
- * Future Internationalization Note:
- * In a future release supporting multi-currency internationalization, the Event model
- * should represent monetary values as:
- *   - Amount (decimal)
- *   - CurrencyCode (string, ISO-4217 e.g. "LKR", "USD", "SGD")
- * For current Sprint 1 EventPulse, all ticket prices are in LKR.
+ * Current EventPulse Sri Lankan ticketing scope:
+ *   - Currency: LKR
+ *   - Amounts: Whole rupee values (zero fractional digits)
+ *   - No currency conversion or fractional cent formatting
  */
 export function formatPrice(price, currencyCode = 'LKR') {
   const numPrice = Number(price);
-  if (isNaN(numPrice) || numPrice === 0) {
-    return 'Free';
+  if (isNaN(numPrice)) {
+    return `${currencyCode} 0`;
   }
   return `${currencyCode} ${numPrice.toLocaleString('en-US', {
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   })}`;
 }

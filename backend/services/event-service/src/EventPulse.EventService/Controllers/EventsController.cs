@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
 using EventPulse.EventService.Models;
+using EventPulse.EventService.Services;
+using EventPulse.EventService.Storage;
 
 namespace EventPulse.EventService.Controllers;
 
@@ -13,11 +15,22 @@ namespace EventPulse.EventService.Controllers;
 public class EventsController : ControllerBase
 {
     private readonly EventDbContext _context;
-    private readonly ILogger<EventsController> _logger;
+    private readonly IEventSubmissionService? _submissionService;
+    private readonly IEventReviewService? _reviewService;
+    private readonly IEventImageStorage? _imageStorage;
+    private readonly ILogger<EventsController>? _logger;
 
-    public EventsController(EventDbContext context, ILogger<EventsController> logger)
+    public EventsController(
+        EventDbContext context,
+        IEventSubmissionService? submissionService = null,
+        IEventReviewService? reviewService = null,
+        IEventImageStorage? imageStorage = null,
+        ILogger<EventsController>? logger = null)
     {
         _context = context;
+        _submissionService = submissionService;
+        _reviewService = reviewService;
+        _imageStorage = imageStorage;
         _logger = logger;
     }
 
@@ -32,21 +45,28 @@ public class EventsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<EventListDto>>> GetEvents()
     {
+        // Only Published or Approved events are visible to public visitors.
+        // Pending and Rejected events are never exposed here.
         var events = await _context.Events
             .AsNoTracking()
-            .Select(e => new EventListDto
-            {
-                Id = e.Id,
-                Title = e.Title,
-                Description = e.Description,
-                Venue = e.Venue,
-                EventDate = e.EventDate,
-                Price = e.Price,
-                Status = e.Status
-            })
+            .Where(e => e.Status == EventStatus.Published || e.Status == EventStatus.Approved)
             .ToListAsync();
 
-        return Ok(events);
+        var dtos = events.Select(e => new EventListDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Description = e.Description,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            Price = e.Price,
+            Status = e.Status,
+            Category = e.Category,
+            VenueType = e.VenueType,
+            ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
+        }).ToList();
+
+        return Ok(dtos);
     }
 
     /// <summary>
@@ -79,7 +99,11 @@ public class EventsController : ControllerBase
             Venue = eventItem.Venue,
             EventDate = eventItem.EventDate,
             Price = eventItem.Price,
-            OrganizerId = eventItem.OrganizerId
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
+            OrganizerId = eventItem.OrganizerId,
+            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage?.GetPublicUrl(eventItem.CoverBlobName)
         };
 
         return Ok(details);
@@ -99,7 +123,10 @@ public class EventsController : ControllerBase
     /// </summary>
     [HttpPost]
     [Authorize(Policy = AppPolicies.OrganizerOnly)]
-    public async Task<ActionResult<EventDetailsDto>> SubmitEvent([FromBody] SubmitEventRequest request)
+    [RequestSizeLimit(20 * 1024 * 1024)] // 20 MB ceiling — covers 2x 5 MB images (poster + cover) + form fields
+    public async Task<ActionResult<EventSubmissionResponseDto>> SubmitEvent(
+        [FromForm] CreateEventRequest request,
+        CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
         {
@@ -116,137 +143,275 @@ public class EventsController : ControllerBase
 
         if (!Guid.TryParse(organizerIdStr, out var organizerId))
         {
-            _logger.LogWarning("SubmitEvent: Could not parse OrganizerId from JWT sub claim.");
+            _logger?.LogWarning("SubmitEvent: Could not parse OrganizerId from JWT sub claim.");
             return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
         }
 
-        if (request.EventDate <= DateTime.UtcNow)
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
+
+        var (result, error) = await _submissionService.CreateAsync(request, organizerId, cancellationToken);
+
+        if (result is null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return CreatedAtAction(nameof(GetEventById), new { id = result.Id.ToString() }, result);
+    }
+
+    /// <summary>
+    /// GET /api/events/my-submissions
+    /// EP-30 — Returns all event submissions created by the authenticated Organizer, ordered newest first.
+    /// Exposes events across all lifecycle statuses (Pending, Approved, Rejected, Published).
+    /// Requires: OrganizerOnly policy (Organizer role).
+    /// </summary>
+    [HttpGet("my-submissions")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<IReadOnlyList<OrganizerEventSubmissionDto>>> GetMySubmissions(
+        CancellationToken cancellationToken)
+    {
+        // Derive organizer identity from validated JWT — never from request query or body
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
         {
-            return BadRequest(new { code = "INVALID_DATE", message = "Event date must be in the future." });
+            _logger?.LogWarning("GetMySubmissions: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
         }
 
-        var newEvent = new Event
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
+
+        var submissions = await _submissionService.GetOrganizerSubmissionsAsync(organizerId, cancellationToken);
+        return Ok(submissions);
+    }
+
+    /// <summary>
+    /// GET /api/events/my-submissions/{id}
+    /// Retrieves a single event submission belonging to the authenticated Organizer.
+    /// Exposes review comments and status for Organizer inspection.
+    /// Requires: OrganizerOnly policy (Organizer role).
+    /// </summary>
+    [HttpGet("my-submissions/{id}")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<OrganizerEventSubmissionDto>> GetMySubmissionById(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
         {
-            Id = Guid.NewGuid(),
-            Title = request.Title.Trim(),
-            Description = request.Description.Trim(),
-            Venue = request.Venue.Trim(),
-            EventDate = request.EventDate,
-            Price = request.Price,
-            Status = EventStatus.Pending,
-            OrganizerId = organizerId,
-            CreatedAt = DateTime.UtcNow,
-        };
+            _logger?.LogWarning("GetMySubmissionById: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
 
-        _context.Events.Add(newEvent);
-        await _context.SaveChangesAsync();
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
 
-        _logger.LogInformation(
-            "Event submitted. EventId={EventId}, OrganizerId={OrganizerId}, Title={Title}",
-            newEvent.Id, organizerId, newEvent.Title);
+        var submission = await _submissionService.GetOrganizerSubmissionByIdAsync(guidId, organizerId, cancellationToken);
+        if (submission == null)
+            return NotFound();
 
-        var responseDto = new EventDetailsDto
+        return Ok(submission);
+    }
+
+    /// <summary>
+    /// PUT /api/events/{id}/resubmit
+    /// Edits and resubmits a Rejected event submission for Administrator review.
+    /// Transitions status: Rejected -> Pending.
+    /// Preserves existing Event ID and previous review notes.
+    /// Requires: OrganizerOnly policy (Organizer role).
+    /// </summary>
+    [HttpPut("{id}/resubmit")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> ResubmitEvent(
+        string id,
+        [FromForm] ResubmitEventRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        if (!ModelState.IsValid)
         {
-            Id = newEvent.Id,
-            Title = newEvent.Title,
-            Description = newEvent.Description,
-            Venue = newEvent.Venue,
-            EventDate = newEvent.EventDate,
-            Price = newEvent.Price,
-            OrganizerId = newEvent.OrganizerId,
-        };
+            var errors = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
 
-        return CreatedAtAction(nameof(GetEventById), new { id = newEvent.Id.ToString() }, responseDto);
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("ResubmitEvent: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_submissionService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Submission service is not configured." });
+
+        var (result, error, isNotFound, isForbidden, isInvalidState) =
+            await _submissionService.ResubmitAsync(guidId, request, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
     }
 
     // =========================================================================
-    // EP-97 — ADMINISTRATOR ENDPOINTS
+    // EP-31 / EP-97 — ADMINISTRATOR REVIEW ENDPOINTS
     // Require: Administrator role (AdministratorOnly policy)
     // No JWT → 401. Valid JWT, wrong role (Customer / Organizer) → 403.
     // =========================================================================
 
     /// <summary>
-    /// PUT /api/events/{id}/approve
-    /// EP-97 — Administrator approves a Pending event submission.
+    /// GET /api/events/admin/pending
+    /// EP-31 — Retrieves all event submissions awaiting Administrator review.
     /// Requires: AdministratorOnly policy.
     /// </summary>
-    [HttpPut("{id}/approve")]
+    [HttpGet("admin/pending")]
     [Authorize(Policy = AppPolicies.AdministratorOnly)]
-    public async Task<IActionResult> ApproveEvent(string id, [FromBody] ReviewEventRequest request)
+    public async Task<ActionResult<IReadOnlyList<AdminEventReviewDto>>> GetPendingEvents(
+        CancellationToken cancellationToken)
     {
-        if (!Guid.TryParse(id, out var guidId))
-            return NotFound();
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
 
-        var eventItem = await _context.Events.FindAsync(guidId);
-        if (eventItem == null)
-            return NotFound();
-
-        if (eventItem.Status != EventStatus.Pending)
-        {
-            return Conflict(new
-            {
-                code = "INVALID_STATE",
-                message = $"Only Pending events can be approved. Current status: {eventItem.Status}."
-            });
-        }
-
-        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                            ?? User.FindFirst("sub")?.Value;
-        Guid.TryParse(reviewerIdStr, out var reviewerId);
-
-        eventItem.Status = EventStatus.Approved;
-        eventItem.ReviewedAt = DateTime.UtcNow;
-        eventItem.ReviewedBy = reviewerId;
-
-        await _context.SaveChangesAsync();
-
-        _logger.LogInformation(
-            "Event approved. EventId={EventId}, ReviewedBy={ReviewerId}",
-            guidId, reviewerId);
-
-        return Ok(new { message = "Event approved successfully.", eventId = guidId, status = "Approved" });
+        var pendingEvents = await _reviewService.GetPendingEventsAsync(cancellationToken);
+        return Ok(pendingEvents);
     }
 
     /// <summary>
-    /// PUT /api/events/{id}/reject
-    /// EP-97 — Administrator rejects a Pending event submission.
+    /// GET /api/events/admin/pending/{id}
+    /// EP-31 — Retrieves a single Pending event submission by ID for Administrator review.
     /// Requires: AdministratorOnly policy.
     /// </summary>
-    [HttpPut("{id}/reject")]
+    [HttpGet("admin/pending/{id}")]
     [Authorize(Policy = AppPolicies.AdministratorOnly)]
-    public async Task<IActionResult> RejectEvent(string id, [FromBody] ReviewEventRequest request)
+    public async Task<ActionResult<AdminEventReviewDto>> GetPendingEventById(
+        string id,
+        CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(id, out var guidId))
             return NotFound();
 
-        var eventItem = await _context.Events.FindAsync(guidId);
-        if (eventItem == null)
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
+
+        var eventDto = await _reviewService.GetPendingEventByIdAsync(guidId, cancellationToken);
+        if (eventDto == null)
             return NotFound();
 
-        if (eventItem.Status != EventStatus.Pending)
-        {
-            return Conflict(new
-            {
-                code = "INVALID_STATE",
-                message = $"Only Pending events can be rejected. Current status: {eventItem.Status}."
-            });
-        }
+        return Ok(eventDto);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/{id}/approve
+    /// EP-31 / EP-97 — Administrator approves a Pending event submission.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("{id}/approve")]
+    [HttpPut("{id}/approve")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> ApproveEvent(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
 
         var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                             ?? User.FindFirst("sub")?.Value;
         Guid.TryParse(reviewerIdStr, out var reviewerId);
 
-        eventItem.Status = EventStatus.Rejected;
-        eventItem.ReviewedAt = DateTime.UtcNow;
-        eventItem.ReviewedBy = reviewerId;
+        var (result, error, isNotFound) = await _reviewService.ApproveEventAsync(guidId, reviewerId, cancellationToken);
 
-        await _context.SaveChangesAsync();
+        if (isNotFound)
+            return NotFound();
 
-        _logger.LogInformation(
-            "Event rejected. EventId={EventId}, ReviewedBy={ReviewerId}",
-            guidId, reviewerId);
+        if (error != null)
+        {
+            return Conflict(new
+            {
+                code = "INVALID_STATE",
+                message = error
+            });
+        }
 
-        return Ok(new { message = "Event rejected.", eventId = guidId, status = "Rejected" });
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/{id}/reject
+    /// EP-31 / EP-97 — Administrator rejects a Pending event submission.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("{id}/reject")]
+    [HttpPut("{id}/reject")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> RejectEvent(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        if (string.IsNullOrWhiteSpace(request?.Notes))
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Rejection feedback is required." });
+        }
+
+        if (_reviewService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Review service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound) = await _reviewService.RejectEventAsync(guidId, reviewerId, request.Notes.Trim(), cancellationToken);
+
+        if (isNotFound)
+            return NotFound();
+
+        if (error != null)
+        {
+            if (error == "Rejection feedback is required.")
+            {
+                return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+            }
+
+            return Conflict(new
+            {
+                code = "INVALID_STATE",
+                message = error
+            });
+        }
+
+        return Ok(result);
     }
 
     /// <summary>
@@ -283,7 +448,7 @@ public class EventsController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation(
+        _logger?.LogInformation(
             "Event published. EventId={EventId}, PublishedBy={PublisherId}",
             guidId, publisherId);
 

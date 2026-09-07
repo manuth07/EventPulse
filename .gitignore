@@ -38,4 +38,4 @@ coverage-report/
 
 # Secrets
 secrets.json
-appsettings.Development.json
+appsettings.Development.jsontests/performance-jmeter/*.jtl 

@@ -90,7 +90,12 @@ export function VerifyEmail() {
           <p className="ep-body" style={{ marginBottom: '24px' }}>
             Your EventPulse account is ready.
           </p>
-          <Link to="/" className="ep-btn-primary" style={{ textDecoration: 'none', display: 'inline-block', width: '100%', textAlign: 'center', padding: '12px 0' }}>
+          <Link
+            to="/login"
+            state={{ returnTo: location.state?.returnTo }}
+            className="ep-btn-primary"
+            style={{ textDecoration: 'none', display: 'inline-block', width: '100%', textAlign: 'center', padding: '12px 0' }}
+          >
             Continue to Sign In
           </Link>
         </div>
@@ -192,7 +197,11 @@ export function VerifyEmail() {
           )}
         </div>
 
-        <Link to="/register" style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', textDecoration: 'none' }}>
+        <Link
+          to="/register"
+          state={{ returnTo: location.state?.returnTo }}
+          style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', textDecoration: 'none' }}
+        >
           Back to registration
         </Link>
       </div>

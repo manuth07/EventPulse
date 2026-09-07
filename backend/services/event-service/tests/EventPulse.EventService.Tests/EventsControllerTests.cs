@@ -42,12 +42,8 @@ public class EventsControllerTests
     // ---------- GetEvents (US-08) ----------
 
     [Fact]
-    public async Task GetEvents_ReturnsAllEvents_RegardlessOfStatus_DocumentsCurrentGap()
+    public async Task GetEvents_ReturnsOnlyPublishedAndApprovedEvents_ExcludesPendingAndRejected()
     {
-        // This test documents CURRENT behavior per the controller's own comment:
-        // "Returns all events for EP-103 foundation. Published filtering will be added in EP-104."
-        // Update this test (don't just re-run it) once EP-104 filtering lands —
-        // correct US-08 behavior should EXCLUDE Pending/Rejected events.
         var pending = MakeEvent(EventStatus.Pending, "Pending Event");
         var approved = MakeEvent(EventStatus.Approved, "Approved Event");
         var rejected = MakeEvent(EventStatus.Rejected, "Rejected Event");
@@ -60,7 +56,11 @@ public class EventsControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returned = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value);
 
-        Assert.Equal(4, returned.Count()); // includes Pending/Rejected — the current gap, not a false assumption
+        Assert.Equal(2, returned.Count());
+        Assert.DoesNotContain(returned, e => e.Status == EventStatus.Pending);
+        Assert.DoesNotContain(returned, e => e.Status == EventStatus.Rejected);
+        Assert.Contains(returned, e => e.Status == EventStatus.Published);
+        Assert.Contains(returned, e => e.Status == EventStatus.Approved);
     }
 
     [Fact]
@@ -74,6 +74,51 @@ public class EventsControllerTests
         var returned = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value);
 
         Assert.Empty(returned);
+    }
+
+    private class FakeImageStorage : Storage.IEventImageStorage
+    {
+        public Task<string> UploadAsync(Stream imageStream, string contentType, string originalFileName, string folderPrefix = "event-posters", CancellationToken cancellationToken = default)
+            => Task.FromResult($"{folderPrefix}/fake.webp");
+        public Task DeleteAsync(string blobName, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+        public string? GetPublicUrl(string? blobName)
+            => string.IsNullOrEmpty(blobName) ? null : $"http://127.0.0.1:10000/devstoreaccount1/event-posters/{blobName}";
+    }
+
+    [Fact]
+    public async Task GetEvents_WithPosterImage_PopulatesImageUrl()
+    {
+        var approvedWithImage = MakeEvent(EventStatus.Approved, "Approved With Image");
+        approvedWithImage.ImageBlobName = "events/test.jpg";
+        var approvedWithoutImage = MakeEvent(EventStatus.Approved, "Approved Without Image");
+
+        using var context = CreateContextWithEvents(approvedWithImage, approvedWithoutImage);
+        var controller = new EventsController(context, imageStorage: new FakeImageStorage());
+
+        var result = await controller.GetEvents();
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var returned = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        var withImage = returned.First(e => e.Title == "Approved With Image");
+        Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/events/test.jpg", withImage.ImageUrl);
+
+        var withoutImage = returned.First(e => e.Title == "Approved Without Image");
+        Assert.Null(withoutImage.ImageUrl);
+    }
+
+    [Fact]
+    public async Task GetEventById_WithPosterImage_PopulatesImageUrl()
+    {
+        var approved = MakeEvent(EventStatus.Approved, "Approved Event");
+        approved.ImageBlobName = "events/detail.png";
+        using var context = CreateContextWithEvents(approved);
+        var controller = new EventsController(context, imageStorage: new FakeImageStorage());
+
+        var result = await controller.GetEventById(approved.Id.ToString());
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dto = Assert.IsType<EventDetailsDto>(okResult.Value);
+        Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/events/detail.png", dto.ImageUrl);
     }
 
     // ---------- GetEventById (US-09) ----------

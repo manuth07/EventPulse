@@ -44,6 +44,8 @@ export function EventDetails() {
     loadEventDetails();
   }, [id]);
 
+  const heroImage = event?.coverUrl || event?.imageUrl;
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--ep-canvas)' }}>
       <Header />
@@ -143,34 +145,57 @@ export function EventDetails() {
             <div className="row g-4">
               {/* Left Column: Event Visual & Information */}
               <div className="col-12 col-lg-8">
-                {/* Visual Header Banner */}
-                <div style={{
-                  height: '220px',
-                  background: 'linear-gradient(135deg, #FFF0E6 0%, #FFE0CC 100%)',
-                  borderRadius: 'var(--ep-radius-card)',
-                  padding: '24px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  border: '1px solid var(--ep-border)',
-                  marginBottom: '24px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <span className="ep-badge-pill ep-badge-soft-orange">
-                      Upcoming Experience
-                    </span>
-                    <Ticket size={28} color="var(--ep-primary)" />
+                {/* Visual Header Banner (Wide Hero / Poster Fallback) */}
+                {heroImage ? (
+                  <div style={{
+                    width: '100%',
+                    height: '320px',
+                    borderRadius: 'var(--ep-radius-card)',
+                    overflow: 'hidden',
+                    border: '1px solid var(--ep-border)',
+                    marginBottom: '24px',
+                    backgroundColor: 'var(--ep-canvas)'
+                  }}>
+                    <img
+                      src={heroImage}
+                      alt={event.title}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                    />
                   </div>
+                ) : (
+                  <div style={{
+                    height: '220px',
+                    background: 'linear-gradient(135deg, #FFF0E6 0%, #FFE0CC 100%)',
+                    borderRadius: 'var(--ep-radius-card)',
+                    padding: '24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    border: '1px solid var(--ep-border)',
+                    marginBottom: '24px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span className="ep-badge-pill ep-badge-soft-orange">
+                        Upcoming Experience
+                      </span>
+                      <Ticket size={28} color="var(--ep-primary)" />
+                    </div>
 
-                  <div>
-                    <div className="ep-caption" style={{ color: 'var(--ep-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-                      Event Details
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
-                      {formatDate(event.eventDate)}
+                    <div>
+                      <div className="ep-caption" style={{ color: 'var(--ep-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+                        Event Details
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                        {formatDate(event.eventDate)}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Event Main Info */}
                 <div style={{
@@ -180,6 +205,28 @@ export function EventDetails() {
                   padding: '32px',
                   boxShadow: 'var(--ep-shadow-card)'
                 }}>
+                  {(event.category || event.venueType) && (
+                    <div style={{ marginBottom: '14px' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: '#FFF0E6',
+                        color: '#1D1D1F',
+                        border: '1px solid rgba(255, 91, 0, 0.18)',
+                        borderRadius: 'var(--ep-radius-pill, 9999px)',
+                        padding: '4px 14px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        letterSpacing: '-0.01em',
+                      }}>
+                        {event.venueType && event.category
+                          ? `${event.venueType} • ${event.category}`
+                          : (event.category || event.venueType)}
+                      </span>
+                    </div>
+                  )}
+
                   <h1 className="ep-h1 mb-4" style={{ fontSize: '32px' }}>
                     {event.title}
                   </h1>
@@ -262,7 +309,7 @@ export function EventDetails() {
         fontSize: '13px'
       }}>
         <div className="container">
-          <p style={{ margin: 0 }}>© 2026 EventPulse. All rights reserved. Built with React & ASP.NET Core.</p>
+          <p style={{ margin: 0 }}>© 2026 EventPulse. All rights reserved.</p>
         </div>
       </footer>
     </div>

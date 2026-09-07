@@ -1,0 +1,74 @@
+Summary
+  Generated on: 9/7/2026 - 8:17:11 PM
+  Coverage date: 9/7/2026 - 8:15:18 PM
+  Parser: Cobertura
+  Assemblies: 1
+  Classes: 52
+  Files: 44
+  Line coverage: 19.7%
+  Covered lines: 699
+  Uncovered lines: 2837
+  Coverable lines: 3536
+  Total lines: 5554
+  Branch coverage: 21.9% (142 of 646)
+  Covered branches: 142
+  Total branches: 646
+  Method coverage: 43.2% (116 of 268)
+  Full method coverage: 40.6% (109 of 268)
+  Covered methods: 116
+  Fully covered methods: 109
+  Total methods: 268
+
+EventPulse.IdentityService                                                  19.7%
+  EventPulse.IdentityService.Controllers.AuthController                        0%
+  EventPulse.IdentityService.Controllers.AuthHealthController                  0%
+  EventPulse.IdentityService.Controllers.OrganizerApplicationsController    80.2%
+  EventPulse.IdentityService.Controllers.UsersController                       0%
+  EventPulse.IdentityService.Data.ApplicationDbContext                      98.9%
+  EventPulse.IdentityService.Data.ApplicationDbContextFactory                  0%
+  EventPulse.IdentityService.DTOs.AdminOrganizerApplicationDto               100%
+  EventPulse.IdentityService.DTOs.ApproveOrganizerApplicationRequest         100%
+  EventPulse.IdentityService.DTOs.AuthenticatedUserResponse                  100%
+  EventPulse.IdentityService.DTOs.CompleteProfileRequest                       0%
+  EventPulse.IdentityService.DTOs.CreateOrganizerApplicationRequest          100%
+  EventPulse.IdentityService.DTOs.GoogleLinkRequest                            0%
+  EventPulse.IdentityService.DTOs.GoogleLoginRequest                           0%
+  EventPulse.IdentityService.DTOs.LoginRequest                               100%
+  EventPulse.IdentityService.DTOs.LoginResponse                              100%
+  EventPulse.IdentityService.DTOs.OrganizerApplicationDto                    100%
+  EventPulse.IdentityService.DTOs.RegisterRequest                            100%
+  EventPulse.IdentityService.DTOs.RegisterResponse                           100%
+  EventPulse.IdentityService.DTOs.RejectOrganizerApplicationRequest          100%
+  EventPulse.IdentityService.DTOs.ResendVerificationRequest                    0%
+  EventPulse.IdentityService.DTOs.SetPasswordRequest                           0%
+  EventPulse.IdentityService.DTOs.VerifyEmailRequest                           0%
+  EventPulse.IdentityService.Migrations.AddAspNetIdentityFoundation            0%
+  EventPulse.IdentityService.Migrations.AddOrganizerApplications               0%
+  EventPulse.IdentityService.Migrations.ApplicationDbContextModelSnapshot      0%
+  EventPulse.IdentityService.Models.ApplicationUser                         87.5%
+  EventPulse.IdentityService.Models.EmailVerificationCode                      0%
+  EventPulse.IdentityService.Models.OrganizerApplication                    92.3%
+  EventPulse.IdentityService.Security.AdminBootstrapSettings                   0%
+  EventPulse.IdentityService.Security.DevOrganizerSettings                     0%
+  EventPulse.IdentityService.Security.GoogleSettings                           0%
+  EventPulse.IdentityService.Security.JwtSettings                              0%
+  EventPulse.IdentityService.Security.JwtTokenService                          0%
+  EventPulse.IdentityService.Services.EmailSettings                            0%
+  EventPulse.IdentityService.Services.EmailVerificationService                 0%
+  EventPulse.IdentityService.Services.GoogleAuthResult                         0%
+  EventPulse.IdentityService.Services.GoogleAuthService                        0%
+  EventPulse.IdentityService.Services.IdentityDataSeeder                       0%
+  EventPulse.IdentityService.Services.LoginResult                            100%
+  EventPulse.IdentityService.Services.LoginService                           100%
+  EventPulse.IdentityService.Services.OrganizerApplicationService           78.7%
+  EventPulse.IdentityService.Services.ProfileResult                            0%
+  EventPulse.IdentityService.Services.RegistrationResult                     100%
+  EventPulse.IdentityService.Services.RegistrationService                    100%
+  EventPulse.IdentityService.Services.SetPasswordResult                        0%
+  EventPulse.IdentityService.Services.SetPasswordService                       0%
+  EventPulse.IdentityService.Services.SmtpEmailSender                          0%
+  EventPulse.IdentityService.Services.UserProfileService                       0%
+  EventPulse.IdentityService.Services.VerificationResult                       0%
+  Microsoft.AspNetCore.OpenApi.Generated                                       0%
+  Program                                                                      0%
+  System.Runtime.CompilerServices                                              0%

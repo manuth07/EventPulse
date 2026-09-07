@@ -6,6 +6,8 @@ using Microsoft.IdentityModel.Tokens;
 using EventPulse.EventService;
 using EventPulse.EventService.Configuration;
 using EventPulse.EventService.Data;
+using EventPulse.EventService.Services;
+using EventPulse.EventService.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,9 +78,27 @@ builder.Services.AddAuthorization(options =>
 });
 
 // ---------------------------------------------------------------------------
+// Application Services
+// ---------------------------------------------------------------------------
+builder.Services.AddScoped<IEventSubmissionService, EventSubmissionService>();
+builder.Services.AddScoped<IEventReviewService, EventReviewService>();
+
+// ---------------------------------------------------------------------------
+// Infrastructure — Blob Storage
+// ---------------------------------------------------------------------------
+// Local dev: Azurite connection string in appsettings.Development.json
+// Production: BlobStorage__ConnectionString environment variable
+// ---------------------------------------------------------------------------
+builder.Services.AddSingleton<IEventImageStorage, AzureBlobEventImageStorage>();
+
+// ---------------------------------------------------------------------------
 // API & Infrastructure
 // ---------------------------------------------------------------------------
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 

@@ -17,6 +17,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     }
 
     public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
+    public DbSet<OrganizerApplication> OrganizerApplications => Set<OrganizerApplication>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -69,6 +70,55 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
             // Index to support active-code lookup by user + expiry
             entity.HasIndex(e => new { e.UserId, e.ExpiresAt });
+        });
+
+        // -----------------------------------------------------------------------
+        // OrganizerApplication
+        // -----------------------------------------------------------------------
+        builder.Entity<OrganizerApplication>(entity =>
+        {
+            entity.ToTable("OrganizerApplications");
+            entity.HasKey(a => a.Id);
+
+            entity.Property(a => a.OrganizerName)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(a => a.OrganizerType)
+                .IsRequired()
+                .HasConversion<string>()
+                .HasMaxLength(50);
+
+            entity.Property(a => a.ContactNumber)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(a => a.Description)
+                .IsRequired()
+                .HasMaxLength(2000);
+
+            entity.Property(a => a.Website)
+                .HasMaxLength(500);
+
+            entity.Property(a => a.Status)
+                .IsRequired()
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            entity.Property(a => a.SubmittedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.Property(a => a.ReviewComment)
+                .HasMaxLength(1000);
+
+            entity.HasOne(a => a.User)
+                .WithOne(u => u.OrganizerApplication)
+                .HasForeignKey<OrganizerApplication>(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Exactly one application per user is enforced at DB level
+            entity.HasIndex(a => a.UserId)
+                .IsUnique();
         });
     }
 }

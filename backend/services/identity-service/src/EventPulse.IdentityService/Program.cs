@@ -62,6 +62,7 @@ builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationService>();
 builder.Services.AddScoped<IdentityDataSeeder>();
 
 // ---------------------------------------------------------------------------

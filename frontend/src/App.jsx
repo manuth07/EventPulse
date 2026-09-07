@@ -9,17 +9,20 @@ import { Login } from './pages/Login/Login';
 import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
+import { OrganizerEventDetails } from './pages/OrganizerEventDetails/OrganizerEventDetails';
 import { CreateEvent } from './pages/CreateEvent/CreateEvent';
 import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
 import { PendingEvents } from './pages/PendingEvents/PendingEvents';
 import { RequireRole } from './components/RouteGuards/RouteGuards';
+import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
+import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Routes */}
+          {/* Public / Customer Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/events/:id" element={<EventDetails />} />
           <Route path="/login" element={<Login />} />
@@ -27,10 +30,12 @@ function App() {
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/complete-profile" element={<CompleteProfile />} />
           <Route path="/forbidden" element={<Forbidden />} />
+          <Route path="/list-your-event" element={<ListYourEvent />} />
 
           {/* Organizer Protected Routes */}
           <Route element={<RequireRole allowedRoles="Organizer" />}>
             <Route path="/organizer" element={<OrganizerDashboard />} />
+            <Route path="/organizer/events/:id" element={<OrganizerEventDetails />} />
             <Route path="/events/create" element={<CreateEvent />} />
           </Route>
 
@@ -38,6 +43,7 @@ function App() {
           <Route element={<RequireRole allowedRoles="Administrator" />}>
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/events/pending" element={<PendingEvents />} />
+            <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
           </Route>
 
           {/* Catch-all */}

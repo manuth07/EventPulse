@@ -85,8 +85,8 @@ public class LoginIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, login.StatusCode);
     }
 
-    [Fact(Skip = "Blocked by BUG-07: JWT signing key not configured locally/undocumented. Remove Skip once resolved for all environments.")]
-    public async Task Login_WithValidVerifiedCredentials_ReturnsJwtToken()
+   [Fact]
+    public async Task Login_WithValidVerifiedCredentials_ReturnsJwtToken()  
     {
         var login = await _client.PostAsJsonAsync("/api/auth/login", new
         {
