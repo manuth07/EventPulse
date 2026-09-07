@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search } from 'lucide-react';
-import heroBackground from '../../assets/images/background.webp';
+import heroBackground from '../../assets/images/hero/hero-background.webp';
 
 export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
   const handleSubmit = (e) => {
