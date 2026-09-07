@@ -1,0 +1,6 @@
+@EventPulse.BookingService_HostAddress = http://localhost:5288
+
+GET {{EventPulse.BookingService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

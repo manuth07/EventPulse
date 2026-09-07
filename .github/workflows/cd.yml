@@ -1,0 +1,223 @@
+name: EventPulse CD
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: eventpulse-backend-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 0: Branch Guard (Strictly enforces deployment from refs/heads/main)
+  # ---------------------------------------------------------------------------
+  branch-guard:
+    name: Verify Deployment Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce main branch only
+        run: |
+          echo "Verifying target deployment ref: ${{ github.ref }}"
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Deployment rejected! EventPulse Azure CD can only be deployed from 'refs/heads/main'. Triggered ref was '${{ github.ref }}'."
+            exit 1
+          fi
+          echo "Branch verification successful. Target ref is 'refs/heads/main'."
+
+  # ---------------------------------------------------------------------------
+  # Job 1: Validate Backend Build and Tests
+  # ---------------------------------------------------------------------------
+  validate:
+    name: Validate Backend
+    needs: branch-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore backend/EventPulse.Backend.sln
+
+      - name: Build backend solution
+        run: dotnet build backend/EventPulse.Backend.sln --configuration Release --no-restore
+
+      - name: Run backend tests
+        run: dotnet test backend/EventPulse.Backend.sln --configuration Release --no-build --verbosity normal
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Deploy Core Microservices in Parallel (Identity, Event, Booking, Payment)
+  # ---------------------------------------------------------------------------
+  deploy-core-services:
+    name: Deploy ${{ matrix.service }}
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - service: identity
+            app-name: ${{ vars.AZURE_IDENTITY_APP_NAME }}
+            project-path: backend/services/identity-service/src/EventPulse.IdentityService/EventPulse.IdentityService.csproj
+            output-dir: publish/identity-service
+          - service: event
+            app-name: ${{ vars.AZURE_EVENT_APP_NAME }}
+            project-path: backend/services/event-service/src/EventPulse.EventService/EventPulse.EventService.csproj
+            output-dir: publish/event-service
+          - service: booking
+            app-name: ${{ vars.AZURE_BOOKING_APP_NAME }}
+            project-path: backend/services/booking-service/src/EventPulse.BookingService/EventPulse.BookingService.csproj
+            output-dir: publish/booking-service
+          - service: payment
+            app-name: ${{ vars.AZURE_PAYMENT_APP_NAME }}
+            project-path: backend/services/payment-service/src/EventPulse.PaymentService/EventPulse.PaymentService.csproj
+            output-dir: publish/payment-service
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish ${{ matrix.service }}
+        run: dotnet publish ${{ matrix.project-path }} --configuration Release --output ${{ matrix.output-dir }}
+
+      - name: Azure OIDC Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy ${{ matrix.service }} to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ matrix.app-name }}
+          package: ${{ matrix.output-dir }}
+
+      - name: Verify ${{ matrix.service }} health
+        run: |
+          echo "Resolving default hostname for App Service: ${{ matrix.app-name }}..."
+          HOSTNAME=$(az webapp show \
+            --resource-group "${{ vars.AZURE_RG_NAME }}" \
+            --name "${{ matrix.app-name }}" \
+            --query defaultHostName \
+            --output tsv)
+
+          if [ -z "$HOSTNAME" ]; then
+            echo "::error::Could not resolve defaultHostName for ${{ matrix.app-name }}"
+            exit 1
+          fi
+
+          HEALTH_URL="https://${HOSTNAME}/health"
+          echo "Performing health check for ${{ matrix.service }} at: ${HEALTH_URL}"
+
+          MAX_RETRIES=30
+          RETRY_INTERVAL=6
+          SUCCESS=0
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i/$MAX_RETRIES: Checking ${HEALTH_URL}..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${HEALTH_URL}" || echo "000")
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "Success! ${{ matrix.service }} health check passed with HTTP ${HTTP_STATUS}."
+              SUCCESS=1
+              break
+            fi
+
+            echo "Received HTTP status ${HTTP_STATUS}. Retrying in ${RETRY_INTERVAL}s..."
+            sleep $RETRY_INTERVAL
+          done
+
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "::error::Health check failed for ${{ matrix.service }} at ${HEALTH_URL} after $((MAX_RETRIES * RETRY_INTERVAL))s."
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Deploy Gateway (After All Core Services Are Healthy)
+  # ---------------------------------------------------------------------------
+  deploy-gateway:
+    name: Deploy gateway
+    needs: [validate, deploy-core-services]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish Gateway
+        run: dotnet publish backend/gateway/src/EventPulse.Gateway/EventPulse.Gateway.csproj --configuration Release --output publish/gateway
+
+      - name: Azure OIDC Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Gateway to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_GATEWAY_APP_NAME }}
+          package: publish/gateway
+
+      - name: Verify Gateway health
+        run: |
+          echo "Resolving default hostname for Gateway App Service: ${{ vars.AZURE_GATEWAY_APP_NAME }}..."
+          HOSTNAME=$(az webapp show \
+            --resource-group "${{ vars.AZURE_RG_NAME }}" \
+            --name "${{ vars.AZURE_GATEWAY_APP_NAME }}" \
+            --query defaultHostName \
+            --output tsv)
+
+          if [ -z "$HOSTNAME" ]; then
+            echo "::error::Could not resolve defaultHostName for ${{ vars.AZURE_GATEWAY_APP_NAME }}"
+            exit 1
+          fi
+
+          HEALTH_URL="https://${HOSTNAME}/health"
+          echo "Performing health check for Gateway at: ${HEALTH_URL}"
+
+          MAX_RETRIES=30
+          RETRY_INTERVAL=6
+          SUCCESS=0
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i/$MAX_RETRIES: Checking ${HEALTH_URL}..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${HEALTH_URL}" || echo "000")
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "Success! Gateway health check passed with HTTP ${HTTP_STATUS}."
+              SUCCESS=1
+              break
+            fi
+
+            echo "Received HTTP status ${HTTP_STATUS}. Retrying in ${RETRY_INTERVAL}s..."
+            sleep $RETRY_INTERVAL
+          done
+
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "::error::Health check failed for Gateway at ${HEALTH_URL} after $((MAX_RETRIES * RETRY_INTERVAL))s."
+            exit 1
+          fi

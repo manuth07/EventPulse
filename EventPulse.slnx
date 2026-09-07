@@ -1,0 +1,43 @@
+<Solution>
+  <Folder Name="/backend/" />
+  <Folder Name="/backend/gateway/" />
+  <Folder Name="/backend/gateway/src/">
+    <Project Path="backend/gateway/src/EventPulse.Gateway/EventPulse.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/" />
+  <Folder Name="/backend/services/booking-service/" />
+  <Folder Name="/backend/services/booking-service/src/">
+    <Project Path="backend/services/booking-service/src/EventPulse.BookingService/EventPulse.BookingService.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/booking-service/tests/">
+    <Project Path="backend/services/booking-service/tests/EventPulse.BookingService.Tests/EventPulse.BookingService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/event-service/" />
+  <Folder Name="/backend/services/event-service/src/">
+    <Project Path="backend/services/event-service/src/EventPulse.EventService/EventPulse.EventService.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/event-service/tests/">
+    <Project Path="backend/services/event-service/tests/EventPulse.EventService.Tests/EventPulse.EventService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/identity-service/" />
+  <Folder Name="/backend/services/identity-service/src/">
+    <Project Path="backend/services/identity-service/src/EventPulse.IdentityService/EventPulse.IdentityService.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/identity-service/tests/">
+    <Project Path="backend/services/identity-service/tests/EventPulse.IdentityService.Tests/EventPulse.IdentityService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/payment-service/" />
+  <Folder Name="/backend/services/payment-service/src/">
+    <Project Path="backend/services/payment-service/src/EventPulse.PaymentService/EventPulse.PaymentService.csproj" />
+  </Folder>
+  <Folder Name="/backend/services/payment-service/tests/">
+    <Project Path="backend/services/payment-service/tests/EventPulse.PaymentService.Tests/EventPulse.PaymentService.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/e2e-selenium/">
+    <Project Path="tests/e2e-selenium/EventPulse.E2E.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/integration/">
+    <Project Path="tests/integration/EventPulse.Integration.Tests/EventPulse.Integration.Tests.csproj" />
+  </Folder>
+</Solution>
