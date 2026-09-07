@@ -110,6 +110,7 @@ if (app.Environment.IsDevelopment())
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<EventDbContext>();
+        await dbContext.Database.MigrateAsync();
         await EventDbSeeder.SeedAsync(dbContext);
     }
 }

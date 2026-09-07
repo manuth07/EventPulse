@@ -8,6 +8,8 @@ public class EventDetailsDto
     public string Venue { get; set; } = string.Empty;
     public DateTime EventDate { get; set; }
     public decimal Price { get; set; }
+    public string? Category { get; set; }
+    public string? VenueType { get; set; }
     public Guid OrganizerId { get; set; }
     public string? ImageUrl { get; set; }
     public string? CoverUrl { get; set; }

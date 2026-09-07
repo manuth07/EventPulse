@@ -28,6 +28,12 @@ public class CreateEventRequest
     [Range(0, 1_000_000)]
     public decimal Price { get; set; }
 
+    [StringLength(100)]
+    public string? Category { get; set; }
+
+    [StringLength(50)]
+    public string? VenueType { get; set; }
+
     /// <summary>
     /// Event poster image (portrait, ~4:5 ratio). Required for new submissions.
     /// Accepted: JPEG, PNG, WebP. Maximum: 5 MB.

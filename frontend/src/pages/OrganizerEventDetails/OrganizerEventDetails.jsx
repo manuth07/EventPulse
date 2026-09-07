@@ -94,6 +94,18 @@ const STATUS_CONFIG = {
   },
 };
 
+const EVENT_CATEGORIES = [
+  'Musical Concert',
+  'Conference',
+  'Workshop',
+  'Festival',
+  'Sports',
+  'Theatre / Performance',
+  'Other',
+];
+
+const VENUE_TYPES = ['Indoor', 'Outdoor'];
+
 export function OrganizerEventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -107,6 +119,8 @@ export function OrganizerEventDetails() {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState(EVENT_CATEGORIES[0]);
+  const [venueType, setVenueType] = useState('Indoor');
   const [venue, setVenue] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [price, setPrice] = useState('0');
@@ -146,6 +160,8 @@ export function OrganizerEventDetails() {
       setEvent(data);
       setTitle(data.title || '');
       setDescription(data.description || '');
+      setCategory(data.category || EVENT_CATEGORIES[0]);
+      setVenueType(data.venueType || 'Indoor');
       setVenue(data.venue || '');
       setEventDate(toLocalDatetimeInput(data.eventDate));
       setPrice(String(data.price != null ? Number(data.price) : '0'));
@@ -166,6 +182,8 @@ export function OrganizerEventDetails() {
     if (!event || event.status !== 'Rejected') return;
     setTitle(event.title || '');
     setDescription(event.description || '');
+    setCategory(event.category || EVENT_CATEGORIES[0]);
+    setVenueType(event.venueType || 'Indoor');
     setVenue(event.venue || '');
     setEventDate(toLocalDatetimeInput(event.eventDate));
     setPrice(String(event.price != null ? Number(event.price) : '0'));
@@ -180,6 +198,8 @@ export function OrganizerEventDetails() {
   const handleCancelEdit = () => {
     setIsEditing(false);
     setFormError(null);
+    setCategory(event?.category || EVENT_CATEGORIES[0]);
+    setVenueType(event?.venueType || 'Indoor');
     setImageFile(null);
     setImagePreview(event?.imageUrl || null);
     setCoverFile(null);
@@ -236,6 +256,14 @@ export function OrganizerEventDetails() {
       setFormError('Description is required.');
       return;
     }
+    if (!category) {
+      setFormError('Category is required.');
+      return;
+    }
+    if (!venueType) {
+      setFormError('Venue type is required.');
+      return;
+    }
     if (!venue.trim()) {
       setFormError('Venue is required.');
       return;
@@ -261,6 +289,8 @@ export function OrganizerEventDetails() {
       const formData = new FormData();
       formData.append('title', title.trim());
       formData.append('description', description.trim());
+      formData.append('category', category);
+      formData.append('venueType', venueType);
       formData.append('venue', venue.trim());
       formData.append('eventDate', new Date(eventDate).toISOString());
       formData.append('price', String(parsedPrice));
@@ -612,6 +642,65 @@ export function OrganizerEventDetails() {
                     />
                   </div>
 
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                        Event Category *
+                      </label>
+                      <select
+                        required
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          fontSize: '14px',
+                          borderRadius: 'var(--ep-radius-btn)',
+                          border: '1px solid var(--ep-border)',
+                          backgroundColor: '#ffffff',
+                          boxSizing: 'border-box',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {EVENT_CATEGORIES.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                        Venue Type *
+                      </label>
+                      <select
+                        required
+                        value={venueType}
+                        onChange={(e) => setVenueType(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          fontSize: '14px',
+                          borderRadius: 'var(--ep-radius-btn)',
+                          border: '1px solid var(--ep-border)',
+                          backgroundColor: '#ffffff',
+                          boxSizing: 'border-box',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {VENUE_TYPES.map((vt) => (
+                          <option key={vt} value={vt}>
+                            {vt}
+                          </option>
+                        ))}
+                      </select>
+                      <p style={{ fontSize: '11px', color: 'var(--ep-text-secondary)', margin: '4px 0 0 0' }}>
+                        Select whether the event venue is primarily indoors or outdoors.
+                      </p>
+                    </div>
+                  </div>
+
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
                       Venue Location *
@@ -949,6 +1038,28 @@ export function OrganizerEventDetails() {
 
                   {/* Information on Right */}
                   <div style={{ flex: 1, minWidth: '280px' }}>
+                    {(event.category || event.venueType) && (
+                      <div style={{ marginBottom: '10px' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          backgroundColor: '#FFF0E6',
+                          color: '#1D1D1F',
+                          border: '1px solid rgba(255, 91, 0, 0.18)',
+                          borderRadius: 'var(--ep-radius-pill, 9999px)',
+                          padding: '4px 12px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          letterSpacing: '-0.01em',
+                        }}>
+                          {event.venueType && event.category
+                            ? `${event.venueType} • ${event.category}`
+                            : (event.category || event.venueType)}
+                        </span>
+                      </div>
+                    )}
+
                     <h1 style={{
                       fontSize: '24px',
                       fontWeight: 700,

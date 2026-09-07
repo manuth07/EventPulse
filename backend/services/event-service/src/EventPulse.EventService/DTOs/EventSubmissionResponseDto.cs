@@ -13,6 +13,8 @@ public class EventSubmissionResponseDto
     public string Venue { get; set; } = string.Empty;
     public DateTime EventDate { get; set; }
     public decimal Price { get; set; }
+    public string? Category { get; set; }
+    public string? VenueType { get; set; }
     public string Status { get; set; } = string.Empty;
     public Guid OrganizerId { get; set; }
     public DateTime CreatedAt { get; set; }

@@ -205,6 +205,28 @@ export function EventDetails() {
                   padding: '32px',
                   boxShadow: 'var(--ep-shadow-card)'
                 }}>
+                  {(event.category || event.venueType) && (
+                    <div style={{ marginBottom: '14px' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: '#FFF0E6',
+                        color: '#1D1D1F',
+                        border: '1px solid rgba(255, 91, 0, 0.18)',
+                        borderRadius: 'var(--ep-radius-pill, 9999px)',
+                        padding: '4px 14px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        letterSpacing: '-0.01em',
+                      }}>
+                        {event.venueType && event.category
+                          ? `${event.venueType} • ${event.category}`
+                          : (event.category || event.venueType)}
+                      </span>
+                    </div>
+                  )}
+
                   <h1 className="ep-h1 mb-4" style={{ fontSize: '32px' }}>
                     {event.title}
                   </h1>

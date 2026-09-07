@@ -28,6 +28,12 @@ public class ResubmitEventRequest
     [Range(0, 1_000_000)]
     public decimal Price { get; set; }
 
+    [StringLength(100)]
+    public string? Category { get; set; }
+
+    [StringLength(50)]
+    public string? VenueType { get; set; }
+
     /// <summary>
     /// Optional replacement event poster image.
     /// If omitted, the existing poster is preserved.

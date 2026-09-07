@@ -533,6 +533,26 @@ export function PendingEvents() {
                           </span>
                         </div>
 
+                        {(item.category || item.venueType) && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              backgroundColor: '#FFF0E6',
+                              color: '#1D1D1F',
+                              border: '1px solid rgba(255, 91, 0, 0.18)',
+                              borderRadius: 'var(--ep-radius-pill, 9999px)',
+                              padding: '3px 10px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                            }}>
+                              {item.venueType && item.category
+                                ? `${item.venueType} • ${item.category}`
+                                : (item.category || item.venueType)}
+                            </span>
+                          </div>
+                        )}
+
                         <div style={{
                           display: 'flex',
                           flexDirection: 'column',
@@ -854,6 +874,26 @@ export function PendingEvents() {
                     {selectedEvent.status?.toUpperCase() || 'PENDING'}
                   </span>
                 </div>
+
+                {(selectedEvent.category || selectedEvent.venueType) && (
+                  <div style={{ marginTop: '8px' }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      backgroundColor: '#FFF0E6',
+                      color: '#1D1D1F',
+                      border: '1px solid rgba(255, 91, 0, 0.18)',
+                      borderRadius: 'var(--ep-radius-pill, 9999px)',
+                      padding: '3px 10px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                    }}>
+                      {selectedEvent.venueType && selectedEvent.category
+                        ? `${selectedEvent.venueType} • ${selectedEvent.category}`
+                        : (selectedEvent.category || selectedEvent.venueType)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Metadata Grid */}
@@ -878,6 +918,20 @@ export function PendingEvents() {
                   <div style={{ color: 'var(--ep-text-secondary)', marginBottom: '2px', fontSize: '12px' }}>Venue</div>
                   <div style={{ fontWeight: 600, color: 'var(--ep-text-primary)' }}>
                     {selectedEvent.venue || 'TBA'}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ color: 'var(--ep-text-secondary)', marginBottom: '2px', fontSize: '12px' }}>Category</div>
+                  <div style={{ fontWeight: 600, color: 'var(--ep-text-primary)' }}>
+                    {selectedEvent.category || 'Not specified'}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ color: 'var(--ep-text-secondary)', marginBottom: '2px', fontSize: '12px' }}>Venue Type</div>
+                  <div style={{ fontWeight: 600, color: 'var(--ep-text-primary)' }}>
+                    {selectedEvent.venueType || 'Not specified'}
                   </div>
                 </div>
 
