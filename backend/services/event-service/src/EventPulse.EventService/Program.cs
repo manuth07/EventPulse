@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using EventPulse.EventService;
+using EventPulse.EventService.Configuration;
 using EventPulse.EventService.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -86,11 +87,36 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+}
 
-    using (var scope = app.Services.CreateScope())
+// ---------------------------------------------------------------------------
+// Database Migration & Seeding on Startup
+// ---------------------------------------------------------------------------
+var dbSettings = app.Configuration
+    .GetSection(DatabaseSettings.SectionName)
+    .Get<DatabaseSettings>() ?? new DatabaseSettings();
+
+if (dbSettings.MigrateOnStartup || dbSettings.SeedOnStartup)
+{
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<EventDbContext>();
+
+    if (dbSettings.MigrateOnStartup)
     {
+<<<<<<< Updated upstream
         var dbContext = scope.ServiceProvider.GetRequiredService<EventDbContext>();
+=======
+        app.Logger.LogInformation("Executing EF Core database migrations (Database:MigrateOnStartup = true)...");
+        await dbContext.Database.MigrateAsync();
+        app.Logger.LogInformation("Database migrations applied successfully.");
+    }
+
+    if (dbSettings.SeedOnStartup)
+    {
+        app.Logger.LogInformation("Executing database seeding (Database:SeedOnStartup = true)...");
+>>>>>>> Stashed changes
         await EventDbSeeder.SeedAsync(dbContext);
+        app.Logger.LogInformation("Database seeding completed successfully.");
     }
 }
 
