@@ -1,7 +1,7 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000';
+import { API_BASE_URL, getApiBaseUrl } from './apiConfig';
 
 export async function fetchPublishedEvents() {
-  const response = await fetch(`${API_BASE_URL}/api/events`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -17,7 +17,7 @@ export async function fetchPublishedEvents() {
 }
 
 export async function fetchEventById(id) {
-  const response = await fetch(`${API_BASE_URL}/api/events/${id}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -41,7 +41,7 @@ export async function fetchEventById(id) {
 }
 
 export async function submitEvent(formData, token) {
-  const response = await fetch(`${API_BASE_URL}/api/events`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`
@@ -72,7 +72,7 @@ export async function submitEvent(formData, token) {
 }
 
 export async function getMySubmissions(token) {
-  const response = await fetch(`${API_BASE_URL}/api/events/my-submissions`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/my-submissions`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -99,7 +99,7 @@ export async function getMySubmissions(token) {
 }
 
 export async function getPendingEvents(token) {
-  const response = await fetch(`${API_BASE_URL}/api/events/admin/pending`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/pending`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -126,7 +126,7 @@ export async function getPendingEvents(token) {
 }
 
 export async function getPendingEventById(id, token) {
-  const response = await fetch(`${API_BASE_URL}/api/events/admin/pending/${id}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/pending/${id}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -159,7 +159,7 @@ export async function getPendingEventById(id, token) {
 }
 
 export async function approveEvent(id, token) {
-  const response = await fetch(`${API_BASE_URL}/api/events/${id}/approve`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/approve`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -188,7 +188,7 @@ export async function approveEvent(id, token) {
 }
 
 export async function rejectEvent(id, token, notes = '') {
-  const response = await fetch(`${API_BASE_URL}/api/events/${id}/reject`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/reject`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -217,7 +217,7 @@ export async function rejectEvent(id, token, notes = '') {
 }
 
 export async function getMySubmission(id, token) {
-  const response = await fetch(`${API_BASE_URL}/api/events/my-submissions/${id}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/my-submissions/${id}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -250,7 +250,7 @@ export async function getMySubmission(id, token) {
 }
 
 export async function resubmitEvent(id, formData, token) {
-  const response = await fetch(`${API_BASE_URL}/api/events/${id}/resubmit`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/resubmit`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,

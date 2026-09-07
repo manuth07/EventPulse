@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000';
+import { API_BASE_URL, getApiBaseUrl } from './apiConfig';
 
 /**
  * Register a new customer account via the API Gateway.
@@ -7,7 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000
  * @throws Error with .status and .errors properties on failure
  */
 export async function registerCustomer(data) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify(data),
@@ -42,7 +42,7 @@ export async function registerCustomer(data) {
  * @returns {Promise<{accessToken, tokenType, expiresIn, user}>}
  */
 export async function login(credentials) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify(credentials),
@@ -88,7 +88,7 @@ export async function login(credentials) {
  * @returns {Promise<{accessToken, tokenType, expiresIn, user}>}
  */
 export async function googleLogin(credential) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify({ credential }),
@@ -112,7 +112,7 @@ export async function googleLogin(credential) {
  * @returns {Promise<{accessToken, tokenType, expiresIn, user}>}
  */
 export async function googleLinkExisting(data) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/google/link-existing`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/google/link-existing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify(data),
@@ -137,7 +137,7 @@ export async function googleLinkExisting(data) {
  * @returns {Promise<Object>}
  */
 export async function completeProfile(data, accessToken) {
-  const response = await fetch(`${API_BASE_URL}/api/users/me/profile`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/users/me/profile`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -166,7 +166,7 @@ export async function completeProfile(data, accessToken) {
  * @returns {Promise<Object>}
  */
 export async function verifyEmail(email, code) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/verify-email`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/verify-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify({ email, code }),
@@ -195,7 +195,7 @@ export async function verifyEmail(email, code) {
  * @returns {Promise<Object>}
  */
 export async function resendVerification(email) {
-  const response = await fetch(`${API_BASE_URL}/api/auth/resend-verification`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/resend-verification`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify({ email }),
