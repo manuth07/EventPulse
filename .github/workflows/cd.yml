@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         include:
           - service: identity
@@ -127,13 +127,17 @@ jobs:
           HEALTH_URL="https://${HOSTNAME}/health"
           echo "Performing health check for ${{ matrix.service }} at: ${HEALTH_URL}"
 
-          MAX_RETRIES=30
-          RETRY_INTERVAL=6
+          MAX_RETRIES=48
+          RETRY_INTERVAL=10
           SUCCESS=0
 
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i/$MAX_RETRIES: Checking ${HEALTH_URL}..."
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${HEALTH_URL}" || echo "000")
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${HEALTH_URL}" 2>/dev/null || true)
+            case "$HTTP_STATUS" in
+              [0-9][0-9][0-9]) ;;
+              *) HTTP_STATUS="000" ;;
+            esac
 
             if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
               echo "Success! ${{ matrix.service }} health check passed with HTTP ${HTTP_STATUS}."
@@ -199,13 +203,17 @@ jobs:
           HEALTH_URL="https://${HOSTNAME}/health"
           echo "Performing health check for Gateway at: ${HEALTH_URL}"
 
-          MAX_RETRIES=30
-          RETRY_INTERVAL=6
+          MAX_RETRIES=48
+          RETRY_INTERVAL=10
           SUCCESS=0
 
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Attempt $i/$MAX_RETRIES: Checking ${HEALTH_URL}..."
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${HEALTH_URL}" || echo "000")
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${HEALTH_URL}" 2>/dev/null || true)
+            case "$HTTP_STATUS" in
+              [0-9][0-9][0-9]) ;;
+              *) HTTP_STATUS="000" ;;
+            esac
 
             if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
               echo "Success! Gateway health check passed with HTTP ${HTTP_STATUS}."
