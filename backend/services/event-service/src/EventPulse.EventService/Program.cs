@@ -103,9 +103,6 @@ if (dbSettings.MigrateOnStartup || dbSettings.SeedOnStartup)
 
     if (dbSettings.MigrateOnStartup)
     {
-<<<<<<< Updated upstream
-        var dbContext = scope.ServiceProvider.GetRequiredService<EventDbContext>();
-=======
         app.Logger.LogInformation("Executing EF Core database migrations (Database:MigrateOnStartup = true)...");
         await dbContext.Database.MigrateAsync();
         app.Logger.LogInformation("Database migrations applied successfully.");
@@ -114,7 +111,6 @@ if (dbSettings.MigrateOnStartup || dbSettings.SeedOnStartup)
     if (dbSettings.SeedOnStartup)
     {
         app.Logger.LogInformation("Executing database seeding (Database:SeedOnStartup = true)...");
->>>>>>> Stashed changes
         await EventDbSeeder.SeedAsync(dbContext);
         app.Logger.LogInformation("Database seeding completed successfully.");
     }
@@ -129,4 +125,3 @@ app.MapHealthChecks("/health");
 app.MapControllers();
 
 app.Run();
-
