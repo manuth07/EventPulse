@@ -28,13 +28,11 @@ public class CreateEventRequest
     [Range(0, 1_000_000)]
     public decimal Price { get; set; }
 
-    [Required(ErrorMessage = "Category is required.")]
     [StringLength(100)]
-    public string Category { get; set; } = string.Empty;
+    public string? Category { get; set; }
 
-    [Required(ErrorMessage = "VenueType is required.")]
     [StringLength(50)]
-    public string VenueType { get; set; } = string.Empty;
+    public string? VenueType { get; set; }
 
     /// <summary>
     /// Event poster image (portrait, ~4:5 ratio). Required for new submissions.

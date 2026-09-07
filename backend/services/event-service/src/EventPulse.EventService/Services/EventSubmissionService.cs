@@ -88,20 +88,23 @@ public class EventSubmissionService : IEventSubmissionService
         if (request.Price != decimal.Truncate(request.Price))
             return (null, "Ticket price must be entered in whole LKR.");
 
-        if (string.IsNullOrWhiteSpace(request.Category))
-            return (null, "Category is required.");
+        string? canonicalCategory = null;
+        if (!string.IsNullOrWhiteSpace(request.Category))
+        {
+            if (!AllowedCategories.Contains(request.Category.Trim()))
+                return (null, $"Unsupported event category '{request.Category}'.");
 
-        if (!AllowedCategories.Contains(request.Category.Trim()))
-            return (null, $"Unsupported event category '{request.Category}'.");
+            canonicalCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
 
-        if (string.IsNullOrWhiteSpace(request.VenueType))
-            return (null, "Venue type is required.");
+        string? canonicalVenueType = null;
+        if (!string.IsNullOrWhiteSpace(request.VenueType))
+        {
+            if (!AllowedVenueTypes.Contains(request.VenueType.Trim()))
+                return (null, $"Unsupported venue type '{request.VenueType}'. Supported values: Indoor, Outdoor.");
 
-        if (!AllowedVenueTypes.Contains(request.VenueType.Trim()))
-            return (null, $"Unsupported venue type '{request.VenueType}'. Supported values: Indoor, Outdoor.");
-
-        var canonicalCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
-        var canonicalVenueType = AllowedVenueTypes.First(v => string.Equals(v, request.VenueType.Trim(), StringComparison.OrdinalIgnoreCase));
+            canonicalVenueType = AllowedVenueTypes.First(v => string.Equals(v, request.VenueType.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
 
         // ---- Poster Validation -----------------------------------------------
         if (request.Image is null || request.Image.Length == 0)
@@ -349,20 +352,23 @@ public class EventSubmissionService : IEventSubmissionService
         if (request.Price != decimal.Truncate(request.Price))
             return (null, "Ticket price must be entered in whole LKR.", false, false, false);
 
-        if (string.IsNullOrWhiteSpace(request.Category))
-            return (null, "Category is required.", false, false, false);
+        var canonicalResubmitCategory = eventItem.Category;
+        if (!string.IsNullOrWhiteSpace(request.Category))
+        {
+            if (!AllowedCategories.Contains(request.Category.Trim()))
+                return (null, $"Unsupported event category '{request.Category}'.", false, false, false);
 
-        if (!AllowedCategories.Contains(request.Category.Trim()))
-            return (null, $"Unsupported event category '{request.Category}'.", false, false, false);
+            canonicalResubmitCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
 
-        if (string.IsNullOrWhiteSpace(request.VenueType))
-            return (null, "Venue type is required.", false, false, false);
+        var canonicalResubmitVenueType = eventItem.VenueType;
+        if (!string.IsNullOrWhiteSpace(request.VenueType))
+        {
+            if (!AllowedVenueTypes.Contains(request.VenueType.Trim()))
+                return (null, $"Unsupported venue type '{request.VenueType}'. Supported values: Indoor, Outdoor.", false, false, false);
 
-        if (!AllowedVenueTypes.Contains(request.VenueType.Trim()))
-            return (null, $"Unsupported venue type '{request.VenueType}'. Supported values: Indoor, Outdoor.", false, false, false);
-
-        var canonicalResubmitCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
-        var canonicalResubmitVenueType = AllowedVenueTypes.First(v => string.Equals(v, request.VenueType.Trim(), StringComparison.OrdinalIgnoreCase));
+            canonicalResubmitVenueType = AllowedVenueTypes.First(v => string.Equals(v, request.VenueType.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
 
         string? oldImageBlobName = null;
         string? newImageBlobName = null;
