@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || 'http://localhost:7000';
+import { API_BASE_URL, getApiBaseUrl } from './apiConfig';
 
 /**
  * Retrieves the current authenticated user's organizer application.
@@ -17,7 +17,7 @@ export async function getMyOrganizerApplication(token) {
     throw err;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/organizer-applications/me`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/organizer-applications/me`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -70,7 +70,7 @@ export async function submitOrganizerApplication(payload, token) {
     throw err;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/organizer-applications`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/organizer-applications`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -136,7 +136,7 @@ export async function resubmitOrganizerApplication(payload, token) {
     throw err;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/organizer-applications/me/resubmit`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/organizer-applications/me/resubmit`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -203,7 +203,7 @@ export async function getAdminOrganizerApplications(status, token) {
   }
 
   const query = status ? `?status=${encodeURIComponent(status)}` : '';
-  const response = await fetch(`${API_BASE_URL}/api/admin/organizer-applications${query}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/admin/organizer-applications${query}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -251,7 +251,7 @@ export async function getAdminOrganizerApplicationById(id, token) {
     throw err;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/admin/organizer-applications/${id}`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/admin/organizer-applications/${id}`, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -292,7 +292,7 @@ export async function approveOrganizerApplication(id, payload, token) {
     throw err;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/admin/organizer-applications/${id}/approve`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/admin/organizer-applications/${id}/approve`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -329,7 +329,7 @@ export async function rejectOrganizerApplication(id, payload, token) {
     throw err;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/admin/organizer-applications/${id}/reject`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/admin/organizer-applications/${id}/reject`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
