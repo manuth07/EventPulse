@@ -99,35 +99,50 @@ export function TicketTypesPanel({ eventId, accessToken }) {
               {formError}
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
-            <input
-              type="text"
-              placeholder="e.g. VIP, General Admission"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="ep-input"
-              style={{ fontSize: '13px' }}
-            />
-            <input
-              type="number"
-              min="0"
-              step="1"
-              placeholder="Price (LKR)"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              className="ep-input"
-              style={{ fontSize: '13px' }}
-            />
-            <input
-              type="number"
-              min="1"
-              step="1"
-              placeholder="Capacity"
-              value={capacity}
-              onChange={(e) => setCapacity(e.target.value)}
-              className="ep-input"
-              style={{ fontSize: '13px' }}
-            />
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
+                Ticket Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. VIP, General Admission"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="ep-input"
+                style={{ fontSize: '13px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
+                Price (LKR)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                className="ep-input"
+                style={{ fontSize: '13px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
+                Capacity
+              </label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                placeholder="e.g. 50"
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value)}
+                className="ep-input"
+                style={{ fontSize: '13px' }}
+              />
+            </div>
           </div>
           <button type="submit" disabled={submitting} className="ep-btn-primary" style={{ alignSelf: 'flex-start', fontSize: '13px', padding: '8px 18px' }}>
             {submitting ? 'Saving…' : 'Save Ticket Type'}
