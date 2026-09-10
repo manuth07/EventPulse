@@ -10,6 +10,7 @@ public class EventDbContext : DbContext
     }
 
     public DbSet<Event> Events => Set<Event>();
+    public DbSet<TicketType> TicketTypes => Set<TicketType>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +68,30 @@ public class EventDbContext : DbContext
             entity.Property(e => e.VenueType)
                 .HasMaxLength(50)
                 .IsRequired(false);
+        });
+
+                modelBuilder.Entity<TicketType>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+
+            entity.Property(t => t.Name)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(t => t.Price)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.Property(t => t.Capacity)
+                .IsRequired();
+
+            entity.Property(t => t.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(t => t.Event)
+                .WithMany(e => e.TicketTypes)
+                .HasForeignKey(t => t.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

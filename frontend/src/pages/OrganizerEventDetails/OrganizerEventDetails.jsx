@@ -4,6 +4,8 @@ import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getMySubmission, resubmitEvent } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
+import { TicketTypesPanel } from '../../components/TicketTypes/TicketTypesPanel';
+
 import {
   Calendar,
   MapPin,
@@ -1126,6 +1128,11 @@ export function OrganizerEventDetails() {
                         <span>• Reviewed on {formatDate(event.reviewedAt)}</span>
                       )}
                     </div>
+
+                    {/* Ticket Types — only for events eligible to sell tickets */}
+                    {(event.status === 'Approved' || event.status === 'Published') && (
+                      <TicketTypesPanel eventId={event.id} accessToken={accessToken} />
+                    )}
                   </div>
                 </div>
               </div>

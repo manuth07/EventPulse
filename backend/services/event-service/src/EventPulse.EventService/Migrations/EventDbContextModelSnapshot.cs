@@ -91,6 +91,54 @@ namespace EventPulse.EventService.Migrations
 
                     b.ToTable("Events");
                 });
+
+            modelBuilder.Entity("EventPulse.EventService.Models.TicketType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("TicketTypes");
+                });
+
+            modelBuilder.Entity("EventPulse.EventService.Models.TicketType", b =>
+                {
+                    b.HasOne("EventPulse.EventService.Models.Event", "Event")
+                        .WithMany("TicketTypes")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("EventPulse.EventService.Models.Event", b =>
+                {
+                    b.Navigation("TicketTypes");
+                });
 #pragma warning restore 612, 618
         }
     }
