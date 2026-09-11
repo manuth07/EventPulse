@@ -6,7 +6,7 @@ using EventPulse.EventService.Models;
 namespace EventPulse.EventService.Services;
 
 /// <summary>
-/// Implements US-19 — Create Ticket Types.
+/// Implements US-19 — Create Ticket Types and US-20 — Update Ticket Types.
 /// Eligibility rule: an event must be owned by the requesting organizer and in
 /// Approved or Published status. Pending/Rejected events cannot have ticket types.
 /// </summary>
@@ -120,6 +120,71 @@ public class TicketTypeService : ITicketTypeService
             .ToListAsync(cancellationToken);
 
         return (ticketTypes.Select(MapToDto).ToList(), false, false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(TicketTypeDto? Result, string? Error, bool IsNotFound, bool IsForbidden)> UpdateAsync(
+        Guid eventId,
+        Guid ticketTypeId,
+        UpdateTicketTypeRequest request,
+        Guid organizerId,
+        CancellationToken cancellationToken = default)
+    {
+        // Load the ticket type together with its parent event so we can verify
+        // ownership without a second round trip, and so the EventId relationship
+        // is never touched during this update.
+        var ticketType = await _context.TicketTypes
+            .Include(t => t.Event)
+            .FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, cancellationToken);
+
+        if (ticketType == null || ticketType.Event == null)
+        {
+            return (null, "Ticket type not found.", true, false);
+        }
+
+        if (ticketType.Event.OrganizerId != organizerId)
+        {
+            _logger?.LogWarning(
+                "UpdateTicketType forbidden: TicketType {TicketTypeId} belongs to Event owned by {ActualOrganizer}, request by {RequesterId}",
+                ticketTypeId, ticketType.Event.OrganizerId, organizerId);
+            return (null, "You do not have permission to update this ticket type.", false, true);
+        }
+
+        // ---- Domain Validation ------------------------------------------------
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return (null, "Ticket type name is required.", false, false);
+
+        if (request.Price < 0)
+            return (null, "Price must be 0 or greater.", false, false);
+
+        if (request.Price != decimal.Truncate(request.Price))
+            return (null, "Ticket price must be entered in whole LKR.", false, false);
+
+        if (request.Capacity < 1)
+            return (null, "Capacity must be at least 1.", false, false);
+
+        // ---- Apply Update -------------------------------------------------
+        // Note: Id, EventId, and CreatedAt are never modified here, preserving
+        // the existing ticket type / event relationship (subtask 5).
+        ticketType.Name = request.Name.Trim();
+        ticketType.Price = request.Price;
+        ticketType.Capacity = request.Capacity;
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "DB save failed while updating TicketType {TicketTypeId}", ticketTypeId);
+            return (null, "Failed to save ticket type changes. Please try again.", false, false);
+        }
+
+        _logger?.LogInformation(
+            "Ticket type updated. TicketTypeId={TicketTypeId} EventId={EventId} Name={Name} Price={Price} Capacity={Capacity}",
+            ticketType.Id, eventId, ticketType.Name, ticketType.Price, ticketType.Capacity);
+
+        return (MapToDto(ticketType), null, false, false);
     }
 
     private static TicketTypeDto MapToDto(TicketType t) => new TicketTypeDto
