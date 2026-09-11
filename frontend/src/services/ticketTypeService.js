@@ -48,3 +48,28 @@ export async function createTicketType(eventId, payload, token) {
 
   return response.json();
 }
+export async function updateTicketType(eventId, ticketTypeId, payload, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${eventId}/ticket-types/${ticketTypeId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to update ticket type (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+      if (data.errors?.length) errorMsg += ': ' + data.errors.join(', ');
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
