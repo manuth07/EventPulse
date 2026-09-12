@@ -194,6 +194,7 @@ public class TicketTypeService : ITicketTypeService
         Name = t.Name,
         Price = t.Price,
         Capacity = t.Capacity,
+        BookedQuantity = t.BookedQuantity,
         CreatedAt = t.CreatedAt,
     };
 }
