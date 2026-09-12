@@ -21,4 +21,16 @@ public interface ITicketTypeService
         Guid eventId,
         Guid organizerId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates an existing ticket type's name, price, and capacity.
+    /// Only permitted for ticket types belonging to events owned by the requesting organizer.
+    /// EventId association is preserved and cannot be changed via this operation.
+    /// </summary>
+    Task<(TicketTypeDto? Result, string? Error, bool IsNotFound, bool IsForbidden)> UpdateAsync(
+        Guid eventId,
+        Guid ticketTypeId,
+        UpdateTicketTypeRequest request,
+        Guid organizerId,
+        CancellationToken cancellationToken = default);
 }

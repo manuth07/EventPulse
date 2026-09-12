@@ -112,4 +112,55 @@ public class TicketTypesController : ControllerBase
 
         return Ok(result);
     }
+        /// <summary>
+    /// PUT /api/events/{eventId}/ticket-types/{ticketTypeId}
+    /// Updates an existing ticket type's name, price, and capacity.
+    /// Only the owning Organizer may update; EventId association cannot be changed.
+    /// </summary>
+    [HttpPut("{ticketTypeId}")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<IActionResult> UpdateTicketType(
+        string eventId,
+        string ticketTypeId,
+        [FromBody] UpdateTicketTypeRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(eventId, out var eventGuidId) || !Guid.TryParse(ticketTypeId, out var ticketTypeGuidId))
+            return NotFound();
+
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("UpdateTicketType: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_ticketTypeService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Ticket type service is not configured." });
+
+        var (result, error, isNotFound, isForbidden) =
+            await _ticketTypeService.UpdateAsync(eventGuidId, ticketTypeGuidId, request, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
 }

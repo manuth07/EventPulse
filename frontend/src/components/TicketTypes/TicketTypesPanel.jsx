@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Ticket, Plus, AlertCircle } from 'lucide-react';
-import { getTicketTypes, createTicketType } from '../../services/ticketTypeService';
+import { Ticket, Plus, AlertCircle, Pencil, X } from 'lucide-react';
+import { getTicketTypes, createTicketType, updateTicketType } from '../../services/ticketTypeService';
 import { formatPrice } from '../../utils/currencyFormatter';
 
 export function TicketTypesPanel({ eventId, accessToken }) {
@@ -14,6 +14,14 @@ export function TicketTypesPanel({ eventId, accessToken }) {
   const [capacity, setCapacity] = useState('50');
   const [formError, setFormError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Edit state — tracks which ticket type id is being edited, null when none
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editPrice, setEditPrice] = useState('0');
+  const [editCapacity, setEditCapacity] = useState('50');
+  const [editError, setEditError] = useState(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const getToken = () => accessToken || sessionStorage.getItem('ep_access_token');
 
@@ -66,6 +74,54 @@ export function TicketTypesPanel({ eventId, accessToken }) {
     }
   };
 
+  const handleStartEdit = (t) => {
+    setEditingId(t.id);
+    setEditName(t.name);
+    setEditPrice(String(t.price));
+    setEditCapacity(String(t.capacity));
+    setEditError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async (ticketTypeId) => {
+    setEditError(null);
+
+    if (!editName.trim()) {
+      setEditError('Ticket type name is required.');
+      return;
+    }
+    const parsedPrice = Number(editPrice);
+    if (isNaN(parsedPrice) || parsedPrice < 0 || !Number.isInteger(parsedPrice)) {
+      setEditError('Price must be a whole LKR amount.');
+      return;
+    }
+    const parsedCapacity = Number(editCapacity);
+    if (!Number.isInteger(parsedCapacity) || parsedCapacity < 1) {
+      setEditError('Capacity must be at least 1.');
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      await updateTicketType(
+        eventId,
+        ticketTypeId,
+        { name: editName.trim(), price: parsedPrice, capacity: parsedCapacity },
+        getToken()
+      );
+      setEditingId(null);
+      await load();
+    } catch (err) {
+      setEditError(err.message || 'Failed to update ticket type.');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   return (
     <div style={{
       marginTop: '24px',
@@ -99,7 +155,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
               {formError}
             </div>
           )}
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
                 Ticket Name
@@ -168,13 +224,99 @@ export function TicketTypesPanel({ eventId, accessToken }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {ticketTypes.map((t) => (
             <div key={t.id} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               backgroundColor: '#ffffff', border: '1px solid var(--ep-border)', borderRadius: '8px', padding: '10px 14px',
             }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)' }}>{t.name}</span>
-              <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
-                {formatPrice(t.price)} • {t.capacity} seats
-              </span>
+              {editingId === t.id ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {editError && (
+                    <div style={{ padding: '8px 10px', backgroundColor: '#FFF2F2', border: '1px solid var(--ep-danger)', borderRadius: '6px', fontSize: '12px', color: 'var(--ep-danger)' }}>
+                      {editError}
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
+                        Ticket Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="ep-input"
+                        style={{ fontSize: '13px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
+                        Price (LKR)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                        className="ep-input"
+                        style={{ fontSize: '13px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
+                        Capacity
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={editCapacity}
+                        onChange={(e) => setEditCapacity(e.target.value)}
+                        className="ep-input"
+                        style={{ fontSize: '13px' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(t.id)}
+                      disabled={editSubmitting}
+                      className="ep-btn-primary"
+                      style={{ fontSize: '12px', padding: '6px 14px' }}
+                    >
+                      {editSubmitting ? 'Saving…' : 'Save Changes'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      disabled={editSubmitting}
+                      className="ep-btn-secondary"
+                      style={{ fontSize: '12px', padding: '6px 14px' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)' }}>{t.name}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                      {formatPrice(t.price)} • {t.capacity} seats
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(t)}
+                      title="Edit ticket type"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--ep-primary)', padding: '4px', display: 'flex', alignItems: 'center',
+                      }}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
