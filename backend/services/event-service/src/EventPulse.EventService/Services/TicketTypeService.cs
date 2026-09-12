@@ -67,6 +67,10 @@ public class TicketTypeService : ITicketTypeService
 
         if (request.Capacity < 1)
             return (null, "Capacity must be at least 1.", false, false, false);
+        if (request.Capacity < ticketType.BookedQuantity)
+            return (null,
+                $"Capacity cannot be reduced below the number of already booked tickets ({ticketType.BookedQuantity}).",
+                false, false);
 
         var ticketType = new TicketType
         {
