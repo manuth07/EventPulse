@@ -613,4 +613,469 @@ public class EventUpdateRequestServiceTests
         var dto = Assert.IsType<EventUpdateRequestDto>(okResult.Value);
         Assert.Equal(expectedDto.Id, dto.Id);
     }
+
+    // =========================================================================
+    // 9. ADMIN REVIEW FLOW TESTS (EP-210 / US-14)
+    // =========================================================================
+
+    [Fact]
+    public async Task GetPendingUpdateRequestsAsync_ReturnsOnlyPendingRequests_OrderedByRequestedAtAscending()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var storage = MockStorage();
+        var service = new EventUpdateRequestService(context, storage.Object);
+
+        var orgId = Guid.NewGuid();
+        var ev1 = CreateTestEvent(EventStatus.Approved, orgId, title: "Event 1");
+        var ev2 = CreateTestEvent(EventStatus.Approved, orgId, title: "Event 2");
+        var ev3 = CreateTestEvent(EventStatus.Approved, orgId, title: "Event 3");
+        context.Events.AddRange(ev1, ev2, ev3);
+
+        // Request 1: Pending, older
+        var req1 = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev1.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Pending,
+            RequestedAt = DateTime.UtcNow.AddMinutes(-20),
+            Title = "Updated Event 1",
+            Description = "Description 1",
+            Venue = "New Venue 1",
+            EventDate = DateTime.UtcNow.AddDays(20)
+        };
+
+        // Request 2: Pending, newer
+        var req2 = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev2.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Pending,
+            RequestedAt = DateTime.UtcNow.AddMinutes(-5),
+            Title = "Updated Event 2",
+            Description = "Description 2",
+            Venue = "New Venue 2",
+            EventDate = DateTime.UtcNow.AddDays(25)
+        };
+
+        // Request 3: Already Approved (should not appear in pending list)
+        var req3 = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev3.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Approved,
+            RequestedAt = DateTime.UtcNow.AddMinutes(-60),
+            ReviewedAt = DateTime.UtcNow.AddMinutes(-30),
+            ReviewedBy = Guid.NewGuid(),
+            Title = "Updated Event 3",
+            Description = "Description 3",
+            Venue = "New Venue 3",
+            EventDate = DateTime.UtcNow.AddDays(30)
+        };
+
+        context.EventUpdateRequests.AddRange(req1, req2, req3);
+        await context.SaveChangesAsync();
+
+        // Act
+        var pending = await service.GetPendingUpdateRequestsAsync();
+
+        // Assert
+        Assert.Equal(2, pending.Count);
+        Assert.Equal(req1.Id, pending[0].Id);
+        Assert.Equal(req2.Id, pending[1].Id);
+    }
+
+    [Fact]
+    public async Task GetUpdateRequestReviewAsync_ReturnsComparisonDto_WithChangeFlagsAndMajorChange()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var storage = MockStorage();
+        var service = new EventUpdateRequestService(context, storage.Object);
+
+        var orgId = Guid.NewGuid();
+        var originalDate = new DateTime(2027, 8, 1, 10, 0, 0, DateTimeKind.Utc);
+        var newDate = new DateTime(2027, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+
+        var ev = CreateTestEvent(EventStatus.Approved, orgId, title: "Rockfest", venue: "Colombo Park", date: originalDate);
+        context.Events.Add(ev);
+
+        var req = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Pending,
+            RequestedAt = DateTime.UtcNow,
+            Title = "Rockfest 2027 - Expanded", // Title changed
+            Description = ev.Description,      // Unchanged
+            Venue = "Nelum Pokuna",             // Venue changed (Major)
+            EventDate = newDate,                // Date changed (Major)
+            Category = ev.Category,
+            VenueType = ev.VenueType,
+            ImageBlobName = ev.ImageBlobName,
+            CoverBlobName = ev.CoverBlobName
+        };
+        context.EventUpdateRequests.Add(req);
+        await context.SaveChangesAsync();
+
+        // Act
+        var comparison = await service.GetUpdateRequestReviewAsync(req.Id);
+
+        // Assert
+        Assert.NotNull(comparison);
+        Assert.Equal(req.Id, comparison.Id);
+        Assert.Equal(ev.Id, comparison.EventId);
+        Assert.Equal("Pending", comparison.Status);
+
+        // Current values
+        Assert.Equal("Rockfest", comparison.Current.Title);
+        Assert.Equal("Colombo Park", comparison.Current.Venue);
+        Assert.Equal(originalDate, comparison.Current.EventDate);
+
+        // Proposed values
+        Assert.Equal("Rockfest 2027 - Expanded", comparison.Proposed.Title);
+        Assert.Equal("Nelum Pokuna", comparison.Proposed.Venue);
+        Assert.Equal(newDate, comparison.Proposed.EventDate);
+
+        // Change flags
+        Assert.True(comparison.HasTitleChanged);
+        Assert.False(comparison.HasDescriptionChanged);
+        Assert.True(comparison.HasVenueChanged);
+        Assert.True(comparison.HasDateChanged);
+        Assert.True(comparison.IsMajorChange);
+    }
+
+    [Fact]
+    public async Task ApproveUpdateRequestAsync_AppliesChangesToLiveEvent_Atomically_AndMarksApproved()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var storage = MockStorage();
+        var service = new EventUpdateRequestService(context, storage.Object);
+
+        var orgId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var originalDate = new DateTime(2027, 10, 1, 10, 0, 0, DateTimeKind.Utc);
+        var newDate = new DateTime(2027, 10, 10, 18, 0, 0, DateTimeKind.Utc);
+
+        var ev = CreateTestEvent(EventStatus.Approved, orgId, title: "Tech Summit", venue: "Old Hall", date: originalDate);
+        context.Events.Add(ev);
+
+        var req = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Pending,
+            RequestedAt = DateTime.UtcNow.AddHours(-2),
+            Title = "Global Tech Summit",
+            Description = "Updated extensive description",
+            Venue = "Grand Ballroom",
+            EventDate = newDate,
+            Category = "Conference",
+            VenueType = "Indoor",
+            ImageBlobName = "posters/new-poster.jpg",
+            CoverBlobName = "covers/new-cover.jpg"
+        };
+        context.EventUpdateRequests.Add(req);
+        await context.SaveChangesAsync();
+
+        // Act
+        var (result, error, isNotFound, isInvalidState) =
+            await service.ApproveUpdateRequestAsync(req.Id, adminId, "Approved after verifying venue booking.");
+
+        // Assert
+        Assert.Null(error);
+        Assert.False(isNotFound);
+        Assert.False(isInvalidState);
+        Assert.NotNull(result);
+        Assert.Equal("Approved", result.Status);
+
+        // 1. Verify Live Event in database was atomically updated
+        var freshEvent = await context.Events.AsNoTracking().FirstAsync(e => e.Id == ev.Id);
+        Assert.Equal("Global Tech Summit", freshEvent.Title);
+        Assert.Equal("Updated extensive description", freshEvent.Description);
+        Assert.Equal("Grand Ballroom", freshEvent.Venue);
+        Assert.Equal(newDate, freshEvent.EventDate);
+        Assert.Equal("Conference", freshEvent.Category);
+        Assert.Equal("Indoor", freshEvent.VenueType);
+        Assert.Equal("posters/new-poster.jpg", freshEvent.ImageBlobName);
+        Assert.Equal("covers/new-cover.jpg", freshEvent.CoverBlobName);
+
+        // 2. Verify EventUpdateRequest was marked Approved with audit fields
+        var freshReq = await context.EventUpdateRequests.AsNoTracking().FirstAsync(r => r.Id == req.Id);
+        Assert.Equal(EventUpdateRequestStatus.Approved, freshReq.Status);
+        Assert.NotNull(freshReq.ReviewedAt);
+        Assert.Equal(adminId, freshReq.ReviewedBy);
+        Assert.Equal("Approved after verifying venue booking.", freshReq.ReviewComment);
+    }
+
+    [Fact]
+    public async Task ApproveUpdateRequestAsync_WhenAlreadyApprovedOrRejected_ReturnsInvalidState()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var service = new EventUpdateRequestService(context, MockStorage().Object);
+
+        var orgId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var ev = CreateTestEvent(EventStatus.Approved, orgId);
+        context.Events.Add(ev);
+
+        var req = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Approved, // Already reviewed!
+            RequestedAt = DateTime.UtcNow.AddHours(-2),
+            ReviewedAt = DateTime.UtcNow.AddHours(-1),
+            ReviewedBy = adminId,
+            Title = "Updated Title",
+            Description = "Updated Description",
+            Venue = "Updated Venue",
+            EventDate = DateTime.UtcNow.AddDays(20)
+        };
+        context.EventUpdateRequests.Add(req);
+        await context.SaveChangesAsync();
+
+        // Act
+        var (result, error, isNotFound, isInvalidState) =
+            await service.ApproveUpdateRequestAsync(req.Id, adminId);
+
+        // Assert
+        Assert.Null(result);
+        Assert.False(isNotFound);
+        Assert.True(isInvalidState);
+        Assert.Contains("Only Pending update requests can be approved", error);
+    }
+
+    [Fact]
+    public async Task RejectUpdateRequestAsync_LeavesLiveEventUnchanged_RecordsRejectionReason_AndMarksRejected()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var storage = MockStorage();
+        var service = new EventUpdateRequestService(context, storage.Object);
+
+        var orgId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var originalDate = new DateTime(2027, 9, 1, 10, 0, 0, DateTimeKind.Utc);
+        var originalVenue = "Original Arena";
+        var originalTitle = "Original Concert";
+
+        var ev = CreateTestEvent(EventStatus.Approved, orgId, title: originalTitle, venue: originalVenue, date: originalDate);
+        context.Events.Add(ev);
+
+        var req = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Pending,
+            RequestedAt = DateTime.UtcNow.AddHours(-3),
+            Title = "Proposed Title Change",
+            Description = "Proposed Description Change",
+            Venue = "Proposed Different Venue",
+            EventDate = originalDate.AddDays(10)
+        };
+        context.EventUpdateRequests.Add(req);
+        await context.SaveChangesAsync();
+
+        // Act
+        var (result, error, isNotFound, isInvalidState) =
+            await service.RejectUpdateRequestAsync(req.Id, adminId, "Venue details could not be verified with the venue manager.");
+
+        // Assert
+        Assert.Null(error);
+        Assert.False(isNotFound);
+        Assert.False(isInvalidState);
+        Assert.NotNull(result);
+        Assert.Equal("Rejected", result.Status);
+
+        // 1. Verify Live Event remains completely UNCHANGED
+        var freshEvent = await context.Events.AsNoTracking().FirstAsync(e => e.Id == ev.Id);
+        Assert.Equal(originalTitle, freshEvent.Title);
+        Assert.Equal(originalVenue, freshEvent.Venue);
+        Assert.Equal(originalDate, freshEvent.EventDate);
+
+        // 2. Verify EventUpdateRequest is marked Rejected with notes
+        var freshReq = await context.EventUpdateRequests.AsNoTracking().FirstAsync(r => r.Id == req.Id);
+        Assert.Equal(EventUpdateRequestStatus.Rejected, freshReq.Status);
+        Assert.NotNull(freshReq.ReviewedAt);
+        Assert.Equal(adminId, freshReq.ReviewedBy);
+        Assert.Equal("Venue details could not be verified with the venue manager.", freshReq.ReviewComment);
+    }
+
+    [Fact]
+    public async Task RejectUpdateRequestAsync_WithoutNotes_ReturnsValidationError()
+    {
+        using var context = CreateContext();
+        var service = new EventUpdateRequestService(context, MockStorage().Object);
+
+        var (result, error, isNotFound, isInvalidState) =
+            await service.RejectUpdateRequestAsync(Guid.NewGuid(), Guid.NewGuid(), "   ");
+
+        Assert.Null(result);
+        Assert.True(isInvalidState);
+        Assert.Contains("Rejection feedback is required", error);
+    }
+
+    [Fact]
+    public async Task RejectUpdateRequestAsync_WhenAlreadyReviewed_ReturnsInvalidState()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var service = new EventUpdateRequestService(context, MockStorage().Object);
+
+        var orgId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var ev = CreateTestEvent(EventStatus.Approved, orgId);
+        context.Events.Add(ev);
+
+        var req = new EventUpdateRequest
+        {
+            Id = Guid.NewGuid(),
+            EventId = ev.Id,
+            OrganizerId = orgId,
+            Status = EventUpdateRequestStatus.Rejected, // Already rejected
+            RequestedAt = DateTime.UtcNow.AddHours(-2),
+            ReviewedAt = DateTime.UtcNow.AddHours(-1),
+            ReviewedBy = adminId,
+            Title = "Updated Title",
+            Description = "Updated Description",
+            Venue = "Updated Venue",
+            EventDate = DateTime.UtcNow.AddDays(20)
+        };
+        context.EventUpdateRequests.Add(req);
+        await context.SaveChangesAsync();
+
+        // Act
+        var (result, error, isNotFound, isInvalidState) =
+            await service.RejectUpdateRequestAsync(req.Id, adminId, "Second rejection attempt.");
+
+        // Assert
+        Assert.Null(result);
+        Assert.True(isInvalidState);
+        Assert.Contains("Only Pending update requests can be rejected", error);
+    }
+
+    // =========================================================================
+    // 10. CONTROLLER ADMIN ENDPOINT INTEGRATION TESTS
+    // =========================================================================
+
+    [Fact]
+    public async Task Controller_GetPendingUpdateRequests_ReturnsOkWithList()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var adminId = Guid.NewGuid();
+        var mockService = new Mock<IEventUpdateRequestService>();
+
+        var list = new List<AdminEventUpdateComparisonDto>
+        {
+            new() { Id = Guid.NewGuid(), Status = "Pending" },
+            new() { Id = Guid.NewGuid(), Status = "Pending" }
+        };
+
+        mockService.Setup(s => s.GetPendingUpdateRequestsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(list);
+
+        var controller = new EventsController(context, updateRequestService: mockService.Object)
+        {
+            ControllerContext = CreateControllerContext(adminId, "Administrator")
+        };
+
+        // Act
+        var result = await controller.GetPendingUpdateRequests(CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var returned = Assert.IsAssignableFrom<IReadOnlyList<AdminEventUpdateComparisonDto>>(okResult.Value);
+        Assert.Equal(2, returned.Count);
+    }
+
+    [Fact]
+    public async Task Controller_ApproveUpdateRequest_ReturnsOk()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var adminId = Guid.NewGuid();
+        var reqId = Guid.NewGuid();
+        var mockService = new Mock<IEventUpdateRequestService>();
+
+        var comparisonDto = new AdminEventUpdateComparisonDto
+        {
+            Id = reqId,
+            Status = "Approved"
+        };
+
+        mockService.Setup(s => s.ApproveUpdateRequestAsync(reqId, adminId, "Looks good", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((comparisonDto, null, false, false));
+
+        var controller = new EventsController(context, updateRequestService: mockService.Object)
+        {
+            ControllerContext = CreateControllerContext(adminId, "Administrator")
+        };
+
+        // Act
+        var result = await controller.ApproveUpdateRequest(reqId.ToString(), new ReviewEventRequest { Notes = "Looks good" }, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var returned = Assert.IsType<AdminEventUpdateComparisonDto>(okResult.Value);
+        Assert.Equal("Approved", returned.Status);
+    }
+
+    [Fact]
+    public async Task Controller_ApproveUpdateRequest_WhenAlreadyReviewed_ReturnsConflict()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var adminId = Guid.NewGuid();
+        var reqId = Guid.NewGuid();
+        var mockService = new Mock<IEventUpdateRequestService>();
+
+        mockService.Setup(s => s.ApproveUpdateRequestAsync(reqId, adminId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((null, "Only Pending update requests can be approved. Current status: Approved.", false, true));
+
+        var controller = new EventsController(context, updateRequestService: mockService.Object)
+        {
+            ControllerContext = CreateControllerContext(adminId, "Administrator")
+        };
+
+        // Act
+        var result = await controller.ApproveUpdateRequest(reqId.ToString(), new ReviewEventRequest(), CancellationToken.None);
+
+        // Assert
+        var conflictResult = Assert.IsType<ConflictObjectResult>(result);
+        Assert.NotNull(conflictResult.Value);
+    }
+
+    [Fact]
+    public async Task Controller_RejectUpdateRequest_WithoutNotes_ReturnsBadRequest()
+    {
+        // Arrange
+        using var context = CreateContext();
+        var adminId = Guid.NewGuid();
+        var reqId = Guid.NewGuid();
+        var mockService = new Mock<IEventUpdateRequestService>();
+
+        var controller = new EventsController(context, updateRequestService: mockService.Object)
+        {
+            ControllerContext = CreateControllerContext(adminId, "Administrator")
+        };
+
+        // Act (no notes provided)
+        var result = await controller.RejectUpdateRequest(reqId.ToString(), new ReviewEventRequest { Notes = "  " }, CancellationToken.None);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.NotNull(badRequestResult.Value);
+    }
 }
+

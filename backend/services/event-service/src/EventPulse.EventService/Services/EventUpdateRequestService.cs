@@ -265,6 +265,159 @@ public class EventUpdateRequestService : IEventUpdateRequestService
     }
 
     // =========================================================================
+    // EP-210 / US-14: ADMINISTRATOR REVIEW METHODS
+    // =========================================================================
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<AdminEventUpdateComparisonDto>> GetPendingUpdateRequestsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var requests = await _context.EventUpdateRequests
+            .Include(r => r.Event)
+            .AsNoTracking()
+            .Where(r => r.Status == EventUpdateRequestStatus.Pending)
+            .OrderBy(r => r.RequestedAt)
+            .ToListAsync(cancellationToken);
+
+        return requests.Select(r => MapToComparisonDto(r.Event, r)).ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task<AdminEventUpdateComparisonDto?> GetUpdateRequestReviewAsync(
+        Guid requestId,
+        CancellationToken cancellationToken = default)
+    {
+        var request = await _context.EventUpdateRequests
+            .Include(r => r.Event)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (request == null || request.Event == null)
+            return null;
+
+        return MapToComparisonDto(request.Event, request);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(AdminEventUpdateComparisonDto? Result, string? Error, bool IsNotFound, bool IsInvalidState)> ApproveUpdateRequestAsync(
+        Guid requestId,
+        Guid reviewerId,
+        string? notes = null,
+        CancellationToken cancellationToken = default)
+    {
+        var updateRequest = await _context.EventUpdateRequests
+            .Include(r => r.Event)
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (updateRequest == null)
+        {
+            return (null, "Update request not found.", true, false);
+        }
+
+        // Concurrency / Duplicate review guard
+        if (updateRequest.Status != EventUpdateRequestStatus.Pending)
+        {
+            _logger?.LogWarning(
+                "ApproveUpdateRequest rejected: Request {RequestId} has status {Status}, expected Pending.",
+                requestId, updateRequest.Status);
+            return (null, $"Only Pending update requests can be approved. Current status: {updateRequest.Status}.", false, true);
+        }
+
+        var liveEvent = updateRequest.Event;
+        if (liveEvent == null)
+        {
+            return (null, "Associated event not found.", true, false);
+        }
+
+        if (liveEvent.Status != EventStatus.Approved && liveEvent.Status != EventStatus.Published)
+        {
+            return (null, $"Cannot apply update to event in status: {liveEvent.Status}.", false, true);
+        }
+
+        // 1. Atomically apply proposed fields to live Event
+        liveEvent.Title = updateRequest.Title;
+        liveEvent.Description = updateRequest.Description;
+        liveEvent.Venue = updateRequest.Venue;
+        liveEvent.EventDate = updateRequest.EventDate;
+
+        if (!string.IsNullOrWhiteSpace(updateRequest.Category))
+            liveEvent.Category = updateRequest.Category;
+
+        if (!string.IsNullOrWhiteSpace(updateRequest.VenueType))
+            liveEvent.VenueType = updateRequest.VenueType;
+
+        if (!string.IsNullOrWhiteSpace(updateRequest.ImageBlobName))
+            liveEvent.ImageBlobName = updateRequest.ImageBlobName;
+
+        if (!string.IsNullOrWhiteSpace(updateRequest.CoverBlobName))
+            liveEvent.CoverBlobName = updateRequest.CoverBlobName;
+
+        // 2. Mark update request Approved and store review metadata
+        updateRequest.Status = EventUpdateRequestStatus.Approved;
+        updateRequest.ReviewedAt = DateTime.UtcNow;
+        updateRequest.ReviewedBy = reviewerId;
+
+        if (!string.IsNullOrWhiteSpace(notes))
+            updateRequest.ReviewComment = notes.Trim();
+
+        // 3. Save atomically in single transaction
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger?.LogInformation(
+            "EventUpdateRequest {RequestId} approved by Admin {ReviewerId}. Live Event {EventId} updated.",
+            requestId, reviewerId, liveEvent.Id);
+
+        return (MapToComparisonDto(liveEvent, updateRequest), null, false, false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(AdminEventUpdateComparisonDto? Result, string? Error, bool IsNotFound, bool IsInvalidState)> RejectUpdateRequestAsync(
+        Guid requestId,
+        Guid reviewerId,
+        string notes,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return (null, "Rejection feedback is required.", false, true);
+        }
+
+        var updateRequest = await _context.EventUpdateRequests
+            .Include(r => r.Event)
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (updateRequest == null)
+        {
+            return (null, "Update request not found.", true, false);
+        }
+
+        // Concurrency / Duplicate review guard
+        if (updateRequest.Status != EventUpdateRequestStatus.Pending)
+        {
+            _logger?.LogWarning(
+                "RejectUpdateRequest rejected: Request {RequestId} has status {Status}, expected Pending.",
+                requestId, updateRequest.Status);
+            return (null, $"Only Pending update requests can be rejected. Current status: {updateRequest.Status}.", false, true);
+        }
+
+        var liveEvent = updateRequest.Event;
+
+        // Live Event remains completely untouched!
+        updateRequest.Status = EventUpdateRequestStatus.Rejected;
+        updateRequest.ReviewedAt = DateTime.UtcNow;
+        updateRequest.ReviewedBy = reviewerId;
+        updateRequest.ReviewComment = notes.Trim();
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger?.LogInformation(
+            "EventUpdateRequest {RequestId} rejected by Admin {ReviewerId}. Live Event {EventId} left unchanged.",
+            requestId, reviewerId, updateRequest.EventId);
+
+        return (MapToComparisonDto(liveEvent ?? new Event(), updateRequest), null, false, false);
+    }
+
+    // =========================================================================
     // HELPER: Change Detection & DTO Mapping
     // =========================================================================
     private EventUpdateRequestDto MapToDto(Event originalEvent, EventUpdateRequest request)
@@ -310,6 +463,64 @@ public class EventUpdateRequestService : IEventUpdateRequestService
             HasImageChanged = hasImageChanged,
             HasCoverChanged = hasCoverChanged,
             IsMajorChange = isMajorChange
+        };
+    }
+
+    private AdminEventUpdateComparisonDto MapToComparisonDto(Event currentEvent, EventUpdateRequest request)
+    {
+        var hasTitleChanged = !string.Equals(currentEvent.Title, request.Title, StringComparison.Ordinal);
+        var hasDescriptionChanged = !string.Equals(currentEvent.Description, request.Description, StringComparison.Ordinal);
+        var hasVenueChanged = !string.Equals(currentEvent.Venue, request.Venue, StringComparison.OrdinalIgnoreCase);
+        var hasDateChanged = currentEvent.EventDate != request.EventDate;
+        var hasCategoryChanged = !string.Equals(currentEvent.Category, request.Category, StringComparison.OrdinalIgnoreCase);
+        var hasVenueTypeChanged = !string.Equals(currentEvent.VenueType, request.VenueType, StringComparison.OrdinalIgnoreCase);
+        var hasImageChanged = !string.Equals(currentEvent.ImageBlobName, request.ImageBlobName, StringComparison.Ordinal);
+        var hasCoverChanged = !string.Equals(currentEvent.CoverBlobName, request.CoverBlobName, StringComparison.Ordinal);
+
+        return new AdminEventUpdateComparisonDto
+        {
+            Id = request.Id,
+            EventId = request.EventId,
+            OrganizerId = request.OrganizerId,
+            Status = request.Status.ToString(),
+            RequestedAt = request.RequestedAt,
+            ReviewedAt = request.ReviewedAt,
+            ReviewedBy = request.ReviewedBy,
+            ReviewComment = request.ReviewComment,
+            Current = new EventValuesDto
+            {
+                Title = currentEvent.Title,
+                Description = currentEvent.Description,
+                Venue = currentEvent.Venue,
+                EventDate = currentEvent.EventDate,
+                Category = currentEvent.Category,
+                VenueType = currentEvent.VenueType,
+                ImageBlobName = currentEvent.ImageBlobName,
+                ImageUrl = _imageStorage.GetPublicUrl(currentEvent.ImageBlobName),
+                CoverBlobName = currentEvent.CoverBlobName,
+                CoverUrl = _imageStorage.GetPublicUrl(currentEvent.CoverBlobName)
+            },
+            Proposed = new EventValuesDto
+            {
+                Title = request.Title,
+                Description = request.Description,
+                Venue = request.Venue,
+                EventDate = request.EventDate,
+                Category = request.Category,
+                VenueType = request.VenueType,
+                ImageBlobName = request.ImageBlobName,
+                ImageUrl = _imageStorage.GetPublicUrl(request.ImageBlobName),
+                CoverBlobName = request.CoverBlobName,
+                CoverUrl = _imageStorage.GetPublicUrl(request.CoverBlobName)
+            },
+            HasTitleChanged = hasTitleChanged,
+            HasDescriptionChanged = hasDescriptionChanged,
+            HasVenueChanged = hasVenueChanged,
+            HasDateChanged = hasDateChanged,
+            HasCategoryChanged = hasCategoryChanged,
+            HasVenueTypeChanged = hasVenueTypeChanged,
+            HasImageChanged = hasImageChanged,
+            HasCoverChanged = hasCoverChanged
         };
     }
 }
