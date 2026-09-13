@@ -164,7 +164,7 @@ export function OrganizerEventDetails() {
         getEventUpdateRequest(id, token).catch(() => null),
       ]);
       setEvent(data);
-      setPendingUpdateRequest(updateReq && updateReq.status === 'Pending' ? updateReq : null);
+      setPendingUpdateRequest(updateReq || null);
       setTitle(data.title || '');
       setDescription(data.description || '');
       setCategory(data.category || EVENT_CATEGORIES[0]);
@@ -595,6 +595,67 @@ export function OrganizerEventDetails() {
                       margin: 0,
                     }}>
                       Submitted on {formatDate(pendingUpdateRequest.requestedAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* UPDATE REJECTED BANNER (EP-34 / EP-210) */}
+            {(event.status === 'Approved' || event.status === 'Published') && pendingUpdateRequest && pendingUpdateRequest.status === 'Rejected' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '18px 24px',
+                backgroundColor: '#FFF5F5',
+                border: '1px solid #FED7D7',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '14px',
+              }}>
+                <AlertCircle size={20} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: '#FED7D7',
+                    color: 'var(--ep-danger)',
+                    borderRadius: 'var(--ep-radius-pill)',
+                    padding: '3px 10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    marginBottom: '6px',
+                  }}>
+                    UPDATE REJECTED
+                  </div>
+                  <h3 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--ep-text-primary)',
+                    margin: '0 0 4px 0',
+                  }}>
+                    Your requested changes were not approved. The currently approved event remains live.
+                  </h3>
+                  {pendingUpdateRequest.reviewComment && (
+                    <p style={{
+                      fontSize: '13px',
+                      color: 'var(--ep-text-secondary)',
+                      lineHeight: 1.5,
+                      margin: '6px 0 0 0',
+                    }}>
+                      <strong>Reviewer Feedback:</strong> {pendingUpdateRequest.reviewComment}
+                    </p>
+                  )}
+                  {pendingUpdateRequest.reviewedAt && (
+                    <p style={{
+                      fontSize: '12px',
+                      color: 'var(--ep-text-secondary)',
+                      marginTop: '6px',
+                      margin: 0,
+                    }}>
+                      Reviewed on {formatDate(pendingUpdateRequest.reviewedAt)}
                     </p>
                   )}
                 </div>
