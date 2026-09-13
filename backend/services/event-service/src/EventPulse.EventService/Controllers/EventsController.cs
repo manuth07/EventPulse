@@ -17,6 +17,7 @@ public class EventsController : ControllerBase
     private readonly EventDbContext _context;
     private readonly IEventSubmissionService? _submissionService;
     private readonly IEventReviewService? _reviewService;
+    private readonly IEventUpdateRequestService? _updateRequestService;
     private readonly IEventImageStorage? _imageStorage;
     private readonly ILogger<EventsController>? _logger;
 
@@ -24,12 +25,14 @@ public class EventsController : ControllerBase
         EventDbContext context,
         IEventSubmissionService? submissionService = null,
         IEventReviewService? reviewService = null,
+        IEventUpdateRequestService? updateRequestService = null,
         IEventImageStorage? imageStorage = null,
         ILogger<EventsController>? logger = null)
     {
         _context = context;
         _submissionService = submissionService;
         _reviewService = reviewService;
+        _updateRequestService = updateRequestService;
         _imageStorage = imageStorage;
         _logger = logger;
     }
@@ -273,6 +276,96 @@ public class EventsController : ControllerBase
 
         if (error != null)
             return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST /api/events/{id}/update-request
+    /// EP-34 / US-14 — Organizer submits an update request for an Approved or Published event.
+    /// Does NOT modify the live event record. Changes are stored in Pending status for Admin review.
+    /// Exactly one Pending update request is allowed at a time.
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpPost("{id}/update-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> SubmitUpdateRequest(
+        string id,
+        [FromForm] SubmitEventUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("SubmitUpdateRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden, isInvalidState, isConflict) =
+            await _updateRequestService.SubmitUpdateRequestAsync(guidId, request, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (isConflict)
+            return Conflict(new { code = "CONFLICT", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return CreatedAtAction(nameof(GetUpdateRequest), new { id = guidId.ToString() }, result);
+    }
+
+    /// <summary>
+    /// GET /api/events/{id}/update-request
+    /// EP-34 / US-14 — Retrieves the latest update request for an event owned by the authenticated Organizer.
+    /// Includes change detection flags (HasVenueChanged, HasDateChanged, IsMajorChange).
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpGet("{id}/update-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<EventUpdateRequestDto>> GetUpdateRequest(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("GetUpdateRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden) =
+            await _updateRequestService.GetUpdateRequestAsync(guidId, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
 
         return Ok(result);
     }
