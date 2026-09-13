@@ -49,4 +49,10 @@ public class Event
     /// Ticket types configured for this event (EP-... US-19).
     /// </summary>
     public ICollection<TicketType> TicketTypes { get; set; } = new List<TicketType>();
+
+    /// <summary>
+    /// Update requests submitted for this event (EP-34 US-14).
+    /// </summary>
+    public ICollection<EventUpdateRequest> UpdateRequests { get; set; } = new List<EventUpdateRequest>();
 }
+
