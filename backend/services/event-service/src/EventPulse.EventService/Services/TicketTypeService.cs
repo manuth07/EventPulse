@@ -163,6 +163,11 @@ public class TicketTypeService : ITicketTypeService
         if (request.Capacity < 1)
             return (null, "Capacity must be at least 1.", false, false);
 
+        if (request.Capacity < ticketType.BookedQuantity)
+            return (null,
+                $"Capacity cannot be reduced below the number of already booked tickets ({ticketType.BookedQuantity}).",
+                false, false);
+
         // ---- Apply Update -------------------------------------------------
         // Note: Id, EventId, and CreatedAt are never modified here, preserving
         // the existing ticket type / event relationship (subtask 5).
@@ -194,6 +199,7 @@ public class TicketTypeService : ITicketTypeService
         Name = t.Name,
         Price = t.Price,
         Capacity = t.Capacity,
+        BookedQuantity = t.BookedQuantity,
         CreatedAt = t.CreatedAt,
     };
 }

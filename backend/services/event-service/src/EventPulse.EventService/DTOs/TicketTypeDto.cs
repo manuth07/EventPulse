@@ -7,5 +7,7 @@ public class TicketTypeDto
     public string Name { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public int Capacity { get; set; }
+    public int BookedQuantity { get; set; }
+    public int AvailableQuantity => Capacity - BookedQuantity;
     public DateTime CreatedAt { get; set; }
 }

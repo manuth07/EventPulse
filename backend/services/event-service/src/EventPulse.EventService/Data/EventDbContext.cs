@@ -92,6 +92,10 @@ public class EventDbContext : DbContext
                 .WithMany(e => e.TicketTypes)
                 .HasForeignKey(t => t.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.Property(t => t.BookedQuantity)
+                .HasDefaultValue(0)
+                .IsRequired();
         });
     }
 }

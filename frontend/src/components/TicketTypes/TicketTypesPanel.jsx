@@ -274,6 +274,11 @@ export function TicketTypesPanel({ eventId, accessToken }) {
                         style={{ fontSize: '13px' }}
                       />
                     </div>
+                    {ticketTypes.find((tt) => tt.id === editingId)?.bookedQuantity > 0 && (
+                    <p style={{ fontSize: '11px', color: 'var(--ep-text-secondary)', margin: 0 }}>
+                      {ticketTypes.find((tt) => tt.id === editingId).bookedQuantity} already booked — capacity cannot go below this.
+                    </p>
+                  )}
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -300,8 +305,8 @@ export function TicketTypesPanel({ eventId, accessToken }) {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)' }}>{t.name}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
-                      {formatPrice(t.price)} • {t.capacity} seats
+                  <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                      {formatPrice(t.price)} • {t.availableQuantity} / {t.capacity} available
                     </span>
                     <button
                       type="button"
