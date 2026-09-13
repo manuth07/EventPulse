@@ -11,6 +11,7 @@ import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
 import { OrganizerEventDetails } from './pages/OrganizerEventDetails/OrganizerEventDetails';
 import { CreateEvent } from './pages/CreateEvent/CreateEvent';
+import { EditEvent } from './pages/EditEvent/EditEvent';
 import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
 import { PendingEvents } from './pages/PendingEvents/PendingEvents';
 import { RequireRole } from './components/RouteGuards/RouteGuards';
@@ -36,6 +37,7 @@ function App() {
           <Route element={<RequireRole allowedRoles="Organizer" />}>
             <Route path="/organizer" element={<OrganizerDashboard />} />
             <Route path="/organizer/events/:id" element={<OrganizerEventDetails />} />
+            <Route path="/organizer/events/:id/edit" element={<EditEvent />} />
             <Route path="/events/create" element={<CreateEvent />} />
           </Route>
 

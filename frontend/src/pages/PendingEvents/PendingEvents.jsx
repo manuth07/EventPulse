@@ -7,6 +7,10 @@ import {
   getPendingEventById,
   approveEvent,
   rejectEvent,
+  getPendingEventUpdateRequests,
+  getEventUpdateRequestReview,
+  approveEventUpdateRequest,
+  rejectEventUpdateRequest,
 } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import {
@@ -22,6 +26,7 @@ import {
   Image as ImageIcon,
   User,
   Info,
+  AlertTriangle,
 } from 'lucide-react';
 
 function formatEventDateTime(dateString) {
@@ -60,13 +65,15 @@ function formatSubmittedDate(dateString) {
 
 export function PendingEvents() {
   const { accessToken } = useAuth();
+  const [activeTab, setActiveTab] = useState('new_submissions'); // 'new_submissions' | 'update_requests'
   const [events, setEvents] = useState([]);
+  const [updateRequests, setUpdateRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [feedback, setFeedback] = useState(null);
 
-  // Review Modal / Drawer state
+  // Review Modal / Drawer state (New Submissions)
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [confirmMode, setConfirmMode] = useState(null); // 'approve' | 'reject' | null
@@ -74,11 +81,18 @@ export function PendingEvents() {
   const [actionInProgress, setActionInProgress] = useState(false);
   const [actionError, setActionError] = useState(null);
 
+  // Review Modal state (Event Update Requests)
+  const [selectedUpdateRequest, setSelectedUpdateRequest] = useState(null);
+  const [updateConfirmMode, setConfirmModeUpdate] = useState(null); // 'approve' | 'reject' | null
+  const [updateReviewNotes, setUpdateReviewNotes] = useState('');
+  const [updateActionInProgress, setUpdateActionInProgress] = useState(false);
+  const [updateActionError, setUpdateActionError] = useState(null);
+
   const getEffectiveToken = useCallback(() => {
     return accessToken || sessionStorage.getItem('ep_access_token');
   }, [accessToken]);
 
-  const loadPendingSubmissions = useCallback(async (isManualRefresh = false) => {
+  const loadAllData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
       setRefreshing(true);
     } else {
@@ -95,8 +109,15 @@ export function PendingEvents() {
     }
 
     try {
-      const data = await getPendingEvents(token);
-      setEvents(Array.isArray(data) ? data : []);
+      const [eventsData, updatesData] = await Promise.all([
+        getPendingEvents(token),
+        getPendingEventUpdateRequests(token).catch((err) => {
+          console.warn('Failed to load pending update requests:', err);
+          return [];
+        }),
+      ]);
+      setEvents(Array.isArray(eventsData) ? eventsData : []);
+      setUpdateRequests(Array.isArray(updatesData) ? updatesData : []);
     } catch (err) {
       setError(err.message || 'Unable to load pending event submissions.');
     } finally {
@@ -106,8 +127,8 @@ export function PendingEvents() {
   }, [getEffectiveToken]);
 
   useEffect(() => {
-    loadPendingSubmissions();
-  }, [loadPendingSubmissions]);
+    loadAllData();
+  }, [loadAllData]);
 
   const handleOpenReview = async (item) => {
     setActionError(null);
@@ -139,6 +160,87 @@ export function PendingEvents() {
     setConfirmMode(null);
     setActionError(null);
     setRejectionNotes('');
+  };
+
+  const handleOpenUpdateRequestReview = async (item) => {
+    setUpdateActionError(null);
+    setConfirmModeUpdate(null);
+    setUpdateReviewNotes('');
+    setSelectedUpdateRequest(item);
+
+    const token = getEffectiveToken();
+    if (token) {
+      try {
+        const fullReview = await getEventUpdateRequestReview(item.id, token);
+        if (fullReview) {
+          setSelectedUpdateRequest(fullReview);
+        }
+      } catch (err) {
+        // Fallback to item from list
+      }
+    }
+  };
+
+  const handleCloseUpdateRequestReview = () => {
+    if (updateActionInProgress) return;
+    setSelectedUpdateRequest(null);
+    setConfirmModeUpdate(null);
+    setUpdateActionError(null);
+    setUpdateReviewNotes('');
+  };
+
+  const handleApproveUpdateRequest = async () => {
+    if (!selectedUpdateRequest || updateActionInProgress) return;
+    setUpdateActionInProgress(true);
+    setUpdateActionError(null);
+
+    const token = getEffectiveToken();
+    try {
+      await approveEventUpdateRequest(selectedUpdateRequest.id, token, updateReviewNotes.trim());
+      const approvedTitle = selectedUpdateRequest.proposed?.title || 'Event';
+      handleCloseUpdateRequestReview();
+      setFeedback({
+        type: 'success',
+        message: `Event update approved successfully. Changes applied to live event ("${approvedTitle}").`,
+      });
+      setUpdateRequests((prev) => prev.filter((r) => r.id !== selectedUpdateRequest.id));
+    } catch (err) {
+      setUpdateActionError(err.message || 'Failed to approve event update request.');
+      if (err.status === 409) {
+        loadAllData(true);
+      }
+    } finally {
+      setUpdateActionInProgress(false);
+    }
+  };
+
+  const handleRejectUpdateRequest = async () => {
+    if (!selectedUpdateRequest || updateActionInProgress) return;
+    if (!updateReviewNotes.trim()) {
+      setUpdateActionError('Rejection feedback is required. Please explain why this update request was rejected.');
+      return;
+    }
+    setUpdateActionInProgress(true);
+    setUpdateActionError(null);
+
+    const token = getEffectiveToken();
+    try {
+      await rejectEventUpdateRequest(selectedUpdateRequest.id, token, updateReviewNotes.trim());
+      const eventTitle = selectedUpdateRequest.proposed?.title || 'Event';
+      handleCloseUpdateRequestReview();
+      setFeedback({
+        type: 'info',
+        message: `Event update request rejected. The live event remains unchanged. ("${eventTitle}")`,
+      });
+      setUpdateRequests((prev) => prev.filter((r) => r.id !== selectedUpdateRequest.id));
+    } catch (err) {
+      setUpdateActionError(err.message || 'Failed to reject event update request.');
+      if (err.status === 409) {
+        loadAllData(true);
+      }
+    } finally {
+      setUpdateActionInProgress(false);
+    }
   };
 
   const handleApprove = async () => {
@@ -279,7 +381,7 @@ export function PendingEvents() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '8px',
+            marginBottom: '16px',
             flexWrap: 'wrap',
             gap: '16px',
           }}>
@@ -292,13 +394,13 @@ export function PendingEvents() {
                 margin: 0,
                 letterSpacing: '-0.005em',
               }}>
-                Pending Event Submissions
+                Event Approvals & Updates
               </h1>
             </div>
 
             <button
               type="button"
-              onClick={() => loadPendingSubmissions(true)}
+              onClick={() => loadAllData(true)}
               disabled={refreshing || loading}
               style={{
                 display: 'inline-flex',
@@ -325,12 +427,84 @@ export function PendingEvents() {
             </button>
           </div>
 
+          {/* Navigation Tabs (EP-210 / EP-34) */}
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            borderBottom: '1px solid var(--ep-border)',
+            marginBottom: '20px',
+          }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('new_submissions')}
+              style={{
+                padding: '10px 18px',
+                fontSize: '14px',
+                fontWeight: 600,
+                border: 'none',
+                borderBottom: activeTab === 'new_submissions' ? '2px solid var(--ep-primary)' : '2px solid transparent',
+                color: activeTab === 'new_submissions' ? 'var(--ep-primary)' : 'var(--ep-text-secondary)',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'var(--ep-transition)',
+              }}
+            >
+              <span>New Event Submissions</span>
+              <span style={{
+                backgroundColor: activeTab === 'new_submissions' ? 'var(--ep-primary)' : 'var(--ep-canvas)',
+                color: activeTab === 'new_submissions' ? '#ffffff' : 'var(--ep-text-secondary)',
+                borderRadius: 'var(--ep-radius-pill, 9999px)',
+                padding: '2px 8px',
+                fontSize: '12px',
+                fontWeight: 700,
+              }}>
+                {events.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('update_requests')}
+              style={{
+                padding: '10px 18px',
+                fontSize: '14px',
+                fontWeight: 600,
+                border: 'none',
+                borderBottom: activeTab === 'update_requests' ? '2px solid var(--ep-primary)' : '2px solid transparent',
+                color: activeTab === 'update_requests' ? 'var(--ep-primary)' : 'var(--ep-text-secondary)',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'var(--ep-transition)',
+              }}
+            >
+              <span>Event Updates</span>
+              <span style={{
+                backgroundColor: activeTab === 'update_requests' ? 'var(--ep-primary)' : 'var(--ep-canvas)',
+                color: activeTab === 'update_requests' ? '#ffffff' : 'var(--ep-text-secondary)',
+                borderRadius: 'var(--ep-radius-pill, 9999px)',
+                padding: '2px 8px',
+                fontSize: '12px',
+                fontWeight: 700,
+              }}>
+                {updateRequests.length}
+              </span>
+            </button>
+          </div>
+
           <p style={{
             fontSize: '14px',
             color: 'var(--ep-text-secondary)',
             margin: '0 0 28px 0',
           }}>
-            Review and verify organizer event submissions before they can be published to visitors.
+            {activeTab === 'new_submissions'
+              ? 'Review and verify organizer event submissions before they can be published to visitors.'
+              : 'Review and verify requested modifications to approved live events before changes take effect.'}
           </p>
 
           {/* Loading Skeletons */}
@@ -399,7 +573,7 @@ export function PendingEvents() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => loadPendingSubmissions(false)}
+                  onClick={() => loadAllData(false)}
                   className="ep-btn-secondary"
                   style={{ fontSize: '13px', padding: '6px 16px' }}
                 >
@@ -409,8 +583,8 @@ export function PendingEvents() {
             </div>
           )}
 
-          {/* Empty State */}
-          {!loading && !error && events.length === 0 && (
+          {/* Empty State: New Submissions */}
+          {!loading && !error && activeTab === 'new_submissions' && events.length === 0 && (
             <div style={{
               padding: '48px 24px',
               backgroundColor: 'var(--ep-canvas)',
@@ -439,7 +613,7 @@ export function PendingEvents() {
           )}
 
           {/* Pending Submissions Queue */}
-          {!loading && !error && events.length > 0 && (
+          {!loading && !error && activeTab === 'new_submissions' && events.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {events.map((item) => (
                 <div
@@ -628,10 +802,265 @@ export function PendingEvents() {
               ))}
             </div>
           )}
+
+          {/* Empty State: Event Updates (EP-210 / EP-34) */}
+          {!loading && !error && activeTab === 'update_requests' && updateRequests.length === 0 && (
+            <div style={{
+              padding: '48px 24px',
+              backgroundColor: 'var(--ep-canvas)',
+              borderRadius: 'var(--ep-radius-container, 12px)',
+              border: '1px dashed var(--ep-border)',
+              textAlign: 'center',
+            }}>
+              <CheckCircle2 size={32} color="var(--ep-primary)" style={{ margin: '0 auto 12px auto' }} />
+              <h3 style={{
+                fontSize: '16px',
+                fontWeight: 600,
+                color: 'var(--ep-text-primary)',
+                margin: '0 0 6px 0',
+              }}>
+                No pending update requests
+              </h3>
+              <p style={{
+                fontSize: '13px',
+                color: 'var(--ep-text-secondary)',
+                margin: 0,
+                lineHeight: 1.5,
+              }}>
+                All organizer update requests have been reviewed. When organizers modify approved events, update requests will appear here for verification.
+              </p>
+            </div>
+          )}
+
+          {/* Pending Event Updates Queue (EP-210 / EP-34) */}
+          {!loading && !error && activeTab === 'update_requests' && updateRequests.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {updateRequests.map((item) => {
+                const displayTitle = item.proposed?.title || item.current?.title || 'Untitled Event';
+                const displayPoster = item.proposed?.imageUrl || item.current?.imageUrl;
+                const displayVenue = item.proposed?.venue || item.current?.venue;
+                const displayDate = item.proposed?.eventDate || item.current?.eventDate;
+                const displayCategory = item.proposed?.category || item.current?.category;
+                const displayVenueType = item.proposed?.venueType || item.current?.venueType;
+
+                return (
+                  <div
+                    key={item.id}
+                    className="ep-card"
+                    style={{
+                      padding: '20px',
+                      borderRadius: 'var(--ep-radius-card)',
+                      border: item.isMajorChange ? '1px solid #FCA5A5' : '1px solid var(--ep-border)',
+                      backgroundColor: '#ffffff',
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      gap: '20px',
+                      alignItems: 'flex-start',
+                      flexWrap: 'wrap',
+                    }}>
+                      {/* Poster Thumbnail */}
+                      <div style={{
+                        width: '120px',
+                        height: '120px',
+                        borderRadius: 'var(--ep-radius-badge)',
+                        overflow: 'hidden',
+                        backgroundColor: 'var(--ep-soft-accent)',
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '1px solid var(--ep-border)',
+                      }}>
+                        {displayPoster ? (
+                          <img
+                            src={displayPoster}
+                            alt={displayTitle}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                            }}
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              e.currentTarget.parentElement.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ep-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                            }}
+                          />
+                        ) : (
+                          <ImageIcon size={28} color="var(--ep-primary)" />
+                        )}
+                      </div>
+
+                      {/* Details */}
+                      <div style={{
+                        flex: 1,
+                        minWidth: '240px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                      }}>
+                        <div>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: '12px',
+                            flexWrap: 'wrap',
+                            marginBottom: '8px',
+                          }}>
+                            <h3 style={{
+                              fontSize: '18px',
+                              fontWeight: 700,
+                              color: 'var(--ep-text-primary)',
+                              margin: 0,
+                            }}>
+                              {displayTitle}
+                            </h3>
+
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              {item.isMajorChange && (
+                                <span style={{
+                                  backgroundColor: '#FEE2E2',
+                                  color: '#B91C1C',
+                                  border: '1px solid #FCA5A5',
+                                  borderRadius: 'var(--ep-radius-pill)',
+                                  padding: '4px 10px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  letterSpacing: '0.04em',
+                                  textTransform: 'uppercase',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}>
+                                  <AlertTriangle size={12} />
+                                  MAJOR CHANGE
+                                </span>
+                              )}
+
+                              <span style={{
+                                backgroundColor: '#FFF0E6',
+                                color: 'var(--ep-primary)',
+                                border: '1px solid #FFE0CC',
+                                borderRadius: 'var(--ep-radius-pill)',
+                                padding: '4px 12px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                letterSpacing: '0.04em',
+                                textTransform: 'uppercase',
+                                display: 'inline-block',
+                              }}>
+                                UPDATE PENDING
+                              </span>
+                            </div>
+                          </div>
+
+                          {(displayCategory || displayVenueType) && (
+                            <div style={{ marginBottom: '8px' }}>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                backgroundColor: '#FFF0E6',
+                                color: '#1D1D1F',
+                                border: '1px solid rgba(255, 91, 0, 0.18)',
+                                borderRadius: 'var(--ep-radius-pill, 9999px)',
+                                padding: '3px 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                              }}>
+                                {displayVenueType && displayCategory
+                                  ? `${displayVenueType} • ${displayCategory}`
+                                  : (displayCategory || displayVenueType)}
+                              </span>
+                            </div>
+                          )}
+
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px',
+                            marginBottom: '14px',
+                          }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              fontSize: '13px',
+                              color: item.venueChanged ? '#B91C1C' : 'var(--ep-text-secondary)',
+                              fontWeight: item.venueChanged ? 600 : 400,
+                            }}>
+                              <MapPin size={15} color={item.venueChanged ? '#DC2626' : 'var(--ep-text-secondary)'} style={{ flexShrink: 0 }} />
+                              <span>{displayVenue || 'Venue TBA'}</span>
+                              {item.venueChanged && (
+                                <span style={{ fontSize: '11px', color: '#B91C1C', backgroundColor: '#FEE2E2', padding: '1px 6px', borderRadius: '4px' }}>
+                                  Venue changed
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              fontSize: '13px',
+                              color: item.dateChanged ? '#B91C1C' : 'var(--ep-text-secondary)',
+                              fontWeight: item.dateChanged ? 600 : 400,
+                            }}>
+                              <Calendar size={15} color={item.dateChanged ? '#DC2626' : 'var(--ep-text-secondary)'} style={{ flexShrink: 0 }} />
+                              <span>{formatEventDateTime(displayDate)}</span>
+                              {item.dateChanged && (
+                                <span style={{ fontSize: '11px', color: '#B91C1C', backgroundColor: '#FEE2E2', padding: '1px 6px', borderRadius: '4px' }}>
+                                  Date/Time changed
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card Footer with Requested Date & Review Action */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingTop: '12px',
+                          borderTop: '1px solid var(--ep-border)',
+                          flexWrap: 'wrap',
+                          gap: '12px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            {item.requestedAt && (
+                              <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                                Requested on {formatSubmittedDate(item.requestedAt).replace('Submitted ', '')}
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenUpdateRequestReview(item)}
+                            className="ep-btn-secondary"
+                            style={{
+                              fontSize: '13px',
+                              padding: '6px 16px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Review Update
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </main>
 
-      {/* Review Modal Panel */}
+      {/* Review Modal Panel (New Submissions) */}
       {selectedEvent && (
         <div
           role="dialog"
@@ -1192,6 +1621,661 @@ export function PendingEvents() {
                     }}
                   >
                     Approve Event
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Side-by-Side Update Request Comparison Modal (EP-210 / EP-34) */}
+      {selectedUpdateRequest && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="update-review-modal-title"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            zIndex: 1000,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !updateActionInProgress) {
+              handleCloseUpdateRequestReview();
+            }
+          }}
+        >
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 'var(--ep-radius-card)',
+            border: '1px solid var(--ep-border)',
+            boxShadow: 'var(--ep-shadow-modal, 0 12px 36px rgba(0,0,0,0.12))',
+            width: '100%',
+            maxWidth: '860px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--ep-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Clock size={18} color="var(--ep-primary)" />
+                <div>
+                  <h2
+                    id="update-review-modal-title"
+                    style={{
+                      fontSize: '17px',
+                      fontWeight: 700,
+                      color: 'var(--ep-text-primary)',
+                      margin: 0,
+                    }}
+                  >
+                    Review Event Update Request
+                  </h2>
+                  <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', marginTop: '2px' }}>
+                    Compare current approved event against requested modifications
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseUpdateRequestReview}
+                disabled={updateActionInProgress}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: updateActionInProgress ? 'not-allowed' : 'pointer',
+                  color: 'var(--ep-text-secondary)',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                aria-label="Close update review dialog"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{
+              padding: '24px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+            }}>
+              {/* Error Banner */}
+              {updateActionError && (
+                <div style={{
+                  padding: '12px 16px',
+                  backgroundColor: '#FFF5F5',
+                  border: '1px solid #FED7D7',
+                  borderRadius: 'var(--ep-radius-container, 8px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  fontSize: '13px',
+                  color: 'var(--ep-danger)',
+                }}>
+                  <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                  <span>{updateActionError}</span>
+                </div>
+              )}
+
+              {/* Major Change Warning Banner */}
+              {selectedUpdateRequest.isMajorChange && (
+                <div style={{
+                  padding: '14px 18px',
+                  backgroundColor: '#FEF2F2',
+                  border: '1px solid #FCA5A5',
+                  borderRadius: 'var(--ep-radius-container, 10px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}>
+                  <AlertTriangle size={22} color="#DC2626" style={{ flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '14px', color: '#991B1B' }}>
+                      Major Event Detail Changes Detected
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#B91C1C', marginTop: '2px' }}>
+                      Event date, time, or venue has been modified. Existing ticket holders may need to be notified if this update is approved.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Side-by-Side Comparison Header */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '16px',
+              }}>
+                <div style={{
+                  padding: '10px 14px',
+                  backgroundColor: 'var(--ep-canvas)',
+                  borderRadius: 'var(--ep-radius-container, 8px)',
+                  border: '1px solid var(--ep-border)',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  color: 'var(--ep-text-secondary)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}>
+                  Current Approved (Live)
+                </div>
+                <div style={{
+                  padding: '10px 14px',
+                  backgroundColor: '#FFF0E6',
+                  borderRadius: 'var(--ep-radius-container, 8px)',
+                  border: '1px solid #FFE0CC',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  color: 'var(--ep-primary)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <span>Requested Update</span>
+                  <span style={{ fontSize: '11px', fontWeight: 600 }}>Proposed</span>
+                </div>
+              </div>
+
+              {/* Title Comparison */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Event Title
+                  </span>
+                  {selectedUpdateRequest.titleChanged && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#FFF0E6', color: 'var(--ep-primary)', border: '1px solid #FFE0CC', padding: '1px 6px', borderRadius: '4px' }}>
+                      CHANGED
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ padding: '10px 14px', backgroundColor: 'var(--ep-canvas)', borderRadius: '8px', border: '1px solid var(--ep-border)', fontSize: '14px', fontWeight: 500, color: 'var(--ep-text-primary)' }}>
+                    {selectedUpdateRequest.current?.title || '-'}
+                  </div>
+                  <div style={{
+                    padding: '10px 14px',
+                    backgroundColor: selectedUpdateRequest.titleChanged ? '#FFF7ED' : '#ffffff',
+                    borderRadius: '8px',
+                    border: selectedUpdateRequest.titleChanged ? '1px solid var(--ep-primary)' : '1px solid var(--ep-border)',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: selectedUpdateRequest.titleChanged ? 'var(--ep-primary)' : 'var(--ep-text-primary)',
+                  }}>
+                    {selectedUpdateRequest.proposed?.title || '-'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Date & Time Comparison */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Date & Time
+                  </span>
+                  {selectedUpdateRequest.dateChanged && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', padding: '1px 6px', borderRadius: '4px' }}>
+                      MAJOR CHANGE
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ padding: '10px 14px', backgroundColor: 'var(--ep-canvas)', borderRadius: '8px', border: '1px solid var(--ep-border)', fontSize: '13px', color: 'var(--ep-text-primary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={14} color="var(--ep-text-secondary)" />
+                      <span>{formatEventDateTime(selectedUpdateRequest.current?.eventDate)}</span>
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: '10px 14px',
+                    backgroundColor: selectedUpdateRequest.dateChanged ? '#FEF2F2' : '#ffffff',
+                    borderRadius: '8px',
+                    border: selectedUpdateRequest.dateChanged ? '1px solid #DC2626' : '1px solid var(--ep-border)',
+                    fontSize: '13px',
+                    fontWeight: selectedUpdateRequest.dateChanged ? 600 : 400,
+                    color: selectedUpdateRequest.dateChanged ? '#991B1B' : 'var(--ep-text-primary)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={14} color={selectedUpdateRequest.dateChanged ? '#DC2626' : 'var(--ep-text-secondary)'} />
+                      <span>{formatEventDateTime(selectedUpdateRequest.proposed?.eventDate)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Venue Comparison */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Venue Location
+                  </span>
+                  {selectedUpdateRequest.venueChanged && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', padding: '1px 6px', borderRadius: '4px' }}>
+                      MAJOR CHANGE
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ padding: '10px 14px', backgroundColor: 'var(--ep-canvas)', borderRadius: '8px', border: '1px solid var(--ep-border)', fontSize: '13px', color: 'var(--ep-text-primary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <MapPin size={14} color="var(--ep-text-secondary)" />
+                      <span>{selectedUpdateRequest.current?.venue || 'TBA'}</span>
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: '10px 14px',
+                    backgroundColor: selectedUpdateRequest.venueChanged ? '#FEF2F2' : '#ffffff',
+                    borderRadius: '8px',
+                    border: selectedUpdateRequest.venueChanged ? '1px solid #DC2626' : '1px solid var(--ep-border)',
+                    fontSize: '13px',
+                    fontWeight: selectedUpdateRequest.venueChanged ? 600 : 400,
+                    color: selectedUpdateRequest.venueChanged ? '#991B1B' : 'var(--ep-text-primary)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <MapPin size={14} color={selectedUpdateRequest.venueChanged ? '#DC2626' : 'var(--ep-text-secondary)'} />
+                      <span>{selectedUpdateRequest.proposed?.venue || 'TBA'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category & Venue Type Comparison */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Category & Venue Type
+                  </span>
+                  {(selectedUpdateRequest.categoryChanged || selectedUpdateRequest.venueTypeChanged) && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#FFF0E6', color: 'var(--ep-primary)', border: '1px solid #FFE0CC', padding: '1px 6px', borderRadius: '4px' }}>
+                      CHANGED
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{ padding: '10px 14px', backgroundColor: 'var(--ep-canvas)', borderRadius: '8px', border: '1px solid var(--ep-border)', fontSize: '13px', color: 'var(--ep-text-primary)' }}>
+                    {selectedUpdateRequest.current?.venueType || 'TBA'} • {selectedUpdateRequest.current?.category || 'TBA'}
+                  </div>
+                  <div style={{
+                    padding: '10px 14px',
+                    backgroundColor: (selectedUpdateRequest.categoryChanged || selectedUpdateRequest.venueTypeChanged) ? '#FFF7ED' : '#ffffff',
+                    borderRadius: '8px',
+                    border: (selectedUpdateRequest.categoryChanged || selectedUpdateRequest.venueTypeChanged) ? '1px solid var(--ep-primary)' : '1px solid var(--ep-border)',
+                    fontSize: '13px',
+                    fontWeight: (selectedUpdateRequest.categoryChanged || selectedUpdateRequest.venueTypeChanged) ? 600 : 400,
+                    color: (selectedUpdateRequest.categoryChanged || selectedUpdateRequest.venueTypeChanged) ? 'var(--ep-primary)' : 'var(--ep-text-primary)',
+                  }}>
+                    {selectedUpdateRequest.proposed?.venueType || 'TBA'} • {selectedUpdateRequest.proposed?.category || 'TBA'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Description Comparison */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Description
+                  </span>
+                  {selectedUpdateRequest.descriptionChanged && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#FFF0E6', color: 'var(--ep-primary)', border: '1px solid #FFE0CC', padding: '1px 6px', borderRadius: '4px' }}>
+                      CHANGED
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div style={{
+                    padding: '10px 14px',
+                    backgroundColor: 'var(--ep-canvas)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--ep-border)',
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    lineHeight: 1.5,
+                    maxHeight: '150px',
+                    overflowY: 'auto',
+                    whiteSpace: 'pre-wrap',
+                  }}>
+                    {selectedUpdateRequest.current?.description || 'No description'}
+                  </div>
+                  <div style={{
+                    padding: '10px 14px',
+                    backgroundColor: selectedUpdateRequest.descriptionChanged ? '#FFF7ED' : '#ffffff',
+                    borderRadius: '8px',
+                    border: selectedUpdateRequest.descriptionChanged ? '1px solid var(--ep-primary)' : '1px solid var(--ep-border)',
+                    fontSize: '13px',
+                    color: selectedUpdateRequest.descriptionChanged ? 'var(--ep-text-primary)' : 'var(--ep-text-secondary)',
+                    lineHeight: 1.5,
+                    maxHeight: '150px',
+                    overflowY: 'auto',
+                    whiteSpace: 'pre-wrap',
+                  }}>
+                    {selectedUpdateRequest.proposed?.description || 'No description'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Media Comparison: Poster & Cover */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Visual Assets (Poster & Cover)
+                  </span>
+                  {(selectedUpdateRequest.posterUrlChanged || selectedUpdateRequest.coverUrlChanged) && (
+                    <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: '#FFF0E6', color: 'var(--ep-primary)', border: '1px solid #FFE0CC', padding: '1px 6px', borderRadius: '4px' }}>
+                      IMAGE UPDATED
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  {/* Current Media */}
+                  <div style={{
+                    padding: '12px',
+                    backgroundColor: 'var(--ep-canvas)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--ep-border)',
+                    display: 'flex',
+                    gap: '12px',
+                    alignItems: 'center',
+                  }}>
+                    <div style={{ width: '60px', height: '80px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e2e8f0', flexShrink: 0 }}>
+                      {selectedUpdateRequest.current?.imageUrl ? (
+                        <img src={selectedUpdateRequest.current.imageUrl} alt="Current poster" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={18} /></div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                      <div>Poster: {selectedUpdateRequest.current?.imageUrl ? 'Attached' : 'None'}</div>
+                      <div style={{ marginTop: '4px' }}>Cover: {selectedUpdateRequest.current?.coverUrl ? 'Attached' : 'None'}</div>
+                    </div>
+                  </div>
+
+                  {/* Proposed Media */}
+                  <div style={{
+                    padding: '12px',
+                    backgroundColor: (selectedUpdateRequest.posterUrlChanged || selectedUpdateRequest.coverUrlChanged) ? '#FFF7ED' : '#ffffff',
+                    borderRadius: '8px',
+                    border: (selectedUpdateRequest.posterUrlChanged || selectedUpdateRequest.coverUrlChanged) ? '1px solid var(--ep-primary)' : '1px solid var(--ep-border)',
+                    display: 'flex',
+                    gap: '12px',
+                    alignItems: 'center',
+                  }}>
+                    <div style={{ width: '60px', height: '80px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e2e8f0', flexShrink: 0 }}>
+                      {selectedUpdateRequest.proposed?.imageUrl ? (
+                        <img src={selectedUpdateRequest.proposed.imageUrl} alt="Proposed poster" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={18} /></div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                      <div style={{ color: selectedUpdateRequest.posterUrlChanged ? 'var(--ep-primary)' : 'inherit', fontWeight: selectedUpdateRequest.posterUrlChanged ? 600 : 400 }}>
+                        Poster: {selectedUpdateRequest.posterUrlChanged ? 'New Image Attached' : (selectedUpdateRequest.proposed?.imageUrl ? 'Unchanged' : 'None')}
+                      </div>
+                      <div style={{ marginTop: '4px', color: selectedUpdateRequest.coverUrlChanged ? 'var(--ep-primary)' : 'inherit', fontWeight: selectedUpdateRequest.coverUrlChanged ? 600 : 400 }}>
+                        Cover: {selectedUpdateRequest.coverUrlChanged ? 'New Banner Attached' : (selectedUpdateRequest.proposed?.coverUrl ? 'Unchanged' : 'None')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Approve Confirmation Box */}
+              {updateConfirmMode === 'approve' && (
+                <div style={{
+                  padding: '16px',
+                  backgroundColor: '#E8F5E9',
+                  borderRadius: 'var(--ep-radius-container, 10px)',
+                  border: '1px solid #C8E6C9',
+                }}>
+                  <h4 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: '#1B5E20',
+                    margin: '0 0 6px 0',
+                  }}>
+                    Confirm Event Update Approval
+                  </h4>
+                  <p style={{
+                    fontSize: '13px',
+                    color: '#2E7D32',
+                    margin: '0 0 12px 0',
+                    lineHeight: 1.5,
+                  }}>
+                    The proposed changes will be immediately applied to the live event. The update request will be marked as Approved.
+                  </p>
+                  <div style={{ marginBottom: '14px' }}>
+                    <label
+                      htmlFor="update-approve-notes"
+                      style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--ep-text-primary)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Reviewer Notes (Optional)
+                    </label>
+                    <textarea
+                      id="update-approve-notes"
+                      rows={2}
+                      value={updateReviewNotes}
+                      onChange={(e) => setUpdateReviewNotes(e.target.value)}
+                      placeholder="Optional notes for organizer..."
+                      disabled={updateActionInProgress}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: 'var(--ep-radius-input, 8px)',
+                        border: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={handleApproveUpdateRequest}
+                      disabled={updateActionInProgress}
+                      style={{
+                        backgroundColor: '#2E7D32',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 'var(--ep-radius-btn)',
+                        padding: '8px 18px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: updateActionInProgress ? 'not-allowed' : 'pointer',
+                        opacity: updateActionInProgress ? 0.7 : 1,
+                      }}
+                    >
+                      {updateActionInProgress ? 'Approving...' : 'Confirm Approval'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmModeUpdate(null)}
+                      disabled={updateActionInProgress}
+                      className="ep-btn-secondary"
+                      style={{ fontSize: '13px', padding: '8px 16px' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Reject Confirmation Box */}
+              {updateConfirmMode === 'reject' && (
+                <div style={{
+                  padding: '16px',
+                  backgroundColor: '#FFF5F5',
+                  borderRadius: 'var(--ep-radius-container, 10px)',
+                  border: '1px solid #FED7D7',
+                }}>
+                  <h4 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--ep-danger)',
+                    margin: '0 0 6px 0',
+                  }}>
+                    Confirm Event Update Rejection
+                  </h4>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    margin: '0 0 12px 0',
+                    lineHeight: 1.5,
+                  }}>
+                    The update request will be rejected and the live event will remain completely unchanged. The organizer will see your reason on their event page.
+                  </p>
+                  <div style={{ marginBottom: '14px' }}>
+                    <label
+                      htmlFor="update-reject-notes"
+                      style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--ep-text-primary)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Rejection Reason / Feedback <span style={{ color: 'var(--ep-danger)' }}>*</span>
+                    </label>
+                    <textarea
+                      id="update-reject-notes"
+                      rows={3}
+                      value={updateReviewNotes}
+                      onChange={(e) => setUpdateReviewNotes(e.target.value)}
+                      placeholder="Explain what needs to be changed or why this update cannot be accepted..."
+                      disabled={updateActionInProgress}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: 'var(--ep-radius-input, 8px)',
+                        border: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={handleRejectUpdateRequest}
+                      disabled={updateActionInProgress || !updateReviewNotes.trim()}
+                      style={{
+                        backgroundColor: 'var(--ep-danger)',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 'var(--ep-radius-btn)',
+                        padding: '8px 18px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: (updateActionInProgress || !updateReviewNotes.trim()) ? 'not-allowed' : 'pointer',
+                        opacity: (updateActionInProgress || !updateReviewNotes.trim()) ? 0.6 : 1,
+                      }}
+                    >
+                      {updateActionInProgress ? 'Rejecting...' : 'Confirm Rejection'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmModeUpdate(null)}
+                      disabled={updateActionInProgress}
+                      className="ep-btn-secondary"
+                      style={{ fontSize: '13px', padding: '8px 16px' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer (when no confirm mode active) */}
+            {!updateConfirmMode && (
+              <div style={{
+                padding: '16px 24px',
+                borderTop: '1px solid var(--ep-border)',
+                backgroundColor: 'var(--ep-canvas)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+              }}>
+                <button
+                  type="button"
+                  onClick={handleCloseUpdateRequestReview}
+                  disabled={updateActionInProgress}
+                  className="ep-btn-secondary"
+                  style={{ fontSize: '13px', padding: '8px 16px' }}
+                >
+                  Close
+                </button>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmModeUpdate('reject')}
+                    disabled={updateActionInProgress}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: 'var(--ep-danger)',
+                      border: '1px solid var(--ep-danger)',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: updateActionInProgress ? 'not-allowed' : 'pointer',
+                      transition: 'var(--ep-transition)',
+                    }}
+                  >
+                    Reject Update
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConfirmModeUpdate('approve')}
+                    disabled={updateActionInProgress}
+                    style={{
+                      backgroundColor: '#2E7D32',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      padding: '8px 20px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: updateActionInProgress ? 'not-allowed' : 'pointer',
+                      transition: 'var(--ep-transition)',
+                    }}
+                  >
+                    Approve Update
                   </button>
                 </div>
               </div>

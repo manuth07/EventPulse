@@ -83,6 +83,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddScoped<IEventSubmissionService, EventSubmissionService>();
 builder.Services.AddScoped<IEventReviewService, EventReviewService>();
 builder.Services.AddScoped<ITicketTypeService, TicketTypeService>();
+builder.Services.AddScoped<IEventUpdateRequestService, EventUpdateRequestService>();
 
 // ---------------------------------------------------------------------------
 // Infrastructure — Blob Storage
