@@ -279,3 +279,81 @@ export async function resubmitEvent(id, formData, token) {
 
   return response.json();
 }
+
+/**
+ * Submits an Event Update Request for an Approved or Published event (EP-34 / US-14).
+ * The live event is not directly mutated; proposed changes are queued for admin review.
+ * @param {string} id - The Event GUID.
+ * @param {FormData} formData - Multipart form containing proposed fields and optional images.
+ * @param {string} token - The authenticated organizer's JWT token.
+ * @returns {Promise<Object>} The created EventUpdateRequestDto.
+ */
+export async function submitEventUpdateRequest(id, formData, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/update-request`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      // Content-Type is intentionally omitted so the browser sets the multipart boundary
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to submit update request (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+      if (data.errors && data.errors.length > 0) {
+        errorMsg += ': ' + data.errors.join(', ');
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Retrieves the latest Event Update Request for an organizer's event (EP-34 / US-14).
+ * Returns null if no update request exists (404).
+ * @param {string} id - The Event GUID.
+ * @param {string} token - The authenticated organizer's JWT token.
+ * @returns {Promise<Object|null>} The EventUpdateRequestDto or null if none exists.
+ */
+export async function getEventUpdateRequest(id, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/update-request`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load event update request (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
