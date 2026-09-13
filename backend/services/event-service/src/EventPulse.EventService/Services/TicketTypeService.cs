@@ -6,7 +6,8 @@ using EventPulse.EventService.Models;
 namespace EventPulse.EventService.Services;
 
 /// <summary>
-/// Implements US-19 — Create Ticket Types and US-20 — Update Ticket Types.
+/// Implements US-19 — Create Ticket Types, US-20 — Update Ticket Types,
+/// US-21 — Manage Ticket Capacity, and US-22 — View Ticket Availability.
 /// Eligibility rule: an event must be owned by the requesting organizer and in
 /// Approved or Published status. Pending/Rejected events cannot have ticket types.
 /// </summary>
@@ -120,6 +121,43 @@ public class TicketTypeService : ITicketTypeService
             .ToListAsync(cancellationToken);
 
         return (ticketTypes.Select(MapToDto).ToList(), false, false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(IReadOnlyList<PublicTicketTypeDto>? Result, bool IsNotFound)> GetPublicByEventIdAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default)
+    {
+        var eventItem = await _context.Events
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken);
+
+        // Only Published events expose ticket data to visitors. Pending, Approved
+        // (not yet published), and Rejected events are treated as not found so
+        // no purchasable ticket information ever leaks before an event goes live.
+        if (eventItem == null || eventItem.Status != EventStatus.Published)
+            return (null, true);
+
+        var ticketTypes = await _context.TicketTypes
+            .AsNoTracking()
+            .Where(t => t.EventId == eventId)
+            .OrderBy(t => t.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var result = ticketTypes.Select(t =>
+        {
+            var available = t.Capacity - t.BookedQuantity;
+            return new PublicTicketTypeDto
+            {
+                Id = t.Id,
+                Name = t.Name,
+                Price = t.Price,
+                AvailableQuantity = Math.Max(available, 0),
+                IsSoldOut = available <= 0,
+            };
+        }).ToList();
+
+        return (result, false);
     }
 
     /// <inheritdoc/>

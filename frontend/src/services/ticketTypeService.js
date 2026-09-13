@@ -73,3 +73,27 @@ export async function updateTicketType(eventId, ticketTypeId, payload, token) {
 
   return response.json();
 }
+export async function getPublicTicketTypes(eventId) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${eventId}/ticket-types/public`, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+  });
+
+  if (response.status === 404) {
+    // Event not found or not published — treat as no ticket info available
+    return [];
+  }
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load ticket information (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}

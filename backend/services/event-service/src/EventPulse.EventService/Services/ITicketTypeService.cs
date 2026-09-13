@@ -33,4 +33,14 @@ public interface ITicketTypeService
         UpdateTicketTypeRequest request,
         Guid organizerId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves ticket types for public/customer viewing.
+    /// Only returns data if the event exists and is Published — otherwise
+    /// treated as not found, since Pending/Approved/Rejected events must
+    /// never expose purchasable ticket information to visitors.
+    /// </summary>
+    Task<(IReadOnlyList<PublicTicketTypeDto>? Result, bool IsNotFound)> GetPublicByEventIdAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default);
 }

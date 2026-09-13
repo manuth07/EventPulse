@@ -4,6 +4,7 @@ import { ArrowLeft, Calendar, MapPin, Ticket, RotateCcw, CalendarX, AlertCircle 
 import { Header } from '../../components/Header/Header';
 import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
+import { PublicTicketList } from '../../components/TicketTypes/PublicTicketList';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
@@ -277,6 +278,10 @@ export function EventDetails() {
                     <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--ep-text-primary)', fontFamily: 'var(--ep-font-heading)' }}>
                       {formatPrice(event.price)}
                     </div>
+                  </div>
+
+                  <div style={{ marginBottom: '20px' }}>
+                    <PublicTicketList eventId={event.id} />
                   </div>
 
                   <button

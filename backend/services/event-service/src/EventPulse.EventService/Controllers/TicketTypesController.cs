@@ -163,4 +163,28 @@ public class TicketTypesController : ControllerBase
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// GET /api/events/{eventId}/ticket-types/public
+    /// EP-42 — Public, unauthenticated endpoint for visitors to view ticket
+    /// types and availability for a Published event. No JWT required.
+    /// Returns 404 if the event doesn't exist or isn't Published — mirrors
+    /// EventsController.GetEventById so unpublished events never leak ticket data.
+    /// </summary>
+    [HttpGet("public")]
+    public async Task<IActionResult> GetPublicTicketTypes(string eventId, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(eventId, out var guidId))
+            return NotFound();
+
+        if (_ticketTypeService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Ticket type service is not configured." });
+
+        var (result, isNotFound) = await _ticketTypeService.GetPublicByEventIdAsync(guidId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found or not available." });
+
+        return Ok(result);
+    }
 }
