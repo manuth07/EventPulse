@@ -177,7 +177,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                Ticket Name
+                Ticket Name <span style={{ color: 'var(--ep-danger)' }}>*</span>
               </label>
               <input
                 type="text"
@@ -190,7 +190,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                Price (LKR)
+                Price (LKR) <span style={{ color: 'var(--ep-danger)' }}>*</span>
               </label>
               <input
                 type="number"
@@ -205,7 +205,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                Capacity
+                Capacity <span style={{ color: 'var(--ep-danger)' }}>*</span>
               </label>
               <input
                 type="number"
