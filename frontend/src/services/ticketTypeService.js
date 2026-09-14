@@ -97,3 +97,20 @@ export async function getPublicTicketTypes(eventId) {
 
   return response.json();
 }
+export async function deleteTicketType(eventId, ticketTypeId, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${eventId}/ticket-types/${ticketTypeId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to delete ticket type (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+}
