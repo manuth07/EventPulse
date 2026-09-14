@@ -2,11 +2,45 @@ import React, { useState, useEffect } from 'react';
 import { Ticket, AlertCircle } from 'lucide-react';
 import { getPublicTicketTypes } from '../../services/ticketTypeService';
 import { formatPrice } from '../../utils/currencyFormatter';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { addToCart } from '../../services/cartService';
 
 export function PublicTicketList({ eventId }) {
   const [ticketTypes, setTicketTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const navigate = useNavigate();
+  const { isAuthenticated, accessToken } = useAuth();
+  const [quantities, setQuantities] = useState({});
+  const [addingId, setAddingId] = useState(null);
+  const [addError, setAddError] = useState(null);
+  const [addSuccessId, setAddSuccessId] = useState(null);
+
+  const handleQuantityChange = (ticketTypeId, value, max) => {
+    const num = Math.max(1, Math.min(Number(value) || 1, max));
+    setQuantities((prev) => ({ ...prev, [ticketTypeId]: num }));
+  };
+
+  const handleAddToCart = async (t) => {
+    if (!isAuthenticated) {
+      navigate('/login', { state: { returnTo: window.location.pathname } });
+      return;
+    }
+    setAddError(null);
+    setAddingId(t.id);
+    try {
+      const qty = quantities[t.id] || 1;
+      await addToCart(eventId, t.id, qty, accessToken);
+      setAddSuccessId(t.id);
+      setTimeout(() => setAddSuccessId(null), 2000);
+    } catch (err) {
+      setAddError(err.message || 'Failed to add to cart.');
+    } finally {
+      setAddingId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +77,11 @@ export function PublicTicketList({ eventId }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {addError && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--ep-danger)', padding: '8px 12px', backgroundColor: '#FFF2F2', border: '1px solid var(--ep-danger)', borderRadius: '8px' }}>
+          <AlertCircle size={14} /><span>{addError}</span>
+        </div>
+      )}
       {ticketTypes.map((t) => (
         <div
           key={t.id}
@@ -90,6 +129,27 @@ export function PublicTicketList({ eventId }) {
               }}>
                 Sold Out
               </span>
+            )}
+            {!t.isSoldOut && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', justifyContent: 'flex-end' }}>
+                <input
+                  type="number"
+                  min="1"
+                  max={t.availableQuantity}
+                  value={quantities[t.id] || 1}
+                  onChange={(e) => handleQuantityChange(t.id, e.target.value, t.availableQuantity)}
+                  style={{ width: '56px', padding: '6px 8px', fontSize: '13px', borderRadius: '8px', border: '1px solid var(--ep-border)' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddToCart(t)}
+                  disabled={addingId === t.id}
+                  className="ep-btn-secondary"
+                  style={{ fontSize: '12px', padding: '6px 12px' }}
+                >
+                  {addingId === t.id ? 'Adding…' : addSuccessId === t.id ? 'Added ✓' : 'Add to Cart'}
+                </button>
+              </div>
             )}
           </div>
         </div>

@@ -17,6 +17,7 @@ import { PendingEvents } from './pages/PendingEvents/PendingEvents';
 import { RequireRole } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
+import { Cart } from './pages/Cart/Cart';
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
           <Route path="/complete-profile" element={<CompleteProfile />} />
           <Route path="/forbidden" element={<Forbidden />} />
           <Route path="/list-your-event" element={<ListYourEvent />} />
+          <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
 
           {/* Organizer Protected Routes */}
           <Route element={<RequireRole allowedRoles="Organizer" />}>
