@@ -187,4 +187,44 @@ public class TicketTypesController : ControllerBase
 
         return Ok(result);
     }
+    /// <summary>
+    /// DELETE /api/events/{eventId}/ticket-types/{ticketTypeId}
+    /// Deletes a ticket type with no existing bookings, owned by the caller.
+    /// </summary>
+    [HttpDelete("{ticketTypeId}")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<IActionResult> DeleteTicketType(
+        string eventId,
+        string ticketTypeId,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(eventId, out var eventGuidId) || !Guid.TryParse(ticketTypeId, out var ticketTypeGuidId))
+            return NotFound();
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("DeleteTicketType: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_ticketTypeService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Ticket type service is not configured." });
+
+        var (success, error, isNotFound, isForbidden) =
+            await _ticketTypeService.DeleteAsync(eventGuidId, ticketTypeGuidId, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (!success)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        return NoContent();
+    }
 }

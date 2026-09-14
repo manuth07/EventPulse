@@ -230,6 +230,53 @@ public class TicketTypeService : ITicketTypeService
         return (MapToDto(ticketType), null, false, false);
     }
 
+    /// <inheritdoc/>
+    public async Task<(bool Success, string? Error, bool IsNotFound, bool IsForbidden)> DeleteAsync(
+        Guid eventId,
+        Guid ticketTypeId,
+        Guid organizerId,
+        CancellationToken cancellationToken = default)
+    {
+        var ticketType = await _context.TicketTypes
+            .Include(t => t.Event)
+            .FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, cancellationToken);
+
+        if (ticketType == null || ticketType.Event == null)
+        {
+            return (false, "Ticket type not found.", true, false);
+        }
+
+        if (ticketType.Event.OrganizerId != organizerId)
+        {
+            _logger?.LogWarning(
+                "DeleteTicketType forbidden: TicketType {TicketTypeId} belongs to Event owned by {ActualOrganizer}, request by {RequesterId}",
+                ticketTypeId, ticketType.Event.OrganizerId, organizerId);
+            return (false, "You do not have permission to delete this ticket type.", false, true);
+        }
+
+        if (ticketType.BookedQuantity > 0)
+        {
+            return (false,
+                $"This ticket type cannot be deleted because {ticketType.BookedQuantity} ticket(s) have already been booked.",
+                false, false);
+        }
+
+        _context.TicketTypes.Remove(ticketType);
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "DB save failed while deleting TicketType {TicketTypeId}", ticketTypeId);
+            return (false, "Failed to delete ticket type. Please try again.", false, false);
+        }
+
+        _logger?.LogInformation("Ticket type deleted. TicketTypeId={TicketTypeId} EventId={EventId}", ticketTypeId, eventId);
+        return (true, null, false, false);
+    }
+
     private static TicketTypeDto MapToDto(TicketType t) => new TicketTypeDto
     {
         Id = t.Id,
