@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, MapPin, Ticket, RotateCcw, CalendarX, AlertCircle } from 'lucide-react';
 import { Header } from '../../components/Header/Header';
 import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { PublicTicketList } from '../../components/TicketTypes/PublicTicketList';
+import { useAuth } from '../../context/AuthContext';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
@@ -23,9 +24,20 @@ function formatDate(dateString) {
 
 export function EventDetails() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const handleSelectTickets = () => {
+    if (!isAuthenticated) {
+      navigate('/login', { state: { returnTo: `/events/${id}` } });
+      return;
+    }
+    // TODO: proceed to cart/booking flow once Booking Service exists
+    alert('Ticket booking will be available in Sprint 2.');
+  };
 
   const loadEventDetails = async () => {
     setLoading(true);
@@ -288,7 +300,7 @@ export function EventDetails() {
                     type="button"
                     className="ep-btn-primary w-100"
                     style={{ padding: '14px', fontSize: '15px' }}
-                    onClick={() => alert('Ticket booking will be available in Sprint 2.')}
+                    onClick={handleSelectTickets}
                   >
                     Select Tickets
                   </button>
