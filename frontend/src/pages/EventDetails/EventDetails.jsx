@@ -5,6 +5,8 @@ import { Header } from '../../components/Header/Header';
 import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { PublicTicketList } from '../../components/TicketTypes/PublicTicketList';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
