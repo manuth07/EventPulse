@@ -5,6 +5,17 @@ const USER_KEY = 'ep_user';
 
 const AuthContext = createContext(null);
 
+function isTokenExpired(token) {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    if (!payload.exp) return false; // no exp claim — treat as non-expiring
+    return Date.now() >= payload.exp * 1000;
+  } catch {
+    return true; // malformed token — treat as invalid
+  }
+}
+
 export function AuthProvider({ children }) {
   const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || null);
   const [currentUser, setCurrentUser] = useState(() => {
