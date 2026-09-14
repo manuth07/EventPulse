@@ -1,6 +1,6 @@
 # =============================================================================
 # EventPulse Backend — Dev Runner
-# Starts: Gateway (:7000)  |  IdentityService (:7101)  |  EventService (:7102)
+# Starts: Gateway (:7000)  |  IdentityService (:7101)  |  EventService (:7102)  |  BookingService (:7103)
 #
 # Usage:
 #   From repo root or backend/:
@@ -33,6 +33,12 @@ $Services = @(
         Color   = "Yellow"
         Path    = "$BackendRoot\services\event-service\src\EventPulse.EventService"
         Port    = 7102
+    },
+    @{
+        Name    = "BookingService"
+        Color   = "Magenta"
+        Path    = "$BackendRoot\services\booking-service\src\EventPulse.BookingService"
+        Port    = 7103
     }
 )
 

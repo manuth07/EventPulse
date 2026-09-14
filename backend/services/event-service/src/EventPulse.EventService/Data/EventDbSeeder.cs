@@ -110,7 +110,7 @@ public static class EventDbSeeder
                 Price = 2500.00m,
                 Category = "Workshop",
                 VenueType = "Indoor",
-                Status = EventStatus.Approved,
+                Status = EventStatus.Published,
                 OrganizerId = organizer2,
                 CreatedAt = DateTime.UtcNow.AddDays(-6),
                 ReviewedAt = DateTime.UtcNow.AddDays(-1),
