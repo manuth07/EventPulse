@@ -300,7 +300,7 @@ export function EventDetails() {
                     type="button"
                     className="ep-btn-primary w-100"
                     style={{ padding: '14px', fontSize: '15px' }}
-                    onClick={() => alert('Ticket booking will be available in Sprint 2.')}
+                    onClick={handleSelectTickets}
                   >
                     Select Tickets
                   </button>
