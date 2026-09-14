@@ -57,13 +57,12 @@ export function AuthProvider({ children }) {
   const value = {
     accessToken,
     currentUser,
-    isAuthenticated: Boolean(accessToken),
+    isAuthenticated: Boolean(accessToken) && !isTokenExpired(accessToken),
     login: loginUser,
     logout: logoutUser,
     hasRole,
     hasAnyRole,
   };
-
   return (
     <AuthContext.Provider value={value}>
       {children}
