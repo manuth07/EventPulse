@@ -1,3 +1,6 @@
+using EventPulse.BookingService.Data;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
@@ -8,6 +11,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Communicates with EventService (read event/seat data) → via HTTP client later.
 // Communicates with PaymentService (payment confirmation) → via Kafka later.
 // ---------------------------------------------------------------------------
+
+builder.Services.AddDbContext<BookingDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDatabase")));
+
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
