@@ -188,7 +188,7 @@ export function Register() {
         <form onSubmit={handleSubmit} noValidate>
           {/* Row: First name / Last name */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-            <Field label="First name" id="reg-firstName" error={fieldErrors.firstName}>
+            <Field label={<>First name <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="reg-firstName" error={fieldErrors.firstName}>
               <input
                 id="reg-firstName"
                 type="text"
@@ -202,7 +202,7 @@ export function Register() {
               />
             </Field>
 
-            <Field label="Last name" id="reg-lastName" error={fieldErrors.lastName}>
+            <Field label={<>Last name <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="reg-lastName" error={fieldErrors.lastName}>
               <input
                 id="reg-lastName"
                 type="text"
@@ -218,7 +218,7 @@ export function Register() {
           </div>
 
           {/* Country */}
-          <Field label="Country" id="reg-country" error={fieldErrors.countryCode} style={{ marginBottom: '14px' }}>
+          <Field label={<>Country <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="reg-country" error={fieldErrors.countryCode} style={{ marginBottom: '14px' }}>
             <select
               id="reg-country"
               className="ep-input"
@@ -229,7 +229,7 @@ export function Register() {
                 setFieldErrors((prev) => { const n = { ...prev }; delete n.countryCode; return n; });
               }}
             >
-              <option value="">Select country</option>
+              <option value={<>Country <span style={{ color: 'var(--ep-danger)' }}>*</span></>}>Select country</option>
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>{c.name}</option>
               ))}
@@ -237,7 +237,7 @@ export function Register() {
           </Field>
 
           {/* Contact number */}
-          <Field label="Contact number" id="reg-phone" error={fieldErrors.phoneNumber} style={{ marginBottom: '14px' }}>
+          <Field label={<>Contact number <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="reg-phone" error={fieldErrors.phoneNumber} style={{ marginBottom: '14px' }}>
             <div style={{ display: 'flex', gap: '8px' }}>
               {/* Dial code badge */}
               <div style={{
@@ -270,7 +270,7 @@ export function Register() {
           </Field>
 
           {/* Email */}
-          <Field label="Email address" id="reg-email" error={fieldErrors.email} style={{ marginBottom: '14px' }}>
+          <Field label={<>Email address <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="reg-email" error={fieldErrors.email} style={{ marginBottom: '14px' }}>
             <input
               id="reg-email"
               type="email"
@@ -284,7 +284,7 @@ export function Register() {
           </Field>
 
           {/* Password */}
-          <Field label="Password" id="reg-password" error={fieldErrors.password} style={{ marginBottom: '14px' }}>
+          <Field label={<>Password <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="reg-password" error={fieldErrors.password} style={{ marginBottom: '14px' }}>
             <PasswordInput
               id="reg-password"
               value={form.password}
@@ -298,7 +298,7 @@ export function Register() {
           </Field>
 
           {/* Confirm password */}
-          <Field label="Confirm password" id="reg-confirm" error={fieldErrors.confirmPassword} style={{ marginBottom: '24px' }}>
+          <Field label={<>Confirm password <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="reg-confirm" error={fieldErrors.confirmPassword} style={{ marginBottom: '24px' }}>
             <PasswordInput
               id="reg-confirm"
               value={form.confirmPassword}

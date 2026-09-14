@@ -114,7 +114,7 @@ export function CompleteProfile() {
 
         <form onSubmit={handleSubmit} noValidate>
           {/* Country */}
-          <Field label="Country" id="profile-country" error={fieldErrors.countryCode} style={{ marginBottom: '14px' }}>
+          <Field label={<>Country <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="profile-country" error={fieldErrors.countryCode} style={{ marginBottom: '14px' }}>
             <select
               id="profile-country"
               className="ep-input"
@@ -133,7 +133,7 @@ export function CompleteProfile() {
           </Field>
 
           {/* Contact number */}
-          <Field label="Contact number" id="profile-phone" error={fieldErrors.phoneNumber} style={{ marginBottom: '24px' }}>
+          <Field label={<>Contact number <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="profile-phone" error={fieldErrors.phoneNumber} style={{ marginBottom: '24px' }}>
             <div style={{ display: 'flex', gap: '8px' }}>
               <div style={{
                 display: 'flex',

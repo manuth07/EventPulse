@@ -43,4 +43,15 @@ public interface ITicketTypeService
     Task<(IReadOnlyList<PublicTicketTypeDto>? Result, bool IsNotFound)> GetPublicByEventIdAsync(
         Guid eventId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes a ticket type. Only permitted for ticket types belonging to
+    /// events owned by the requesting organizer, and only if no tickets
+    /// have been booked against it.
+    /// </summary>
+    Task<(bool Success, string? Error, bool IsNotFound, bool IsForbidden)> DeleteAsync(
+        Guid eventId,
+        Guid ticketTypeId,
+        Guid organizerId,
+        CancellationToken cancellationToken = default);
 }

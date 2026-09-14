@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Ticket, Plus, AlertCircle, Pencil, X } from 'lucide-react';
-import { getTicketTypes, createTicketType, updateTicketType } from '../../services/ticketTypeService';
+import { Ticket, Plus, AlertCircle, Pencil, X, Trash2 } from 'lucide-react';
+import { getTicketTypes, createTicketType, updateTicketType, deleteTicketType } from '../../services/ticketTypeService';
 import { formatPrice } from '../../utils/currencyFormatter';
 
 export function TicketTypesPanel({ eventId, accessToken }) {
@@ -22,6 +22,10 @@ export function TicketTypesPanel({ eventId, accessToken }) {
   const [editCapacity, setEditCapacity] = useState('50');
   const [editError, setEditError] = useState(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // Delete state — tracks which ticket type id is being deleted, null when none
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
 
   const getToken = () => accessToken || sessionStorage.getItem('ep_access_token');
 
@@ -122,6 +126,21 @@ export function TicketTypesPanel({ eventId, accessToken }) {
     }
   };
 
+  const handleDelete = async (ticketTypeId) => {
+    if (!window.confirm('Delete this ticket type? This cannot be undone.')) return;
+
+    setDeleteError(null);
+    setDeletingId(ticketTypeId);
+    try {
+      await deleteTicketType(eventId, ticketTypeId, getToken());
+      await load();
+    } catch (err) {
+      setDeleteError(err.message || 'Failed to delete ticket type.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div style={{
       marginTop: '24px',
@@ -158,7 +177,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                Ticket Name
+                Ticket Name <span style={{ color: 'var(--ep-danger)' }}>*</span>
               </label>
               <input
                 type="text"
@@ -171,7 +190,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                Price (LKR)
+                Price (LKR) <span style={{ color: 'var(--ep-danger)' }}>*</span>
               </label>
               <input
                 type="number"
@@ -186,7 +205,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                Capacity
+                Capacity <span style={{ color: 'var(--ep-danger)' }}>*</span>
               </label>
               <input
                 type="number"
@@ -211,6 +230,12 @@ export function TicketTypesPanel({ eventId, accessToken }) {
       {!loading && error && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--ep-danger)' }}>
           <AlertCircle size={14} /><span>{error}</span>
+        </div>
+      )}
+
+      {!loading && !error && deleteError && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--ep-danger)', marginBottom: '10px' }}>
+          <AlertCircle size={14} /><span>{deleteError}</span>
         </div>
       )}
 
@@ -305,7 +330,7 @@ export function TicketTypesPanel({ eventId, accessToken }) {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)' }}>{t.name}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
                       {formatPrice(t.price)} • {t.availableQuantity} / {t.capacity} available
                     </span>
                     <button
@@ -318,6 +343,20 @@ export function TicketTypesPanel({ eventId, accessToken }) {
                       }}
                     >
                       <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(t.id)}
+                      disabled={deletingId === t.id}
+                      title="Delete ticket type"
+                      style={{
+                        background: 'none', border: 'none',
+                        cursor: deletingId === t.id ? 'default' : 'pointer',
+                        opacity: deletingId === t.id ? 0.5 : 1,
+                        color: 'var(--ep-danger)', padding: '4px', display: 'flex', alignItems: 'center',
+                      }}
+                    >
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
