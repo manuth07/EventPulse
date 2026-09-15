@@ -144,16 +144,20 @@ public class TicketTypeService : ITicketTypeService
             .OrderBy(t => t.CreatedAt)
             .ToListAsync(cancellationToken);
 
+        // EP-35 / US-15: If an event has a pending cancellation request, temporarily block all ticket sales
+        var hasPendingCancellation = await _context.EventCancellationRequests
+            .AnyAsync(r => r.EventId == eventId && r.Status == EventCancellationRequestStatus.Pending, cancellationToken);
+
         var result = ticketTypes.Select(t =>
         {
-            var available = t.Capacity - t.BookedQuantity;
+            var available = hasPendingCancellation ? 0 : t.Capacity - t.BookedQuantity;
             return new PublicTicketTypeDto
             {
                 Id = t.Id,
                 Name = t.Name,
                 Price = t.Price,
                 AvailableQuantity = Math.Max(available, 0),
-                IsSoldOut = available <= 0,
+                IsSoldOut = hasPendingCancellation || available <= 0,
             };
         }).ToList();
 

@@ -18,6 +18,7 @@ public class EventsController : ControllerBase
     private readonly IEventSubmissionService? _submissionService;
     private readonly IEventReviewService? _reviewService;
     private readonly IEventUpdateRequestService? _updateRequestService;
+    private readonly IEventCancellationRequestService? _cancellationRequestService;
     private readonly IEventImageStorage? _imageStorage;
     private readonly ILogger<EventsController>? _logger;
 
@@ -26,6 +27,7 @@ public class EventsController : ControllerBase
         IEventSubmissionService? submissionService = null,
         IEventReviewService? reviewService = null,
         IEventUpdateRequestService? updateRequestService = null,
+        IEventCancellationRequestService? cancellationRequestService = null,
         IEventImageStorage? imageStorage = null,
         ILogger<EventsController>? logger = null)
     {
@@ -33,6 +35,7 @@ public class EventsController : ControllerBase
         _submissionService = submissionService;
         _reviewService = reviewService;
         _updateRequestService = updateRequestService;
+        _cancellationRequestService = cancellationRequestService;
         _imageStorage = imageStorage;
         _logger = logger;
     }
@@ -360,6 +363,104 @@ public class EventsController : ControllerBase
 
         var (result, error, isNotFound, isForbidden) =
             await _updateRequestService.GetUpdateRequestAsync(guidId, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST /api/events/{id}/cancellation-request
+    /// EP-35 / US-15 — Organizer submits a cancellation request for an Approved or Published event.
+    /// Does NOT modify the live event status. Creates an EventCancellationRequest in Pending status.
+    /// Exactly one Pending cancellation request is allowed at a time.
+    /// Mutually exclusive with pending update requests.
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpPost("{id}/cancellation-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<IActionResult> SubmitCancellationRequest(
+        string id,
+        [FromBody] SubmitEventCancellationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("SubmitCancellationRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden, isInvalidState, isConflict) =
+            await _cancellationRequestService.SubmitCancellationRequestAsync(guidId, request, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (isConflict)
+            return Conflict(new { code = "CONFLICT", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return CreatedAtAction(nameof(GetCancellationRequest), new { id = guidId.ToString() }, result);
+    }
+
+    /// <summary>
+    /// GET /api/events/{id}/cancellation-request
+    /// EP-35 / US-15 — Retrieves the latest cancellation request for an event owned by the authenticated Organizer.
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpGet("{id}/cancellation-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<EventCancellationRequestDto>> GetCancellationRequest(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("GetCancellationRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden) =
+            await _cancellationRequestService.GetCancellationRequestAsync(guidId, organizerId, cancellationToken);
 
         if (isNotFound)
             return NotFound(new { code = "NOT_FOUND", message = error });

@@ -12,6 +12,7 @@ public class EventDbContext : DbContext
     public DbSet<Event> Events => Set<Event>();
     public DbSet<TicketType> TicketTypes => Set<TicketType>();
     public DbSet<EventUpdateRequest> EventUpdateRequests => Set<EventUpdateRequest>();
+    public DbSet<EventCancellationRequest> EventCancellationRequests => Set<EventCancellationRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -163,6 +164,48 @@ public class EventDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             // Exactly ONE Pending update request per EventId (PostgreSQL partial unique index)
+            entity.HasIndex(r => r.EventId)
+                .IsUnique()
+                .HasFilter("\"Status\" = 'Pending'");
+        });
+
+        modelBuilder.Entity<EventCancellationRequest>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.EventId)
+                .IsRequired();
+
+            entity.Property(r => r.OrganizerId)
+                .IsRequired();
+
+            entity.Property(r => r.Reason)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.Property(r => r.Status)
+                .HasConversion<string>()
+                .IsRequired();
+
+            entity.Property(r => r.RequestedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.Property(r => r.ReviewedAt)
+                .IsRequired(false);
+
+            entity.Property(r => r.ReviewedBy)
+                .IsRequired(false);
+
+            entity.Property(r => r.ReviewComment)
+                .HasMaxLength(1000)
+                .IsRequired(false);
+
+            entity.HasOne(r => r.Event)
+                .WithMany(e => e.CancellationRequests)
+                .HasForeignKey(r => r.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Exactly ONE Pending cancellation request per EventId (PostgreSQL partial unique index)
             entity.HasIndex(r => r.EventId)
                 .IsUnique()
                 .HasFilter("\"Status\" = 'Pending'");
