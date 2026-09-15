@@ -637,46 +637,66 @@ public class EventsController : ControllerBase
     }
 
     /// <summary>
-    /// PUT /api/events/{id}/publish
-    /// EP-97 — Administrator publishes an Approved event, making it visible to the public.
-    /// Requires: AdministratorOnly policy.
+    /// PUT /api/events/{id}/start-sales
+    /// Organizer publishes their own Approved event once at least one valid
+    /// ticket type exists, transitioning it to Published and making it
+    /// visible to the public.
+    /// Requires: OrganizerOnly policy, and caller must own the event.
     /// </summary>
-    [HttpPut("{id}/publish")]
-    [Authorize(Policy = AppPolicies.AdministratorOnly)]
-    public async Task<IActionResult> PublishEvent(string id)
+    [HttpPut("{id}/start-sales")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<IActionResult> StartTicketSales(string id, CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(id, out var guidId))
             return NotFound();
 
-        var eventItem = await _context.Events.FindAsync(guidId);
+        var eventItem = await _context.Events.FindAsync(new object[] { guidId }, cancellationToken);
         if (eventItem == null)
-            return NotFound();
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("StartTicketSales: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (eventItem.OrganizerId != organizerId)
+        {
+            return StatusCode(403, new { code = "FORBIDDEN", message = "You do not have permission to publish this event." });
+        }
 
         if (eventItem.Status != EventStatus.Approved)
         {
             return Conflict(new
             {
                 code = "INVALID_STATE",
-                message = $"Only Approved events can be published. Current status: {eventItem.Status}."
+                message = $"Only Approved events can start ticket sales. Current status: {eventItem.Status}."
             });
         }
 
-        var publisherIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                             ?? User.FindFirst("sub")?.Value;
-        Guid.TryParse(publisherIdStr, out var publisherId);
+        var hasTicketTypes = await _context.TicketTypes.AnyAsync(t => t.EventId == guidId, cancellationToken);
+        if (!hasTicketTypes)
+        {
+            return Conflict(new
+            {
+                code = "NO_TICKET_TYPES",
+                message = "You must configure at least one ticket type before starting ticket sales."
+            });
+        }
 
         eventItem.Status = EventStatus.Published;
-        // ReviewedBy/ReviewedAt already set at approve time; preserve them
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(cancellationToken);
 
         _logger?.LogInformation(
-            "Event published. EventId={EventId}, PublishedBy={PublisherId}",
-            guidId, publisherId);
+            "Ticket sales started. EventId={EventId}, OrganizerId={OrganizerId}",
+            guidId, organizerId);
 
-        return Ok(new { message = "Event published successfully.", eventId = guidId, status = "Published" });
+        return Ok(new { message = "Ticket sales started. Your event is now live.", eventId = guidId, status = "Published" });
     }
-
     // =========================================================================
     // EP-210 / US-14 — ADMINISTRATOR EVENT UPDATE REQUEST REVIEW ENDPOINTS
     // Require: Administrator role (AdministratorOnly policy)
