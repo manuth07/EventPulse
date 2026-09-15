@@ -11,6 +11,10 @@ import {
   getEventUpdateRequestReview,
   approveEventUpdateRequest,
   rejectEventUpdateRequest,
+  getPendingEventCancellationRequests,
+  getEventCancellationRequestReview,
+  approveEventCancellationRequest,
+  rejectEventCancellationRequest,
 } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import {
@@ -27,6 +31,7 @@ import {
   User,
   Info,
   AlertTriangle,
+  Ticket,
 } from 'lucide-react';
 
 function formatEventDateTime(dateString) {
@@ -65,9 +70,10 @@ function formatSubmittedDate(dateString) {
 
 export function PendingEvents() {
   const { accessToken } = useAuth();
-  const [activeTab, setActiveTab] = useState('new_submissions'); // 'new_submissions' | 'update_requests'
+  const [activeTab, setActiveTab] = useState('new_submissions'); // 'new_submissions' | 'update_requests' | 'cancellation_requests'
   const [events, setEvents] = useState([]);
   const [updateRequests, setUpdateRequests] = useState([]);
+  const [cancellationRequests, setCancellationRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -87,6 +93,13 @@ export function PendingEvents() {
   const [updateReviewNotes, setUpdateReviewNotes] = useState('');
   const [updateActionInProgress, setUpdateActionInProgress] = useState(false);
   const [updateActionError, setUpdateActionError] = useState(null);
+
+  // Review Modal state (Event Cancellation Requests EP-35 / US-15)
+  const [selectedCancellationRequest, setSelectedCancellationRequest] = useState(null);
+  const [cancelConfirmMode, setCancelConfirmMode] = useState(null); // 'approve' | 'reject' | null
+  const [cancelReviewNotes, setCancelReviewNotes] = useState('');
+  const [cancelActionInProgress, setCancelActionInProgress] = useState(false);
+  const [cancelActionError, setCancelActionError] = useState(null);
 
   const getEffectiveToken = useCallback(() => {
     return accessToken || sessionStorage.getItem('ep_access_token');
@@ -109,15 +122,20 @@ export function PendingEvents() {
     }
 
     try {
-      const [eventsData, updatesData] = await Promise.all([
+      const [eventsData, updatesData, cancellationsData] = await Promise.all([
         getPendingEvents(token),
         getPendingEventUpdateRequests(token).catch((err) => {
           console.warn('Failed to load pending update requests:', err);
           return [];
         }),
+        getPendingEventCancellationRequests(token).catch((err) => {
+          console.warn('Failed to load pending cancellation requests:', err);
+          return [];
+        }),
       ]);
       setEvents(Array.isArray(eventsData) ? eventsData : []);
       setUpdateRequests(Array.isArray(updatesData) ? updatesData : []);
+      setCancellationRequests(Array.isArray(cancellationsData) ? cancellationsData : []);
     } catch (err) {
       setError(err.message || 'Unable to load pending event submissions.');
     } finally {
@@ -240,6 +258,87 @@ export function PendingEvents() {
       }
     } finally {
       setUpdateActionInProgress(false);
+    }
+  };
+
+  const handleOpenCancellationReview = async (item) => {
+    setCancelActionError(null);
+    setCancelConfirmMode(null);
+    setCancelReviewNotes('');
+    setSelectedCancellationRequest(item);
+
+    const token = getEffectiveToken();
+    if (token) {
+      try {
+        const fullReview = await getEventCancellationRequestReview(item.id, token);
+        if (fullReview) {
+          setSelectedCancellationRequest(fullReview);
+        }
+      } catch (err) {
+        // Fallback to item from list
+      }
+    }
+  };
+
+  const handleCloseCancellationReview = () => {
+    if (cancelActionInProgress) return;
+    setSelectedCancellationRequest(null);
+    setCancelConfirmMode(null);
+    setCancelActionError(null);
+    setCancelReviewNotes('');
+  };
+
+  const handleApproveCancellation = async () => {
+    if (!selectedCancellationRequest || cancelActionInProgress) return;
+    setCancelActionInProgress(true);
+    setCancelActionError(null);
+
+    const token = getEffectiveToken();
+    try {
+      await approveEventCancellationRequest(selectedCancellationRequest.id, token, cancelReviewNotes.trim());
+      const eventTitle = selectedCancellationRequest.eventTitle || 'Event';
+      handleCloseCancellationReview();
+      setFeedback({
+        type: 'success',
+        message: `Event cancellation approved successfully. The event ("${eventTitle}") has been marked as Cancelled and ticket sales stopped.`,
+      });
+      setCancellationRequests((prev) => prev.filter((r) => r.id !== selectedCancellationRequest.id));
+    } catch (err) {
+      setCancelActionError(err.message || 'Failed to approve event cancellation.');
+      if (err.status === 409) {
+        loadAllData(true);
+      }
+    } finally {
+      setCancelActionInProgress(false);
+    }
+  };
+
+  const handleRejectCancellation = async () => {
+    if (!selectedCancellationRequest || cancelActionInProgress) return;
+    if (!cancelReviewNotes.trim()) {
+      setCancelActionError('Rejection feedback is required. Please explain why this cancellation request was rejected.');
+      return;
+    }
+    setCancelActionInProgress(true);
+    setCancelActionError(null);
+
+    const token = getEffectiveToken();
+    try {
+      await rejectEventCancellationRequest(selectedCancellationRequest.id, token, cancelReviewNotes.trim());
+      const eventTitle = selectedCancellationRequest.eventTitle || 'Event';
+      handleCloseCancellationReview();
+      setFeedback({
+        type: 'info',
+        message: `Event cancellation request rejected. The event ("${eventTitle}") remains active and ticket sales may resume.`,
+      });
+      setCancellationRequests((prev) => prev.filter((r) => r.id !== selectedCancellationRequest.id));
+    } catch (err) {
+      setCancelActionError(err.message || 'Failed to reject event cancellation request.');
+      if (err.status === 409) {
+        loadAllData(true);
+      }
+    } finally {
+      setCancelActionInProgress(false);
     }
   };
 
@@ -495,6 +594,37 @@ export function PendingEvents() {
                 {updateRequests.length}
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('cancellation_requests')}
+              style={{
+                padding: '10px 18px',
+                fontSize: '14px',
+                fontWeight: 600,
+                border: 'none',
+                borderBottom: activeTab === 'cancellation_requests' ? '2px solid var(--ep-primary)' : '2px solid transparent',
+                color: activeTab === 'cancellation_requests' ? 'var(--ep-primary)' : 'var(--ep-text-secondary)',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'var(--ep-transition)',
+              }}
+            >
+              <span>Cancellation Requests</span>
+              <span style={{
+                backgroundColor: activeTab === 'cancellation_requests' ? 'var(--ep-primary)' : 'var(--ep-canvas)',
+                color: activeTab === 'cancellation_requests' ? '#ffffff' : 'var(--ep-text-secondary)',
+                borderRadius: 'var(--ep-radius-pill, 9999px)',
+                padding: '2px 8px',
+                fontSize: '12px',
+                fontWeight: 700,
+              }}>
+                {cancellationRequests.length}
+              </span>
+            </button>
           </div>
 
           <p style={{
@@ -504,7 +634,9 @@ export function PendingEvents() {
           }}>
             {activeTab === 'new_submissions'
               ? 'Review and verify organizer event submissions before they can be published to visitors.'
-              : 'Review and verify requested modifications to approved live events before changes take effect.'}
+              : activeTab === 'update_requests'
+                ? 'Review and verify requested modifications to approved live events before changes take effect.'
+                : 'Review organizer event cancellation requests. Approving will cancel the event and permanently prevent ticket sales.'}
           </p>
 
           {/* Loading Skeletons */}
@@ -1055,6 +1187,215 @@ export function PendingEvents() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Empty State: Cancellation Requests */}
+          {!loading && !error && activeTab === 'cancellation_requests' && cancellationRequests.length === 0 && (
+            <div style={{
+              padding: '48px 24px',
+              backgroundColor: 'var(--ep-canvas)',
+              borderRadius: 'var(--ep-radius-container, 12px)',
+              border: '1px dashed var(--ep-border)',
+              textAlign: 'center',
+            }}>
+              <CheckCircle2 size={32} color="var(--ep-primary)" style={{ margin: '0 auto 12px auto' }} />
+              <h3 style={{
+                fontSize: '16px',
+                fontWeight: 600,
+                color: 'var(--ep-text-primary)',
+                margin: '0 0 6px 0',
+              }}>
+                No pending cancellation requests
+              </h3>
+              <p style={{
+                fontSize: '13px',
+                color: 'var(--ep-text-secondary)',
+                margin: 0,
+                lineHeight: 1.5,
+              }}>
+                All organizer cancellation requests have been reviewed. When organizers request to cancel an approved event, requests will appear here.
+              </p>
+            </div>
+          )}
+
+          {/* Pending Cancellation Requests Queue */}
+          {!loading && !error && activeTab === 'cancellation_requests' && cancellationRequests.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {cancellationRequests.map((item) => (
+                <div
+                  key={item.id}
+                  className="ep-card"
+                  style={{
+                    padding: '20px',
+                    borderRadius: 'var(--ep-radius-card)',
+                    border: '1px solid var(--ep-border)',
+                    backgroundColor: '#ffffff',
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    gap: '20px',
+                    alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                  }}>
+                    {/* Poster Thumbnail */}
+                    <div style={{
+                      width: '120px',
+                      height: '120px',
+                      borderRadius: 'var(--ep-radius-badge)',
+                      overflow: 'hidden',
+                      backgroundColor: 'var(--ep-soft-accent)',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px solid var(--ep-border)',
+                    }}>
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.eventTitle || 'Event'}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.parentElement.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ep-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                          }}
+                        />
+                      ) : (
+                        <Calendar size={28} color="var(--ep-primary)" />
+                      )}
+                    </div>
+
+                    {/* Details */}
+                    <div style={{
+                      flex: 1,
+                      minWidth: '280px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                    }}>
+                      <div>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          marginBottom: '6px',
+                          flexWrap: 'wrap',
+                        }}>
+                          <h3 style={{
+                            fontSize: '18px',
+                            fontWeight: 600,
+                            color: 'var(--ep-text-primary)',
+                            margin: 0,
+                            lineHeight: 1.3,
+                          }}>
+                            {item.eventTitle || 'Untitled Event'}
+                          </h3>
+                          <span style={{
+                            backgroundColor: '#FFF0F0',
+                            color: '#D32F2F',
+                            border: '1px solid rgba(211, 47, 47, 0.2)',
+                            borderRadius: 'var(--ep-radius-pill, 9999px)',
+                            padding: '2px 10px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            letterSpacing: '0.04em',
+                            display: 'inline-block',
+                          }}>
+                            CANCELLATION REQUESTED
+                          </span>
+                        </div>
+
+                        {/* Event Metadata (Date, Venue, Category) */}
+                        <div style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '16px',
+                          fontSize: '13px',
+                          color: 'var(--ep-text-secondary)',
+                          marginBottom: '12px',
+                        }}>
+                          {item.eventDate && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Calendar size={14} />
+                              <span>{formatEventDateTime(item.eventDate)}</span>
+                            </div>
+                          )}
+                          {item.venue && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <MapPin size={14} />
+                              <span>{item.venue}</span>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Ticket size={14} />
+                            <span>Tickets sold: <strong>{item.totalTicketsSold ?? 0}</strong></span>
+                          </div>
+                        </div>
+
+                        {/* Cancellation Reason Preview */}
+                        <div style={{
+                          backgroundColor: '#FFF8F6',
+                          borderLeft: '3px solid #FF5B00',
+                          padding: '10px 14px',
+                          borderRadius: '0 6px 6px 0',
+                          marginBottom: '14px',
+                          fontSize: '13px',
+                          color: 'var(--ep-text-primary)',
+                        }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#D84315', marginBottom: '4px', letterSpacing: '0.05em' }}>
+                            Reason for Cancellation:
+                          </div>
+                          <p style={{ margin: 0, fontStyle: 'italic', lineHeight: 1.4 }}>
+                            "{item.reason}"
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Card Footer with Requested Date & Review Action */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingTop: '12px',
+                        borderTop: '1px solid var(--ep-border)',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          {item.requestedAt && (
+                            <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                              Requested on {formatSubmittedDate(item.requestedAt).replace('Submitted ', '')}
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCancellationReview(item)}
+                          className="ep-btn-secondary"
+                          style={{
+                            fontSize: '13px',
+                            padding: '6px 16px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            color: '#C62828',
+                            borderColor: 'rgba(198, 40, 40, 0.3)',
+                          }}
+                        >
+                          Review Request
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -2276,6 +2617,469 @@ export function PendingEvents() {
                     }}
                   >
                     Approve Update
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Review Modal Panel (Cancellation Requests) */}
+      {selectedCancellationRequest && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancellation-modal-title"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            zIndex: 1000,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !cancelActionInProgress) {
+              handleCloseCancellationReview();
+            }
+          }}
+        >
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: 'var(--ep-radius-card)',
+            border: '1px solid var(--ep-border)',
+            boxShadow: 'var(--ep-shadow-modal, 0 12px 36px rgba(0,0,0,0.12))',
+            width: '100%',
+            maxWidth: '640px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--ep-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div>
+                <h3
+                  id="cancellation-modal-title"
+                  style={{
+                    fontSize: '18px',
+                    fontWeight: 700,
+                    color: 'var(--ep-text-primary)',
+                    margin: '0 0 2px 0',
+                  }}
+                >
+                  Review Cancellation Request
+                </h3>
+                <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                  {selectedCancellationRequest.eventTitle || 'Event'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseCancellationReview}
+                disabled={cancelActionInProgress}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: cancelActionInProgress ? 'not-allowed' : 'pointer',
+                  color: 'var(--ep-text-secondary)',
+                  padding: '4px',
+                  borderRadius: '4px',
+                }}
+                aria-label="Close modal"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{
+              padding: '24px',
+              overflowY: 'auto',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+            }}>
+              {/* Error Notice */}
+              {cancelActionError && (
+                <div style={{
+                  padding: '12px 16px',
+                  backgroundColor: '#FFF5F5',
+                  borderRadius: 'var(--ep-radius-container, 8px)',
+                  border: '1px solid #FED7D7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                }}>
+                  <AlertCircle size={16} color="var(--ep-danger)" style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: '13px', color: 'var(--ep-danger)', fontWeight: 500 }}>
+                    {cancelActionError}
+                  </span>
+                </div>
+              )}
+
+              {/* Event Details Card */}
+              <div style={{
+                padding: '16px',
+                borderRadius: '8px',
+                border: '1px solid var(--ep-border)',
+                backgroundColor: 'var(--ep-canvas)',
+                display: 'flex',
+                gap: '16px',
+                alignItems: 'flex-start',
+              }}>
+                <div style={{
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '6px',
+                  overflow: 'hidden',
+                  backgroundColor: 'var(--ep-soft-accent)',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px solid var(--ep-border)',
+                }}>
+                  {selectedCancellationRequest.imageUrl ? (
+                    <img
+                      src={selectedCancellationRequest.imageUrl}
+                      alt={selectedCancellationRequest.eventTitle}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ep-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                      }}
+                    />
+                  ) : (
+                    <Calendar size={24} color="var(--ep-primary)" />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: 'var(--ep-text-primary)' }}>
+                      {selectedCancellationRequest.eventTitle}
+                    </h4>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      backgroundColor: '#E8F5E9',
+                      color: '#2E7D32',
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                    }}>
+                      Status: {selectedCancellationRequest.eventStatus || 'Published'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                    {selectedCancellationRequest.eventDate && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Calendar size={13} />
+                        <span>{formatEventDateTime(selectedCancellationRequest.eventDate)}</span>
+                      </div>
+                    )}
+                    {selectedCancellationRequest.venue && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MapPin size={13} />
+                        <span>{selectedCancellationRequest.venue}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tickets Sold Impact Box */}
+              <div style={{
+                padding: '14px 16px',
+                borderRadius: '8px',
+                border: (selectedCancellationRequest.totalTicketsSold ?? 0) > 0 ? '1px solid #FED7D7' : '1px solid var(--ep-border)',
+                backgroundColor: (selectedCancellationRequest.totalTicketsSold ?? 0) > 0 ? '#FFF5F5' : '#F9FAFB',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+              }}>
+                <Ticket size={20} color={(selectedCancellationRequest.totalTicketsSold ?? 0) > 0 ? '#DC2626' : 'var(--ep-text-secondary)'} style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: (selectedCancellationRequest.totalTicketsSold ?? 0) > 0 ? '#991B1B' : 'var(--ep-text-primary)', marginBottom: '2px' }}>
+                    Ticket Sales Summary: {selectedCancellationRequest.totalTicketsSold ?? 0} tickets sold (out of {selectedCancellationRequest.totalCapacity ?? 0} total capacity)
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12px', color: (selectedCancellationRequest.totalTicketsSold ?? 0) > 0 ? '#B91C1C' : 'var(--ep-text-secondary)', lineHeight: 1.4 }}>
+                    {(selectedCancellationRequest.totalTicketsSold ?? 0) > 0
+                      ? 'Caution: Tickets have already been purchased. Approving cancellation will mark the event as cancelled for all ticket holders. Ticket sales will be stopped permanently.'
+                      : 'No tickets have been sold for this event yet. Cancelling will not impact existing bookings.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Organizer Cancellation Reason */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: 'var(--ep-text-secondary)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  marginBottom: '6px',
+                }}>
+                  Organizer's Cancellation Reason
+                </label>
+                <div style={{
+                  backgroundColor: '#FFF8F6',
+                  border: '1px solid #FFCCBC',
+                  borderRadius: '8px',
+                  padding: '14px 16px',
+                  fontSize: '13px',
+                  color: '#1D1D1F',
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {selectedCancellationRequest.reason}
+                </div>
+                {selectedCancellationRequest.requestedAt && (
+                  <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', marginTop: '6px' }}>
+                    Submitted on {new Date(selectedCancellationRequest.requestedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                  </div>
+                )}
+              </div>
+
+              {/* Approve Confirmation Dialog (Step 10) */}
+              {cancelConfirmMode === 'approve' && (
+                <div style={{
+                  padding: '18px',
+                  backgroundColor: '#FFF5F5',
+                  borderRadius: '10px',
+                  border: '1px solid #FED7D7',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}>
+                  <div>
+                    <h4 style={{
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      color: '#B91C1C',
+                      margin: '0 0 6px 0',
+                    }}>
+                      Approve event cancellation?
+                    </h4>
+                    <p style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: 'var(--ep-text-primary)',
+                      margin: '0 0 4px 0',
+                    }}>
+                      {selectedCancellationRequest.eventTitle}
+                    </p>
+                    <p style={{
+                      fontSize: '13px',
+                      color: 'var(--ep-text-secondary)',
+                      margin: 0,
+                      lineHeight: 1.5,
+                    }}>
+                      This will mark the event as cancelled and stop new ticket purchases.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCancelConfirmMode(null)}
+                      disabled={cancelActionInProgress}
+                      className="ep-btn-secondary"
+                      style={{ fontSize: '13px', padding: '8px 18px' }}
+                    >
+                      Keep Event
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApproveCancellation}
+                      disabled={cancelActionInProgress}
+                      style={{
+                        backgroundColor: '#DC2626',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 'var(--ep-radius-btn)',
+                        padding: '8px 20px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: cancelActionInProgress ? 'not-allowed' : 'pointer',
+                        transition: 'var(--ep-transition)',
+                      }}
+                    >
+                      {cancelActionInProgress ? 'Approving...' : 'Approve Cancellation'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Reject Confirmation Dialog */}
+              {cancelConfirmMode === 'reject' && (
+                <div style={{
+                  padding: '18px',
+                  backgroundColor: '#FFF8F6',
+                  borderRadius: '10px',
+                  border: '1px solid #FFCCBC',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}>
+                  <div>
+                    <h4 style={{
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      color: 'var(--ep-primary)',
+                      margin: '0 0 6px 0',
+                    }}>
+                      Reject event cancellation request?
+                    </h4>
+                    <p style={{
+                      fontSize: '13px',
+                      color: 'var(--ep-text-secondary)',
+                      margin: 0,
+                      lineHeight: 1.5,
+                    }}>
+                      The event will remain active and published. Ticket sales will remain eligible. Please provide a reason below so the organizer knows why the request was rejected.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="cancellation-reject-notes"
+                      style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--ep-text-primary)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Rejection Reason <span style={{ color: 'var(--ep-danger)' }}>*</span>
+                    </label>
+                    <textarea
+                      id="cancellation-reject-notes"
+                      rows={3}
+                      value={cancelReviewNotes}
+                      onChange={(e) => setCancelReviewNotes(e.target.value)}
+                      placeholder="e.g. Event can proceed based on the information provided..."
+                      disabled={cancelActionInProgress}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: 'var(--ep-radius-input, 8px)',
+                        border: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCancelConfirmMode(null)}
+                      disabled={cancelActionInProgress}
+                      className="ep-btn-secondary"
+                      style={{ fontSize: '13px', padding: '8px 16px' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRejectCancellation}
+                      disabled={cancelActionInProgress || !cancelReviewNotes.trim()}
+                      style={{
+                        backgroundColor: 'var(--ep-danger)',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 'var(--ep-radius-btn)',
+                        padding: '8px 18px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: (cancelActionInProgress || !cancelReviewNotes.trim()) ? 'not-allowed' : 'pointer',
+                        opacity: (cancelActionInProgress || !cancelReviewNotes.trim()) ? 0.6 : 1,
+                      }}
+                    >
+                      {cancelActionInProgress ? 'Rejecting...' : 'Confirm Rejection'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer (When not in confirm mode) */}
+            {!cancelConfirmMode && (
+              <div style={{
+                padding: '16px 24px',
+                borderTop: '1px solid var(--ep-border)',
+                backgroundColor: 'var(--ep-canvas)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+              }}>
+                <button
+                  type="button"
+                  onClick={handleCloseCancellationReview}
+                  disabled={cancelActionInProgress}
+                  className="ep-btn-secondary"
+                  style={{ fontSize: '13px', padding: '8px 16px' }}
+                >
+                  Close
+                </button>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCancelConfirmMode('reject')}
+                    disabled={cancelActionInProgress}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: 'var(--ep-danger)',
+                      border: '1px solid var(--ep-danger)',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: cancelActionInProgress ? 'not-allowed' : 'pointer',
+                      transition: 'var(--ep-transition)',
+                    }}
+                  >
+                    Reject Cancellation
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCancelConfirmMode('approve')}
+                    disabled={cancelActionInProgress}
+                    style={{
+                      backgroundColor: '#DC2626',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      padding: '8px 20px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: cancelActionInProgress ? 'not-allowed' : 'pointer',
+                      transition: 'var(--ep-transition)',
+                    }}
+                  >
+                    Approve Cancellation
                   </button>
                 </div>
               </div>
