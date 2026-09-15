@@ -1780,8 +1780,8 @@ export function PendingEvents() {
                     margin: '0 0 16px 0',
                     lineHeight: 1.5,
                   }}>
-                    This event will transition from <strong>Pending</strong> to <strong>Approved</strong>.
-                    It will become ready for publishing and will be removed from the review queue.
+                    This event will be <strong>approved and published immediately</strong>,
+                    becoming visible to all visitors on the platform right away.
                   </p>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button

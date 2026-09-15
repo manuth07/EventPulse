@@ -77,10 +77,9 @@ public class EventReviewService : IEventReviewService
             return (null, $"Only Pending events can be approved. Current status: {eventItem.Status}.", false);
         }
 
-        eventItem.Status = EventStatus.Approved;
+        eventItem.Status = EventStatus.Published;
         eventItem.ReviewedAt = DateTime.UtcNow;
         eventItem.ReviewedBy = reviewerId;
-
         await _context.SaveChangesAsync(cancellationToken);
 
         _logger?.LogInformation(
