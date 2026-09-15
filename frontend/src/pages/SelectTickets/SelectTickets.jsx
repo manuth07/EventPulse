@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
@@ -6,15 +6,16 @@ import { fetchEventById } from '../../services/eventService';
 import { getPublicTicketTypes } from '../../services/ticketTypeService';
 import { addToCart } from '../../services/cartService';
 import { formatPrice } from '../../utils/currencyFormatter';
-import { ArrowLeft, Ticket, AlertCircle, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, Ticket, AlertCircle, ShoppingCart, Minus, Plus, ChevronRight } from 'lucide-react';
 
-function formatDate(dateString) {
+function formatDateShort(dateString) {
   if (!dateString) return 'Date TBA';
   try {
     const d = new Date(dateString);
-    const datePart = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    return `${datePart} • ${timePart}`;
+    const day = d.getDate();
+    const month = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${day} ${month}  ${time}`;
   } catch (e) {
     return dateString;
   }
@@ -30,9 +31,12 @@ export function SelectTickets() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // quantities[ticketTypeId] = number selected (0 means not added yet)
   const [quantities, setQuantities] = useState({});
-  const [addingId, setAddingId] = useState(null);
-  const [addError, setAddError] = useState(null);
+  const [sortBy, setSortBy] = useState('availability');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   const getToken = () => accessToken || sessionStorage.getItem('ep_access_token');
 
@@ -55,39 +59,73 @@ export function SelectTickets() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleQuantityChange = (ticketTypeId, delta, max) => {
+  const sortedTicketTypes = useMemo(() => {
+    const list = [...ticketTypes];
+    if (sortBy === 'availability') {
+      list.sort((a, b) => b.availableQuantity - a.availableQuantity);
+    } else if (sortBy === 'priceLow') {
+      list.sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'priceHigh') {
+      list.sort((a, b) => b.price - a.price);
+    }
+    return list;
+  }, [ticketTypes, sortBy]);
+
+  const priceRange = useMemo(() => {
+    if (ticketTypes.length === 0) return { min: 0, max: 0 };
+    const prices = ticketTypes.map((t) => t.price);
+    return { min: Math.min(...prices), max: Math.max(...prices) };
+  }, [ticketTypes]);
+
+  const selectedItems = useMemo(() => {
+    return ticketTypes
+      .filter((t) => (quantities[t.id] || 0) > 0)
+      .map((t) => ({ ...t, qty: quantities[t.id] }));
+  }, [ticketTypes, quantities]);
+
+  const cartTotal = selectedItems.reduce((sum, t) => sum + t.price * t.qty, 0);
+  const cartCount = selectedItems.reduce((sum, t) => sum + t.qty, 0);
+
+  const handleAdd = (ticketTypeId) => {
+    setQuantities((prev) => ({ ...prev, [ticketTypeId]: 1 }));
+  };
+
+  const handleStep = (ticketTypeId, delta, max) => {
     setQuantities((prev) => {
-      const current = prev[ticketTypeId] || 1;
-      const next = Math.max(1, Math.min(current + delta, max));
+      const current = prev[ticketTypeId] || 0;
+      const next = Math.max(0, Math.min(current + delta, max));
       return { ...prev, [ticketTypeId]: next };
     });
   };
 
-  const handleAddToCart = async (t) => {
+  const handleCheckout = async () => {
     if (!isAuthenticated) {
       navigate('/login', { state: { returnTo: `/events/${id}/tickets` } });
       return;
     }
-    setAddError(null);
-    setAddingId(t.id);
+    if (selectedItems.length === 0) return;
+
+    setSubmitError(null);
+    setSubmitting(true);
     try {
-      const qty = quantities[t.id] || 1;
-      await addToCart(id, t.id, qty, getToken());
+      for (const item of selectedItems) {
+        await addToCart(id, item.id, item.qty, getToken());
+      }
       navigate('/cart');
     } catch (err) {
-      setAddError(err.message || 'Failed to add to cart.');
+      setSubmitError(err.message || 'Failed to add tickets to cart.');
     } finally {
-      setAddingId(null);
+      setSubmitting(false);
     }
   };
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: 'var(--ep-canvas)', display: 'flex', flexDirection: 'column' }}>
       <Header />
-      <main className="container" style={{ flex: 1, paddingTop: '24px', paddingBottom: '64px' }}>
+      <main className="container" style={{ flex: 1, paddingTop: '20px', paddingBottom: '48px' }}>
         <Link
           to={`/events/${id}`}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 500, color: 'var(--ep-text-secondary)', textDecoration: 'none', marginBottom: '20px' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 500, color: 'var(--ep-text-secondary)', textDecoration: 'none', marginBottom: '16px' }}
         >
           <ArrowLeft size={14} />
           <span>Back to event</span>
@@ -103,115 +141,202 @@ export function SelectTickets() {
         )}
 
         {!loading && !error && event && (
-          <div className="row g-4">
-            {/* Left: Event summary card */}
-            <div className="col-12 col-lg-4">
-              <div className="ep-card" style={{ padding: '20px', position: 'sticky', top: '96px' }}>
-                {(event.imageUrl || event.coverUrl) && (
-                  <div style={{ width: '100%', height: '120px', borderRadius: '12px', overflow: 'hidden', marginBottom: '14px', backgroundColor: 'var(--ep-canvas)' }}>
-                    <img
-                      src={event.imageUrl || event.coverUrl}
-                      alt={event.title}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  </div>
-                )}
-                <h2 style={{ fontSize: '17px', fontWeight: 700, color: 'var(--ep-text-primary)', margin: '0 0 6px 0' }}>
-                  {event.title}
-                </h2>
-                <p style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', margin: '0 0 4px 0' }}>
-                  {event.venue}
-                </p>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-primary)', margin: 0 }}>
-                  {formatDate(event.eventDate)}
-                </p>
-              </div>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) 1fr', gap: '24px', alignItems: 'flex-start' }}>
 
-            {/* Right: Ticket type list */}
-            <div className="col-12 col-lg-8">
-              {addError && (
-                <div style={{ marginBottom: '16px', padding: '12px 16px', backgroundColor: '#FFF2F2', border: '1px solid var(--ep-danger)', borderRadius: '10px', fontSize: '13px', color: 'var(--ep-danger)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <AlertCircle size={15} /><span>{addError}</span>
+            {/* ===== LEFT SIDEBAR ===== */}
+            <div className="ep-card" style={{ padding: 0, position: 'sticky', top: '96px', overflow: 'hidden' }}>
+              {/* Event header */}
+              <div style={{ padding: '18px', display: 'flex', gap: '12px', borderBottom: '1px solid var(--ep-border)' }}>
+                <div style={{ width: '52px', height: '52px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, backgroundColor: 'var(--ep-canvas)' }}>
+                  {(event.imageUrl || event.coverUrl) && (
+                    <img src={event.imageUrl || event.coverUrl} alt={event.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ep-text-primary)', textTransform: 'uppercase', letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {event.title}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {event.venue}
+                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-primary)', marginTop: '2px' }}>
+                    {formatDateShort(event.eventDate)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Price range */}
+              {ticketTypes.length > 0 && (
+                <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--ep-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-primary)', padding: '6px 10px', border: '1px solid var(--ep-border)', borderRadius: '8px' }}>
+                    {formatPrice(priceRange.min)}
+                  </div>
+                  <div style={{ flex: 1, height: '2px', backgroundColor: 'var(--ep-primary)', borderRadius: '2px', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: 0, top: '50%', transform: 'translate(-50%, -50%)', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'var(--ep-primary)' }} />
+                    <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translate(50%, -50%)', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: 'var(--ep-primary)' }} />
+                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ep-text-primary)', padding: '6px 10px', border: '1px solid var(--ep-border)', borderRadius: '8px' }}>
+                    {formatPrice(priceRange.max)}
+                  </div>
                 </div>
               )}
 
-              {ticketTypes.length === 0 && (
+              {/* Selected items list */}
+              <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                {selectedItems.length === 0 ? (
+                  <p style={{ padding: '20px 18px', fontSize: '13px', color: 'var(--ep-text-secondary)', margin: 0 }}>
+                    No tickets selected yet.
+                  </p>
+                ) : (
+                  selectedItems.map((item) => (
+                    <div key={item.id} style={{ padding: '14px 18px', borderBottom: '1px solid var(--ep-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>{item.name}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>{item.qty} ticket{item.qty > 1 ? 's' : ''} selected</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, backgroundColor: 'var(--ep-soft-accent)', color: 'var(--ep-primary)', padding: '2px 8px', borderRadius: 'var(--ep-radius-pill)' }}>
+                          {item.qty}x
+                        </span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ep-primary)' }}>
+                          {formatPrice(item.price * item.qty)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Checkout footer */}
+              <div style={{
+                padding: '16px 18px', backgroundColor: cartCount > 0 ? 'var(--ep-soft-accent)' : 'var(--ep-canvas)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, backgroundColor: 'var(--ep-primary)', color: '#fff', padding: '2px 8px', borderRadius: 'var(--ep-radius-pill)' }}>
+                    {cartCount}X
+                  </span>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                    {formatPrice(cartTotal)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckout}
+                  disabled={cartCount === 0 || submitting}
+                  className="ep-btn-primary"
+                  style={{ fontSize: '13px', padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: cartCount === 0 ? 0.5 : 1 }}
+                >
+                  <ShoppingCart size={14} />
+                  <span>{submitting ? 'Adding…' : 'Checkout'}</span>
+                </button>
+              </div>
+              {submitError && (
+                <div style={{ padding: '10px 18px', fontSize: '12px', color: 'var(--ep-danger)', backgroundColor: '#FFF2F2' }}>
+                  {submitError}
+                </div>
+              )}
+            </div>
+
+            {/* ===== RIGHT: TICKET TYPE LIST ===== */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>Sort by:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  style={{ fontSize: '13px', fontWeight: 600, padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--ep-border)', backgroundColor: '#fff', color: 'var(--ep-text-primary)' }}
+                >
+                  <option value="availability">Availability</option>
+                  <option value="priceLow">Price: Low to High</option>
+                  <option value="priceHigh">Price: High to Low</option>
+                </select>
+              </div>
+
+              {sortedTicketTypes.length === 0 && (
                 <p style={{ color: 'var(--ep-text-secondary)', fontSize: '14px' }}>
                   Ticket information is not available for this event yet.
                 </p>
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {ticketTypes.map((t) => (
-                  <div
-                    key={t.id}
-                    className="ep-card"
-                    style={{
-                      padding: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '16px',
-                      flexWrap: 'wrap',
-                      opacity: t.isSoldOut ? 0.6 : 1,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{
-                        width: '44px', height: '44px', borderRadius: '10px', backgroundColor: 'var(--ep-soft-accent)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}>
-                        <Ticket size={20} color="var(--ep-primary)" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
-                          {t.name}
+                {sortedTicketTypes.map((t) => {
+                  const qty = quantities[t.id] || 0;
+                  return (
+                    <div
+                      key={t.id}
+                      className="ep-card"
+                      style={{
+                        padding: '18px 20px',
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '16px',
+                        flexWrap: 'nowrap',
+                        textAlign: 'left',
+                        opacity: t.isSoldOut ? 0.55 : 1,
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0, textAlign: 'left' }}>
+                        <div style={{
+                          width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'var(--ep-soft-accent)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                          <Ticket size={18} color="var(--ep-primary)" />
                         </div>
-                        <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
-                          {t.isSoldOut ? 'Sold Out' : `${t.availableQuantity} left`}
+                        <div style={{ minWidth: 0, textAlign: 'left' }}>
+                          <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ep-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {t.name}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                            {t.isSoldOut ? 'Sold Out' : 'Seated'}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="ep-caption" style={{ color: 'var(--ep-text-secondary)' }}>Unit Price</div>
-                      <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
-                        {formatPrice(t.price)}
+                      <div style={{ textAlign: 'left', flexShrink: 0 }}>
+                        <div className="ep-caption" style={{ color: 'var(--ep-text-secondary)' }}>Unit Price</div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ep-text-primary)', whiteSpace: 'nowrap' }}>
+                          {formatPrice(t.price)}
+                        </div>
                       </div>
-                    </div>
 
-                    {!t.isSoldOut && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--ep-border)', borderRadius: '8px' }}>
+                      {!t.isSoldOut && (
+                        qty === 0 ? (
                           <button
                             type="button"
-                            onClick={() => handleQuantityChange(t.id, -1, t.availableQuantity)}
-                            style={{ width: '30px', height: '30px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: 'var(--ep-text-primary)' }}
-                          >−</button>
-                          <span style={{ width: '28px', textAlign: 'center', fontSize: '14px', fontWeight: 600 }}>
-                            {quantities[t.id] || 1}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleQuantityChange(t.id, 1, t.availableQuantity)}
-                            style={{ width: '30px', height: '30px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: 'var(--ep-text-primary)' }}
-                          >+</button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleAddToCart(t)}
-                          disabled={addingId === t.id}
-                          className="ep-btn-primary"
-                          style={{ fontSize: '13px', padding: '8px 18px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          <ShoppingCart size={14} />
-                          <span>{addingId === t.id ? 'Adding…' : 'Add Ticket'}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                            onClick={() => handleAdd(t.id)}
+                            className="ep-btn-primary"
+                            style={{ fontSize: '13px', padding: '10px 22px', flexShrink: 0 }}
+                          >
+                            Add Ticket
+                          </button>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleStep(t.id, -1, t.availableQuantity)}
+                              style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid var(--ep-border)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ep-primary)' }}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span style={{ minWidth: '28px', textAlign: 'center', fontSize: '15px', fontWeight: 700, border: '1px solid var(--ep-border)', borderRadius: '8px', padding: '4px 8px' }}>
+                              {qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleStep(t.id, 1, t.availableQuantity)}
+                              style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid var(--ep-border)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ep-primary)' }}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
