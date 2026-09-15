@@ -18,7 +18,7 @@ import { RequireAuth, RequireRole } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
 import { Cart } from './pages/Cart/Cart';
-
+import { ApprovedEvents } from './pages/ApprovedEvents/ApprovedEvents';
 function App() {
   return (
     <AuthProvider>
@@ -48,6 +48,7 @@ function App() {
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/events/pending" element={<PendingEvents />} />
             <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
+            <Route path="/admin/events/approved" element={<ApprovedEvents />} />
           </Route>
 
           {/* Catch-all */}

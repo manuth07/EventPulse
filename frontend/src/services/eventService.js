@@ -158,6 +158,60 @@ export async function getPendingEventById(id, token) {
   return response.json();
 }
 
+export async function getApprovedEvents(token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/approved`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load approved events (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+export async function publishEvent(id, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/publish`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to publish event (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
 export async function approveEvent(id, token) {
   const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/approve`, {
     method: 'POST',

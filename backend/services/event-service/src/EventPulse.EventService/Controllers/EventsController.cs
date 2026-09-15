@@ -418,6 +418,38 @@ public class EventsController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/events/admin/approved
+    /// Retrieves all Approved events awaiting publication.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/approved")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<IEnumerable<EventListDto>>> GetApprovedEvents()
+    {
+        var events = await _context.Events
+            .AsNoTracking()
+            .Where(e => e.Status == EventStatus.Approved)
+            .OrderByDescending(e => e.ReviewedAt)
+            .ToListAsync();
+
+        var dtos = events.Select(e => new EventListDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Description = e.Description,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            Price = e.Price,
+            Status = e.Status,
+            Category = e.Category,
+            VenueType = e.VenueType,
+            ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
+        }).ToList();
+
+        return Ok(dtos);
+    }
+
+    /// <summary>
     /// POST|PUT /api/events/{id}/approve
     /// EP-31 / EP-97 — Administrator approves a Pending event submission.
     /// Requires: AdministratorOnly policy.
