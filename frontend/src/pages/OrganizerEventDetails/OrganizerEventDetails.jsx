@@ -94,6 +94,13 @@ const STATUS_CONFIG = {
     badgeBorder: '#BBDEFB',
     subtext: 'This event is published and visible to the public.',
   },
+  Cancelled: {
+    label: 'CANCELLED',
+    badgeBg: '#FFEBEE',
+    badgeColor: '#C62828',
+    badgeBorder: '#FFCDD2',
+    subtext: 'This event has been cancelled.',
+  },
 };
 
 const EVENT_CATEGORIES = [
@@ -721,30 +728,64 @@ export function OrganizerEventDetails() {
               </div>
             )}
 
-            {/* PREVIOUS CANCELLATION REQUEST REJECTED NOTICE (EP-35 / US-15) */}
-            {(event.status === 'Approved' || event.status === 'Published') && pendingCancellationRequest && pendingCancellationRequest.status === 'Rejected' && (
+            {/* EVENT CANCELLED BANNER (EP-35 / US-15) */}
+            {event.status === 'Cancelled' && (
               <div style={{
                 margin: '24px 32px 0 32px',
-                padding: '16px 20px',
+                padding: '18px 24px',
                 backgroundColor: '#FFF5F5',
                 border: '1px solid #FED7D7',
                 borderRadius: 'var(--ep-radius-container, 12px)',
                 display: 'flex',
                 alignItems: 'flex-start',
+                gap: '14px',
+              }}>
+                <AlertCircle size={20} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <h3 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--ep-danger)',
+                    margin: '0 0 4px 0',
+                  }}>
+                    This event has been cancelled.
+                  </h3>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}>
+                    An administrator has approved the cancellation of this event. Public ticket sales have been stopped. Existing tickets and records remain preserved below.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* PREVIOUS CANCELLATION REQUEST REJECTED NOTICE (EP-35 / US-15) */}
+            {(event.status === 'Approved' || event.status === 'Published') && pendingCancellationRequest && pendingCancellationRequest.status === 'Rejected' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '16px 20px',
+                backgroundColor: '#FFF8F6',
+                border: '1px solid #FFCCBC',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+                display: 'flex',
+                alignItems: 'flex-start',
                 gap: '12px',
               }}>
-                <AlertCircle size={18} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <AlertCircle size={18} color="var(--ep-primary)" style={{ marginTop: '2px', flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-danger)', margin: '0 0 4px 0' }}>
-                    Previous cancellation request was rejected by an administrator.
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', margin: '0 0 4px 0' }}>
+                    Cancellation request rejected — Your event remains active.
                   </p>
-                  {pendingCancellationRequest.reviewComment && (
-                    <p style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', margin: '0 0 4px 0' }}>
-                      <strong>Reviewer feedback:</strong> {pendingCancellationRequest.reviewComment}
+                  {(pendingCancellationRequest.reviewNote || pendingCancellationRequest.reviewComment) && (
+                    <p style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', margin: '0 0 6px 0' }}>
+                      <strong>Reason:</strong> {pendingCancellationRequest.reviewNote || pendingCancellationRequest.reviewComment}
                     </p>
                   )}
                   <p style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', margin: 0 }}>
-                    You may submit a new cancellation request below if circumstances have changed.
+                    You may submit another cancellation request later if the event is still cancellable.
                   </p>
                 </div>
               </div>
