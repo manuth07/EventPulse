@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
-import { getMySubmission, getEventUpdateRequest, submitEventUpdateRequest } from '../../services/eventService';
+import { getMySubmission, getEventUpdateRequest, submitEventUpdateRequest, getEventCancellationRequest } from '../../services/eventService';
 import { EVENT_CATEGORIES, VENUE_TYPES } from '../../data/eventConstants';
 import {
   Calendar,
@@ -55,6 +55,7 @@ export function EditEvent() {
 
   // Submission & Pending states
   const [pendingUpdateRequest, setPendingUpdateRequest] = useState(null);
+  const [pendingCancellationRequest, setPendingCancellationRequest] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -71,7 +72,7 @@ export function EditEvent() {
     };
   }, [imagePreview, coverPreview]);
 
-  // Load event details & check for existing pending update request
+  // Load event details & check for existing pending update or cancellation request
   const loadEventData = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
@@ -84,9 +85,10 @@ export function EditEvent() {
     }
 
     try {
-      const [eventData, updateReqData] = await Promise.all([
+      const [eventData, updateReqData, cancelReqData] = await Promise.all([
         getMySubmission(id, token),
         getEventUpdateRequest(id, token).catch(() => null),
+        getEventCancellationRequest(id, token).catch(() => null),
       ]);
 
       setEvent(eventData);
@@ -103,6 +105,12 @@ export function EditEvent() {
         setPendingUpdateRequest(updateReqData);
       } else {
         setPendingUpdateRequest(null);
+      }
+
+      if (cancelReqData && cancelReqData.status === 'Pending') {
+        setPendingCancellationRequest(cancelReqData);
+      } else {
+        setPendingCancellationRequest(null);
       }
     } catch (err) {
       if (err.status === 404) {
@@ -179,6 +187,11 @@ export function EditEvent() {
     e.preventDefault();
     setFormError(null);
 
+    if (pendingCancellationRequest && pendingCancellationRequest.status === 'Pending') {
+      setFormError('This event has a cancellation request awaiting administrator review. Editing is not permitted.');
+      return;
+    }
+
     if (pendingUpdateRequest && pendingUpdateRequest.status === 'Pending') {
       setFormError('This event already has an update request awaiting administrator review.');
       return;
@@ -247,7 +260,7 @@ export function EditEvent() {
       }, 2500);
     } catch (err) {
       if (err.status === 409) {
-        setFormError('This event already has an update request awaiting review.');
+        setFormError(err.message || 'This event already has a pending review request.');
       } else if (err.status === 403) {
         setFormError('You do not have permission to update this event.');
       } else {
@@ -260,6 +273,8 @@ export function EditEvent() {
 
   const isEligibleForEdit = event && (event.status === 'Approved' || event.status === 'Published');
   const hasPendingUpdate = pendingUpdateRequest && pendingUpdateRequest.status === 'Pending';
+  const hasPendingCancellation = pendingCancellationRequest && pendingCancellationRequest.status === 'Pending';
+  const isFormDisabled = hasPendingUpdate || hasPendingCancellation;
 
   return (
     <div style={{
@@ -430,6 +445,37 @@ export function EditEvent() {
               </div>
             </div>
 
+            {/* Pending Cancellation Warning (EP-35 / US-15 Mutual Exclusion) */}
+            {hasPendingCancellation && (
+              <div style={{
+                padding: '16px 20px',
+                backgroundColor: '#FFF5F5',
+                border: '1px solid #FED7D7',
+                borderRadius: 'var(--ep-radius-container)',
+                marginBottom: '24px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+              }}>
+                <AlertCircle size={20} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ep-danger)', margin: '0 0 4px 0' }}>
+                    Cancellation Request Pending Review
+                  </h4>
+                  <p style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                    This event has a cancellation request awaiting administrator review. Editing this event is disabled until the cancellation request has been processed.
+                  </p>
+                  <Link
+                    to={`/organizer/events/${id}`}
+                    className="ep-btn-secondary"
+                    style={{ fontSize: '13px', padding: '6px 14px', textDecoration: 'none' }}
+                  >
+                    Return to Event Details
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {/* Step 6: Pending Update Warning */}
             {hasPendingUpdate && (
               <div style={{
@@ -504,7 +550,7 @@ export function EditEvent() {
                   <input
                     type="text"
                     required
-                    disabled={hasPendingUpdate}
+                    disabled={isFormDisabled}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="e.g. Summer Music Festival 2026"
@@ -515,7 +561,7 @@ export function EditEvent() {
                       borderRadius: 'var(--ep-radius-btn)',
                       border: '1px solid var(--ep-border)',
                       boxSizing: 'border-box',
-                      backgroundColor: hasPendingUpdate ? 'var(--ep-canvas)' : '#ffffff',
+                      backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                     }}
                   />
                 </div>
@@ -528,7 +574,7 @@ export function EditEvent() {
                   <textarea
                     required
                     rows={4}
-                    disabled={hasPendingUpdate}
+                    disabled={isFormDisabled}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describe your event, highlights, and schedule..."
@@ -540,7 +586,7 @@ export function EditEvent() {
                       border: '1px solid var(--ep-border)',
                       boxSizing: 'border-box',
                       fontFamily: 'inherit',
-                      backgroundColor: hasPendingUpdate ? 'var(--ep-canvas)' : '#ffffff',
+                      backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                     }}
                   />
                 </div>
@@ -553,7 +599,7 @@ export function EditEvent() {
                     </label>
                     <select
                       required
-                      disabled={hasPendingUpdate}
+                      disabled={isFormDisabled}
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       style={{
@@ -562,9 +608,9 @@ export function EditEvent() {
                         fontSize: '14px',
                         borderRadius: 'var(--ep-radius-btn)',
                         border: '1px solid var(--ep-border)',
-                        backgroundColor: hasPendingUpdate ? 'var(--ep-canvas)' : '#ffffff',
+                        backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                         boxSizing: 'border-box',
-                        cursor: hasPendingUpdate ? 'not-allowed' : 'pointer',
+                        cursor: isFormDisabled ? 'not-allowed' : 'pointer',
                       }}
                     >
                       {EVENT_CATEGORIES.map((cat) => (
@@ -581,7 +627,7 @@ export function EditEvent() {
                     </label>
                     <select
                       required
-                      disabled={hasPendingUpdate}
+                      disabled={isFormDisabled}
                       value={venueType}
                       onChange={(e) => setVenueType(e.target.value)}
                       style={{
@@ -590,9 +636,9 @@ export function EditEvent() {
                         fontSize: '14px',
                         borderRadius: 'var(--ep-radius-btn)',
                         border: '1px solid var(--ep-border)',
-                        backgroundColor: hasPendingUpdate ? 'var(--ep-canvas)' : '#ffffff',
+                        backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                         boxSizing: 'border-box',
-                        cursor: hasPendingUpdate ? 'not-allowed' : 'pointer',
+                        cursor: isFormDisabled ? 'not-allowed' : 'pointer',
                       }}
                     >
                       {VENUE_TYPES.map((vt) => (
@@ -614,7 +660,7 @@ export function EditEvent() {
                     <input
                       type="text"
                       required
-                      disabled={hasPendingUpdate}
+                      disabled={isFormDisabled}
                       value={venue}
                       onChange={(e) => setVenue(e.target.value)}
                       placeholder="e.g. Nelum Pokuna Theater, Colombo"
@@ -625,7 +671,7 @@ export function EditEvent() {
                         borderRadius: 'var(--ep-radius-btn)',
                         border: '1px solid var(--ep-border)',
                         boxSizing: 'border-box',
-                        backgroundColor: hasPendingUpdate ? 'var(--ep-canvas)' : '#ffffff',
+                        backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                       }}
                     />
                   </div>
@@ -641,7 +687,7 @@ export function EditEvent() {
                     <input
                       type="datetime-local"
                       required
-                      disabled={hasPendingUpdate}
+                      disabled={isFormDisabled}
                       value={eventDate}
                       onChange={(e) => setEventDate(e.target.value)}
                       style={{
@@ -651,7 +697,7 @@ export function EditEvent() {
                         borderRadius: 'var(--ep-radius-btn)',
                         border: '1px solid var(--ep-border)',
                         boxSizing: 'border-box',
-                        backgroundColor: hasPendingUpdate ? 'var(--ep-canvas)' : '#ffffff',
+                        backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                       }}
                     />
                   </div>
@@ -758,14 +804,14 @@ export function EditEvent() {
                             fontSize: '12px',
                             fontWeight: 500,
                             color: 'var(--ep-text-primary)',
-                            cursor: hasPendingUpdate ? 'not-allowed' : 'pointer',
+                            cursor: isFormDisabled ? 'not-allowed' : 'pointer',
                           }}>
                             <UploadCloud size={14} />
                             <span>Upload Replacement Poster</span>
                             <input
                               type="file"
                               accept="image/jpeg,image/png,image/webp"
-                              disabled={hasPendingUpdate}
+                              disabled={isFormDisabled}
                               onChange={handleImageChange}
                               style={{ display: 'none' }}
                             />
@@ -782,7 +828,7 @@ export function EditEvent() {
                       border: '2px dashed var(--ep-border)',
                       borderRadius: 'var(--ep-radius-container)',
                       backgroundColor: 'var(--ep-canvas)',
-                      cursor: hasPendingUpdate ? 'not-allowed' : 'pointer',
+                      cursor: isFormDisabled ? 'not-allowed' : 'pointer',
                     }}>
                       <UploadCloud size={24} color="var(--ep-text-secondary)" style={{ marginBottom: '6px' }} />
                       <span style={{ fontSize: '13px', fontWeight: 500 }}>Upload Poster</span>
@@ -790,7 +836,7 @@ export function EditEvent() {
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
-                        disabled={hasPendingUpdate}
+                        disabled={isFormDisabled}
                         onChange={handleImageChange}
                         style={{ display: 'none' }}
                       />
@@ -885,14 +931,14 @@ export function EditEvent() {
                             fontSize: '12px',
                             fontWeight: 500,
                             color: 'var(--ep-text-primary)',
-                            cursor: hasPendingUpdate ? 'not-allowed' : 'pointer',
+                            cursor: isFormDisabled ? 'not-allowed' : 'pointer',
                           }}>
                             <UploadCloud size={14} />
                             <span>Upload Replacement Banner</span>
                             <input
                               type="file"
                               accept="image/jpeg,image/png,image/webp"
-                              disabled={hasPendingUpdate}
+                              disabled={isFormDisabled}
                               onChange={handleCoverChange}
                               style={{ display: 'none' }}
                             />
@@ -909,7 +955,7 @@ export function EditEvent() {
                       border: '2px dashed var(--ep-border)',
                       borderRadius: 'var(--ep-radius-container)',
                       backgroundColor: 'var(--ep-canvas)',
-                      cursor: hasPendingUpdate ? 'not-allowed' : 'pointer',
+                      cursor: isFormDisabled ? 'not-allowed' : 'pointer',
                     }}>
                       <UploadCloud size={24} color="var(--ep-text-secondary)" style={{ marginBottom: '6px' }} />
                       <span style={{ fontSize: '13px', fontWeight: 500 }}>Upload Cover Banner</span>
@@ -936,14 +982,14 @@ export function EditEvent() {
                   </Link>
                   <button
                     type="submit"
-                    disabled={submitting || hasPendingUpdate}
+                    disabled={submitting || isFormDisabled}
                     className="ep-btn-primary"
                     style={{
                       fontSize: '14px',
                       padding: '10px 24px',
                       borderRadius: 'var(--ep-radius-btn)',
-                      cursor: (submitting || hasPendingUpdate) ? 'not-allowed' : 'pointer',
-                      opacity: (submitting || hasPendingUpdate) ? 0.6 : 1,
+                      cursor: (submitting || isFormDisabled) ? 'not-allowed' : 'pointer',
+                      opacity: (submitting || isFormDisabled) ? 0.6 : 1,
                     }}
                   >
                     {submitting ? 'Submitting Changes...' : 'Submit Changes for Review'}
