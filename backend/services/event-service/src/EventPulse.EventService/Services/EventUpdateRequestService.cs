@@ -69,6 +69,15 @@ public class EventUpdateRequestService : IEventUpdateRequestService
             return (null, "This event already has an update request pending review.", false, false, false, true);
         }
 
+        // Cross-Workflow Mutual Exclusion Check (EP-35 / US-15): cannot update if a cancellation request is pending review
+        var hasPendingCancellation = await _context.EventCancellationRequests
+            .AnyAsync(r => r.EventId == eventId && r.Status == EventCancellationRequestStatus.Pending, cancellationToken);
+
+        if (hasPendingCancellation)
+        {
+            return (null, "Cannot submit an update request while a cancellation request is pending review.", false, false, false, true);
+        }
+
         // 5. Domain Field Validation (aligned with EventSubmissionService)
         if (string.IsNullOrWhiteSpace(request.Title))
             return (null, "Title is required.", false, false, false, false);

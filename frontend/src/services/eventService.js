@@ -551,3 +551,224 @@ export async function rejectEventUpdateRequest(requestId, token, notes = '') {
   return response.json();
 }
 
+/**
+ * Submits an Event Cancellation Request for an Approved or Published event (EP-35 / US-15).
+ * The live event is not directly cancelled; an auditable request is submitted for admin review.
+ * @param {string} id - The Event GUID.
+ * @param {string} reason - The cancellation reason (5-1000 characters).
+ * @param {string} token - The authenticated organizer's JWT token.
+ * @returns {Promise<Object>} The created EventCancellationRequestDto.
+ */
+export async function submitEventCancellationRequest(id, reason, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/cancellation-request`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to submit cancellation request (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+      if (data.errors && data.errors.length > 0) {
+        errorMsg += ': ' + data.errors.join(', ');
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Retrieves the latest Event Cancellation Request for an organizer's event (EP-35 / US-15).
+ * Returns null if no cancellation request exists (404).
+ * @param {string} id - The Event GUID.
+ * @param {string} token - The authenticated organizer's JWT token.
+ * @returns {Promise<Object|null>} The EventCancellationRequestDto or null if none exists.
+ */
+export async function getEventCancellationRequest(id, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/cancellation-request`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load event cancellation request (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Retrieves all pending event cancellation requests for Administrator review (EP-35 / US-15).
+ * @param {string} token - The authenticated admin's JWT token.
+ * @returns {Promise<Array>} Array of AdminEventCancellationReviewDto objects.
+ */
+export async function getPendingEventCancellationRequests(token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/cancellation-requests/pending`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load pending cancellation requests (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Retrieves a single event cancellation request with event details and ticket sales for Admin review (EP-35 / US-15).
+ * @param {string} requestId - The cancellation request GUID.
+ * @param {string} token - The authenticated admin's JWT token.
+ * @returns {Promise<Object>} AdminEventCancellationReviewDto.
+ */
+export async function getEventCancellationRequestReview(requestId, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/cancellation-requests/${requestId}`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load cancellation request review (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Approves an event cancellation request, transitioning the live event to Cancelled (EP-35 / US-15).
+ * @param {string} requestId - The cancellation request GUID.
+ * @param {string} token - The authenticated admin's JWT token.
+ * @param {string} [notes] - Optional admin review notes.
+ * @returns {Promise<Object>} The approved cancellation review DTO.
+ */
+export async function approveEventCancellationRequest(requestId, token, notes = '') {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/cancellation-requests/${requestId}/approve`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ notes }),
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to approve cancellation request (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+      if (data.errors && data.errors.length > 0) {
+        errorMsg += ': ' + data.errors.join(', ');
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Rejects an event cancellation request with mandatory review feedback (EP-35 / US-15).
+ * @param {string} requestId - The cancellation request GUID.
+ * @param {string} token - The authenticated admin's JWT token.
+ * @param {string} notes - Mandatory admin rejection feedback.
+ * @returns {Promise<Object>} The rejected cancellation review DTO.
+ */
+export async function rejectEventCancellationRequest(requestId, token, notes = '') {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/cancellation-requests/${requestId}/reject`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ notes }),
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to reject cancellation request (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) {
+        errorMsg = data.message;
+      }
+      if (data.errors && data.errors.length > 0) {
+        errorMsg += ': ' + data.errors.join(', ');
+      }
+    } catch (e) {
+      // response might not be JSON
+    }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+

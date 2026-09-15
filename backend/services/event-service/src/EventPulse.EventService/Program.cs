@@ -84,6 +84,7 @@ builder.Services.AddScoped<IEventSubmissionService, EventSubmissionService>();
 builder.Services.AddScoped<IEventReviewService, EventReviewService>();
 builder.Services.AddScoped<ITicketTypeService, TicketTypeService>();
 builder.Services.AddScoped<IEventUpdateRequestService, EventUpdateRequestService>();
+builder.Services.AddScoped<IEventCancellationRequestService, EventCancellationRequestService>();
 
 // ---------------------------------------------------------------------------
 // Infrastructure — Blob Storage
