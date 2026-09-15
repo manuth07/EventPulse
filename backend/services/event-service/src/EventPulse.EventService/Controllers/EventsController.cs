@@ -779,4 +779,134 @@ public class EventsController : ControllerBase
 
         return Ok(result);
     }
+
+    // =========================================================================
+    // EP-35 / US-15 — ADMINISTRATOR EVENT CANCELLATION REQUEST REVIEW ENDPOINTS
+    // Require: Administrator role (AdministratorOnly policy)
+    // No JWT -> 401. Valid JWT, non-admin -> 403.
+    // =========================================================================
+
+    /// <summary>
+    /// GET /api/events/admin/cancellation-requests/pending
+    /// EP-35 / US-15 — Retrieves all Event Cancellation Requests awaiting Administrator review (Status = Pending).
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/cancellation-requests/pending")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<IReadOnlyList<AdminEventCancellationReviewDto>>> GetPendingCancellationRequests(
+        CancellationToken cancellationToken)
+    {
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var requests = await _cancellationRequestService.GetPendingCancellationRequestsAsync(cancellationToken);
+        return Ok(requests);
+    }
+
+    /// <summary>
+    /// GET /api/events/admin/cancellation-requests/{id}
+    /// EP-35 / US-15 — Retrieves a single Event Cancellation Request with live event details and ticket sales summary.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/cancellation-requests/{id}")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<AdminEventCancellationReviewDto>> GetCancellationRequestReview(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var review = await _cancellationRequestService.GetCancellationRequestReviewAsync(guidId, cancellationToken);
+        if (review == null)
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        return Ok(review);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/admin/cancellation-requests/{id}/approve
+    /// EP-35 / US-15 — Administrator approves an Event Cancellation Request.
+    /// Transitions the live Event to Cancelled status, marks request as Approved, and records reviewer metadata.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("admin/cancellation-requests/{id}/approve")]
+    [HttpPut("admin/cancellation-requests/{id}/approve")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> ApproveCancellationRequest(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound, isInvalidState) = await _cancellationRequestService.ApproveCancellationRequestAsync(
+            guidId, reviewerId, request?.Notes, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/admin/cancellation-requests/{id}/reject
+    /// EP-35 / US-15 — Administrator rejects an Event Cancellation Request.
+    /// Requires mandatory rejection feedback/notes. Leaves live Event unchanged, sets status to Rejected.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("admin/cancellation-requests/{id}/reject")]
+    [HttpPut("admin/cancellation-requests/{id}/reject")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> RejectCancellationRequest(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        if (string.IsNullOrWhiteSpace(request?.Notes))
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Rejection feedback is required." });
+        }
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound, isInvalidState) = await _cancellationRequestService.RejectCancellationRequestAsync(
+            guidId, reviewerId, request.Notes.Trim(), cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
 }

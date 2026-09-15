@@ -1,4 +1,4 @@
-﻿using EventPulse.EventService.DTOs;
+using EventPulse.EventService.DTOs;
 
 namespace EventPulse.EventService.Services;
 
@@ -33,5 +33,50 @@ public interface IEventCancellationRequestService
     Task<(EventCancellationRequestDto? Result, string? Error, bool IsNotFound, bool IsForbidden)> GetCancellationRequestAsync(
         Guid eventId,
         Guid organizerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// EP-35 / US-15: Retrieves all Event Cancellation Requests awaiting Administrator review (Status = Pending),
+    /// ordered chronologically (oldest first).
+    /// </summary>
+    Task<IReadOnlyList<AdminEventCancellationReviewDto>> GetPendingCancellationRequestsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// EP-35 / US-15: Retrieves a single Event Cancellation Request with live event details and ticket sales summary
+    /// for Administrator review.
+    /// </summary>
+    Task<AdminEventCancellationReviewDto?> GetCancellationRequestReviewAsync(
+        Guid requestId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// EP-35 / US-15: Administrator approves an Event Cancellation Request.
+    /// Atomically transitions the live Event to Cancelled, marks request as Approved,
+    /// and records reviewer metadata.
+    /// Returns:
+    ///   - (Result, null, false, false) on success
+    ///   - (null, error, isNotFound=true, false) if request or event not found
+    ///   - (null, error, false, isInvalidState=true) if request is not in Pending status or event is already cancelled
+    /// </summary>
+    Task<(AdminEventCancellationReviewDto? Result, string? Error, bool IsNotFound, bool IsInvalidState)> ApproveCancellationRequestAsync(
+        Guid requestId,
+        Guid reviewerId,
+        string? notes = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// EP-35 / US-15: Administrator rejects an Event Cancellation Request with mandatory review notes.
+    /// Leaves live Event status completely unchanged (Approved or Published), updates request status to Rejected,
+    /// and records reviewer metadata.
+    /// Returns:
+    ///   - (Result, null, false, false) on success
+    ///   - (null, error, isNotFound=true, false) if request not found
+    ///   - (null, error, false, isInvalidState=true) if request is not in Pending status or notes missing
+    /// </summary>
+    Task<(AdminEventCancellationReviewDto? Result, string? Error, bool IsNotFound, bool IsInvalidState)> RejectCancellationRequestAsync(
+        Guid requestId,
+        Guid reviewerId,
+        string notes,
         CancellationToken cancellationToken = default);
 }

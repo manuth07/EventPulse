@@ -1,7 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
 using EventPulse.EventService.Models;
+using EventPulse.EventService.Storage;
 
 namespace EventPulse.EventService.Services;
 
@@ -13,13 +14,16 @@ namespace EventPulse.EventService.Services;
 public class EventCancellationRequestService : IEventCancellationRequestService
 {
     private readonly EventDbContext _context;
+    private readonly IEventImageStorage? _imageStorage;
     private readonly ILogger<EventCancellationRequestService>? _logger;
 
     public EventCancellationRequestService(
         EventDbContext context,
+        IEventImageStorage? imageStorage = null,
         ILogger<EventCancellationRequestService>? logger = null)
     {
         _context = context;
+        _imageStorage = imageStorage;
         _logger = logger;
     }
 
@@ -132,6 +136,183 @@ public class EventCancellationRequestService : IEventCancellationRequestService
             return (null, "No cancellation request found for this event.", true, false);
 
         return (MapToDto(cancellationRequest), null, false, false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<AdminEventCancellationReviewDto>> GetPendingCancellationRequestsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var requests = await _context.EventCancellationRequests
+            .AsNoTracking()
+            .Include(r => r.Event)
+                .ThenInclude(e => e.TicketTypes)
+            .Where(r => r.Status == EventCancellationRequestStatus.Pending)
+            .OrderBy(r => r.RequestedAt)
+            .ToListAsync(cancellationToken);
+
+        return requests.Select(MapToAdminReviewDto).ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task<AdminEventCancellationReviewDto?> GetCancellationRequestReviewAsync(
+        Guid requestId,
+        CancellationToken cancellationToken = default)
+    {
+        var request = await _context.EventCancellationRequests
+            .AsNoTracking()
+            .Include(r => r.Event)
+                .ThenInclude(e => e.TicketTypes)
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (request == null)
+            return null;
+
+        return MapToAdminReviewDto(request);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(AdminEventCancellationReviewDto? Result, string? Error, bool IsNotFound, bool IsInvalidState)> ApproveCancellationRequestAsync(
+        Guid requestId,
+        Guid reviewerId,
+        string? notes = null,
+        CancellationToken cancellationToken = default)
+    {
+        var cancellationRequest = await _context.EventCancellationRequests
+            .Include(r => r.Event)
+                .ThenInclude(e => e.TicketTypes)
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (cancellationRequest == null)
+        {
+            return (null, "Cancellation request not found.", true, false);
+        }
+
+        // Concurrency / Duplicate review guard
+        if (cancellationRequest.Status != EventCancellationRequestStatus.Pending)
+        {
+            _logger?.LogWarning(
+                "ApproveCancellationRequest rejected: Request {RequestId} has status {Status}, expected Pending.",
+                requestId, cancellationRequest.Status);
+            return (null, $"Only Pending cancellation requests can be approved. Current status: {cancellationRequest.Status}.", false, true);
+        }
+
+        var liveEvent = cancellationRequest.Event;
+        if (liveEvent == null)
+        {
+            return (null, "Associated event not found.", true, false);
+        }
+
+        if (liveEvent.Status == EventStatus.Cancelled)
+        {
+            return (null, "Event is already cancelled.", false, true);
+        }
+
+        if (liveEvent.Status != EventStatus.Approved && liveEvent.Status != EventStatus.Published)
+        {
+            return (null, $"Cannot cancel event in status: {liveEvent.Status}.", false, true);
+        }
+
+        // 1. Atomically transition live Event to Cancelled
+        liveEvent.Status = EventStatus.Cancelled;
+
+        // 2. Mark request as Approved and record reviewer metadata
+        cancellationRequest.Status = EventCancellationRequestStatus.Approved;
+        cancellationRequest.ReviewedAt = DateTime.UtcNow;
+        cancellationRequest.ReviewedBy = reviewerId;
+
+        if (!string.IsNullOrWhiteSpace(notes))
+            cancellationRequest.ReviewComment = notes.Trim();
+
+        // 3. Save atomically in single transaction
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger?.LogInformation(
+            "EventCancellationRequest {RequestId} approved by Admin {ReviewerId}. Live Event {EventId} transitioned to Cancelled.",
+            requestId, reviewerId, liveEvent.Id);
+
+        return (MapToAdminReviewDto(cancellationRequest), null, false, false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(AdminEventCancellationReviewDto? Result, string? Error, bool IsNotFound, bool IsInvalidState)> RejectCancellationRequestAsync(
+        Guid requestId,
+        Guid reviewerId,
+        string notes,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return (null, "Rejection feedback is required.", false, true);
+        }
+
+        var cancellationRequest = await _context.EventCancellationRequests
+            .Include(r => r.Event)
+                .ThenInclude(e => e.TicketTypes)
+            .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
+
+        if (cancellationRequest == null)
+        {
+            return (null, "Cancellation request not found.", true, false);
+        }
+
+        // Concurrency / Duplicate review guard
+        if (cancellationRequest.Status != EventCancellationRequestStatus.Pending)
+        {
+            _logger?.LogWarning(
+                "RejectCancellationRequest rejected: Request {RequestId} has status {Status}, expected Pending.",
+                requestId, cancellationRequest.Status);
+            return (null, $"Only Pending cancellation requests can be rejected. Current status: {cancellationRequest.Status}.", false, true);
+        }
+
+        var liveEvent = cancellationRequest.Event;
+
+        // Live Event status remains completely unchanged (Approved or Published)
+        cancellationRequest.Status = EventCancellationRequestStatus.Rejected;
+        cancellationRequest.ReviewedAt = DateTime.UtcNow;
+        cancellationRequest.ReviewedBy = reviewerId;
+        cancellationRequest.ReviewComment = notes.Trim();
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger?.LogInformation(
+            "EventCancellationRequest {RequestId} rejected by Admin {ReviewerId}. Live Event {EventId} remains in status {EventStatus}.",
+            requestId, reviewerId, cancellationRequest.EventId, liveEvent?.Status);
+
+        return (MapToAdminReviewDto(cancellationRequest), null, false, false);
+    }
+
+    private AdminEventCancellationReviewDto MapToAdminReviewDto(EventCancellationRequest entity)
+    {
+        var liveEvent = entity.Event;
+        var ticketsSold = liveEvent?.TicketTypes?.Sum(t => t.BookedQuantity) ?? 0;
+        var capacity = liveEvent?.TicketTypes?.Sum(t => t.Capacity) ?? 0;
+
+        return new AdminEventCancellationReviewDto
+        {
+            Id = entity.Id,
+            EventId = entity.EventId,
+            OrganizerId = entity.OrganizerId,
+            Reason = entity.Reason,
+            Status = entity.Status.ToString(),
+            RequestedAt = entity.RequestedAt,
+            ReviewedAt = entity.ReviewedAt,
+            ReviewedBy = entity.ReviewedBy,
+            ReviewComment = entity.ReviewComment,
+
+            EventTitle = liveEvent?.Title ?? string.Empty,
+            EventDescription = liveEvent?.Description ?? string.Empty,
+            EventVenue = liveEvent?.Venue ?? string.Empty,
+            EventDate = liveEvent?.EventDate ?? default,
+            EventPrice = liveEvent?.Price ?? 0m,
+            EventStatus = liveEvent?.Status.ToString() ?? string.Empty,
+            Category = liveEvent?.Category,
+            VenueType = liveEvent?.VenueType,
+            ImageUrl = _imageStorage?.GetPublicUrl(liveEvent?.ImageBlobName),
+            CoverUrl = _imageStorage?.GetPublicUrl(liveEvent?.CoverBlobName),
+
+            TotalTicketsSold = ticketsSold,
+            TotalCapacity = capacity
+        };
     }
 
     private static EventCancellationRequestDto MapToDto(EventCancellationRequest entity)
