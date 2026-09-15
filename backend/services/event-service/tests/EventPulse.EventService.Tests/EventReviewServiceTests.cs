@@ -158,11 +158,14 @@ public class EventReviewServiceTests
     }
 
     // =========================================================================
-    // ApproveEventAsync Tests (Pending -> Approved)
+    // ApproveEventAsync Tests (Pending -> Published)
+    // Approve now merges the old Approve+Publish two-step flow into a single
+    // transition: Pending -> Published directly. There is no separate
+    // "Approved" holding state left in the reachable workflow anymore.
     // =========================================================================
 
     [Fact]
-    public async Task ApproveEventAsync_WhenPending_TransitionsToApprovedAndSetsMetadata()
+    public async Task ApproveEventAsync_WhenPending_TransitionsToPublishedAndSetsMetadata()
     {
         using var context = CreateContext();
         var pending = MakeEvent(EventStatus.Pending, "Awaiting Approval");
@@ -177,14 +180,14 @@ public class EventReviewServiceTests
         Assert.False(isNotFound);
         Assert.Null(error);
         Assert.NotNull(result);
-        Assert.Equal("Approved", result.Status);
+        Assert.Equal("Published", result.Status);
         Assert.Equal(reviewerId, result.ReviewedBy);
         Assert.NotNull(result.ReviewedAt);
 
         // Verify persisted state in DB
         var dbItem = await context.Events.FindAsync(pending.Id);
         Assert.NotNull(dbItem);
-        Assert.Equal(EventStatus.Approved, dbItem.Status);
+        Assert.Equal(EventStatus.Published, dbItem.Status);
         Assert.Equal(reviewerId, dbItem.ReviewedBy);
         Assert.NotNull(dbItem.ReviewedAt);
     }
@@ -398,7 +401,7 @@ public class EventReviewServiceTests
 
         var okResult = Assert.IsType<OkObjectResult>(actionResult);
         var dto = Assert.IsType<AdminEventReviewDto>(okResult.Value);
-        Assert.Equal("Approved", dto.Status);
+        Assert.Equal("Published", dto.Status);
         Assert.NotNull(dto.ReviewedAt);
     }
 
