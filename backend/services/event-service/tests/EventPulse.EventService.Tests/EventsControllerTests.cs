@@ -42,8 +42,12 @@ public class EventsControllerTests
     // ---------- GetEvents (US-08) ----------
 
     [Fact]
-    public async Task GetEvents_ReturnsOnlyPublishedAndApprovedEvents_ExcludesPendingAndRejected()
+    public async Task GetEvents_ReturnsOnlyPublishedEvents_ExcludesAllOtherStatuses()
     {
+        // Approve now transitions Pending directly to Published (no separate
+        // Approved holding state), so only Published events should ever be
+        // visible on the public homepage. Approved is included here as a
+        // status that must NOT leak through, alongside Pending and Rejected.
         var pending = MakeEvent(EventStatus.Pending, "Pending Event");
         var approved = MakeEvent(EventStatus.Approved, "Approved Event");
         var rejected = MakeEvent(EventStatus.Rejected, "Rejected Event");
@@ -56,11 +60,11 @@ public class EventsControllerTests
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returned = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value);
 
-        Assert.Equal(2, returned.Count());
+        Assert.Single(returned);
         Assert.DoesNotContain(returned, e => e.Status == EventStatus.Pending);
         Assert.DoesNotContain(returned, e => e.Status == EventStatus.Rejected);
+        Assert.DoesNotContain(returned, e => e.Status == EventStatus.Approved);
         Assert.Contains(returned, e => e.Status == EventStatus.Published);
-        Assert.Contains(returned, e => e.Status == EventStatus.Approved);
     }
 
     [Fact]
@@ -89,33 +93,37 @@ public class EventsControllerTests
     [Fact]
     public async Task GetEvents_WithPosterImage_PopulatesImageUrl()
     {
-        var approvedWithImage = MakeEvent(EventStatus.Approved, "Approved With Image");
-        approvedWithImage.ImageBlobName = "events/test.jpg";
-        var approvedWithoutImage = MakeEvent(EventStatus.Approved, "Approved Without Image");
+        // Seeded as Published (not Approved) since only Published events
+        // are returned by GetEvents after the Approve+Publish merge.
+        var publishedWithImage = MakeEvent(EventStatus.Published, "Published With Image");
+        publishedWithImage.ImageBlobName = "events/test.jpg";
+        var publishedWithoutImage = MakeEvent(EventStatus.Published, "Published Without Image");
 
-        using var context = CreateContextWithEvents(approvedWithImage, approvedWithoutImage);
+        using var context = CreateContextWithEvents(publishedWithImage, publishedWithoutImage);
         var controller = new EventsController(context, imageStorage: new FakeImageStorage());
 
         var result = await controller.GetEvents();
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var returned = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
 
-        var withImage = returned.First(e => e.Title == "Approved With Image");
+        var withImage = returned.First(e => e.Title == "Published With Image");
         Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/events/test.jpg", withImage.ImageUrl);
 
-        var withoutImage = returned.First(e => e.Title == "Approved Without Image");
+        var withoutImage = returned.First(e => e.Title == "Published Without Image");
         Assert.Null(withoutImage.ImageUrl);
     }
 
     [Fact]
     public async Task GetEventById_WithPosterImage_PopulatesImageUrl()
     {
-        var approved = MakeEvent(EventStatus.Approved, "Approved Event");
-        approved.ImageBlobName = "events/detail.png";
-        using var context = CreateContextWithEvents(approved);
+        // Seeded as Published (not Approved) since only Published events
+        // are resolvable via the public detail endpoint after the merge.
+        var published = MakeEvent(EventStatus.Published, "Published Event");
+        published.ImageBlobName = "events/detail.png";
+        using var context = CreateContextWithEvents(published);
         var controller = new EventsController(context, imageStorage: new FakeImageStorage());
 
-        var result = await controller.GetEventById(approved.Id.ToString());
+        var result = await controller.GetEventById(published.Id.ToString());
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<EventDetailsDto>(okResult.Value);
         Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/events/detail.png", dto.ImageUrl);
@@ -124,18 +132,18 @@ public class EventsControllerTests
     // ---------- GetEventById (US-09) ----------
 
     [Fact]
-    public async Task GetEventById_WithApprovedEvent_ReturnsEventDetails()
+    public async Task GetEventById_WithApprovedEvent_Returns404()
     {
+        // Approved is a review-workflow status, not a public visibility
+        // status — only Published events should be resolvable via the
+        // public detail endpoint. Mirrors the Pending/Rejected 404 tests below.
         var approved = MakeEvent(EventStatus.Approved, "Approved Event");
         using var context = CreateContextWithEvents(approved);
         var controller = CreateController(context);
 
         var result = await controller.GetEventById(approved.Id.ToString());
 
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        var dto = Assert.IsType<EventDetailsDto>(okResult.Value);
-        Assert.Equal(approved.Id, dto.Id);
-        Assert.Equal(approved.Title, dto.Title);
+        Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]

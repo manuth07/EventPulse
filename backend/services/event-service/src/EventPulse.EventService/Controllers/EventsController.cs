@@ -51,13 +51,11 @@ public class EventsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<EventListDto>>> GetEvents()
     {
-        // Only Published or Approved events are visible to public visitors.
-        // Pending and Rejected events are never exposed here.
+        // Only Published events are visible to public visitors.
         var events = await _context.Events
             .AsNoTracking()
-            .Where(e => e.Status == EventStatus.Published || e.Status == EventStatus.Approved)
+            .Where(e => e.Status == EventStatus.Published)
             .ToListAsync();
-
         var dtos = events.Select(e => new EventListDto
         {
             Id = e.Id,
@@ -93,10 +91,8 @@ public class EventsController : ControllerBase
         if (eventItem == null)
             return NotFound();
 
-        // Only Published or Approved events are visible to public visitors
-        if (eventItem.Status != EventStatus.Published && eventItem.Status != EventStatus.Approved)
+        if (eventItem.Status != EventStatus.Published)
             return NotFound();
-
         var details = new EventDetailsDto
         {
             Id = eventItem.Id,
