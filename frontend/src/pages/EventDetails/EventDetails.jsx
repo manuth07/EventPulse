@@ -50,8 +50,11 @@ export function EventDetails() {
   useEffect(() => {
     if (!event?.id) return;
     getPublicTicketTypes(event.id)
-      .then((data) => setStartingPrice(getStartingPrice(data)))
-      .catch(() => setStartingPrice(null));
+      .then((data) => {
+        const computed = getStartingPrice(data);
+        setStartingPrice(computed !== null ? computed : (event.price ?? null));
+      })
+      .catch(() => setStartingPrice(event.price ?? null));
   }, [event]);
 
   const heroImage = event?.coverUrl || event?.imageUrl;
