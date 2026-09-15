@@ -114,3 +114,9 @@ export async function deleteTicketType(eventId, ticketTypeId, token) {
     throw error;
   }
 }
+export function getStartingPrice(ticketTypes) {
+  if (!Array.isArray(ticketTypes) || ticketTypes.length === 0) return null;
+  const prices = ticketTypes.map((t) => t.price).filter((p) => typeof p === 'number');
+  if (prices.length === 0) return null;
+  return Math.min(...prices);
+}
