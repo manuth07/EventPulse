@@ -4,8 +4,7 @@ import { ArrowLeft, Calendar, MapPin, Ticket, RotateCcw, CalendarX, AlertCircle 
 import { Header } from '../../components/Header/Header';
 import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
-import { PublicTicketList } from '../../components/TicketTypes/PublicTicketList';
-import { useAuth } from '../../context/AuthContext';
+import { getPublicTicketTypes, getStartingPrice } from '../../services/ticketTypeService';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
@@ -25,19 +24,10 @@ function formatDate(dateString) {
 export function EventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const handleSelectTickets = () => {
-    if (!isAuthenticated) {
-      navigate('/login', { state: { returnTo: `/events/${id}` } });
-      return;
-    }
-    // TODO: proceed to cart/booking flow once Booking Service exists
-    alert('Ticket booking will be available in Sprint 2.');
-  };
+  const [startingPrice, setStartingPrice] = useState(null);
 
   const loadEventDetails = async () => {
     setLoading(true);
@@ -56,6 +46,13 @@ export function EventDetails() {
   useEffect(() => {
     loadEventDetails();
   }, [id]);
+
+  useEffect(() => {
+    if (!event?.id) return;
+    getPublicTicketTypes(event.id)
+      .then((data) => setStartingPrice(getStartingPrice(data)))
+      .catch(() => setStartingPrice(null));
+  }, [event]);
 
   const heroImage = event?.coverUrl || event?.imageUrl;
 
@@ -285,24 +282,24 @@ export function EventDetails() {
                     border: '1px solid var(--ep-border)'
                   }}>
                     <div className="ep-caption" style={{ color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                      Starting Price
+                      Price
                     </div>
                     <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--ep-text-primary)', fontFamily: 'var(--ep-font-heading)' }}>
-                      {formatPrice(event.price)}
+                      {startingPrice !== null ? (
+                        <>{formatPrice(startingPrice)} <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ep-text-secondary)' }}>Upwards</span></>
+                      ) : (
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--ep-text-secondary)' }}>Not yet available</span>
+                      )}
                     </div>
-                  </div>
-
-                  <div style={{ marginBottom: '20px' }}>
-                    <PublicTicketList eventId={event.id} />
                   </div>
 
                   <button
                     type="button"
                     className="ep-btn-primary w-100"
                     style={{ padding: '14px', fontSize: '15px' }}
-                    onClick={handleSelectTickets}
+                    onClick={() => navigate(`/events/${event.id}/tickets`)}
                   >
-                    Select Tickets
+                    Get Tickets
                   </button>
 
                   <p className="ep-caption text-center mt-3 mb-0" style={{ color: 'var(--ep-text-secondary)' }}>
