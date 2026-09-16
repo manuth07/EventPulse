@@ -638,10 +638,9 @@ public class EventsController : ControllerBase
 
     /// <summary>
     /// PUT /api/events/{id}/start-sales
-    /// Organizer publishes their own Approved event once at least one valid
-    /// ticket type exists, transitioning it to Published and making it
-    /// visible to the public.
-    /// Requires: OrganizerOnly policy, and caller must own the event.
+    /// Organizer publishes their own Approved event once at least one ticket
+    /// type has been configured. Transitions Approved -> Published.
+    /// Requires: OrganizerOnly policy, caller must own the event.
     /// </summary>
     [HttpPut("{id}/start-sales")]
     [Authorize(Policy = AppPolicies.OrganizerOnly)]
@@ -650,7 +649,7 @@ public class EventsController : ControllerBase
         if (!Guid.TryParse(id, out var guidId))
             return NotFound();
 
-        var eventItem = await _context.Events.FindAsync(new object[] { guidId }, cancellationToken);
+        var eventItem = await _context.Events.FirstOrDefaultAsync(e => e.Id == guidId, cancellationToken);
         if (eventItem == null)
             return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
 
@@ -658,15 +657,10 @@ public class EventsController : ControllerBase
                              ?? User.FindFirst("sub")?.Value;
 
         if (!Guid.TryParse(organizerIdStr, out var organizerId))
-        {
-            _logger?.LogWarning("StartTicketSales: Could not parse OrganizerId from JWT sub claim.");
             return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
-        }
 
         if (eventItem.OrganizerId != organizerId)
-        {
             return StatusCode(403, new { code = "FORBIDDEN", message = "You do not have permission to publish this event." });
-        }
 
         if (eventItem.Status != EventStatus.Approved)
         {
@@ -683,17 +677,14 @@ public class EventsController : ControllerBase
             return Conflict(new
             {
                 code = "NO_TICKET_TYPES",
-                message = "You must configure at least one ticket type before starting ticket sales."
+                message = "At least one ticket type must be configured before starting ticket sales."
             });
         }
 
         eventItem.Status = EventStatus.Published;
-
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger?.LogInformation(
-            "Ticket sales started. EventId={EventId}, OrganizerId={OrganizerId}",
-            guidId, organizerId);
+        _logger?.LogInformation("Ticket sales started. EventId={EventId}, OrganizerId={OrganizerId}", guidId, organizerId);
 
         return Ok(new { message = "Ticket sales started. Your event is now live.", eventId = guidId, status = "Published" });
     }

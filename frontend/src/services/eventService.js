@@ -771,4 +771,27 @@ export async function rejectEventCancellationRequest(requestId, token, notes = '
 
   return response.json();
 }
+export async function startTicketSales(id, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/${id}/start-sales`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to start ticket sales (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
 
