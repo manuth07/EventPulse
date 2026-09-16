@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Crown, Ticket } from 'lucide-react';
 import { formatPrice } from '../../utils/currencyFormatter';
+import { normalizeCategory } from '../../data/eventConstants';
 
 function parseDateParts(dateString) {
   if (!dateString) return { day: '--', month: 'TBA', time: '--:--', period: '' };
@@ -35,12 +36,13 @@ export function EventCard({ event }) {
   const posterUrl = imageUrl || imagePath;
   const hasPoster = Boolean(posterUrl) && !imageError;
 
-  // Format metadata chip (e.g. "Indoor • Musical Concert")
+  // Format metadata chip (e.g. "Music · Outdoor")
   // For legacy events without venueType, display only category.
   // If neither exists, metadataLabel is null and chip collapses cleanly.
-  const metadataLabel = venueType && category
-    ? `${venueType} • ${category}`
-    : (category || (venueType ? venueType : null));
+  const displayCategory = normalizeCategory(category) || category;
+  const metadataLabel = displayCategory && venueType
+    ? `${displayCategory} · ${venueType}`
+    : (displayCategory || (venueType ? venueType : null));
 
   return (
     <Link

@@ -5,6 +5,7 @@ import { Header } from '../../components/Header/Header';
 import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { getPublicTicketTypes, getStartingPrice } from '../../services/ticketTypeService';
+import { normalizeCategory } from '../../data/eventConstants';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
@@ -233,9 +234,12 @@ export function EventDetails() {
                         fontWeight: 600,
                         letterSpacing: '-0.01em',
                       }}>
-                        {event.venueType && event.category
-                          ? `${event.venueType} • ${event.category}`
-                          : (event.category || event.venueType)}
+                        {(() => {
+                          const cat = normalizeCategory(event.category) || event.category;
+                          return cat && event.venueType
+                            ? `${cat} · ${event.venueType}`
+                            : (cat || event.venueType);
+                        })()}
                       </span>
                     </div>
                   )}

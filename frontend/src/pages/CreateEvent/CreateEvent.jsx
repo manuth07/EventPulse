@@ -3,29 +3,36 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
 import { Calendar, MapPin, ArrowLeft, CheckCircle, UploadCloud, X } from 'lucide-react';
-import { submitEvent } from '../../services/eventService';
-
-const EVENT_CATEGORIES = [
-  'Musical Concert',
-  'Conference',
-  'Workshop',
-  'Festival',
-  'Sports',
-  'Theatre / Performance',
-  'Other',
-];
-
-const VENUE_TYPES = ['Indoor', 'Outdoor'];
+import { submitEvent, getEventCategories } from '../../services/eventService';
+import { EVENT_CATEGORIES, VENUE_TYPES } from '../../data/eventConstants';
 
 export function CreateEvent() {
   const navigate = useNavigate();
   const { accessToken } = useAuth();
 
+  const [categories, setCategories] = useState(EVENT_CATEGORIES);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(EVENT_CATEGORIES[0]);
   const [venueType, setVenueType] = useState('Indoor');
   const [venue, setVenue] = useState('');
+
+  React.useEffect(() => {
+    let mounted = true;
+    getEventCategories()
+      .then((cats) => {
+        if (mounted && Array.isArray(cats) && cats.length > 0) {
+          const catValues = cats.map((c) => (typeof c === 'string' ? c : c.value));
+          setCategories(catValues);
+        }
+      })
+      .catch(() => {
+        // Fallback to EVENT_CATEGORIES is already in place
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const [eventDate, setEventDate] = useState('');
   const [price, setPrice] = useState('0');
   const [image, setImage] = useState(null);
@@ -296,7 +303,7 @@ export function CreateEvent() {
                       cursor: 'pointer',
                     }}
                   >
-                    {EVENT_CATEGORIES.map((cat) => (
+                    {categories.map((cat) => (
                       <option key={cat} value={cat}>
                         {cat}
                       </option>

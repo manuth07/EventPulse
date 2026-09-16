@@ -795,3 +795,29 @@ export async function startTicketSales(id, token) {
   return response.json();
 }
 
+/**
+ * Retrieves the authoritative list of supported event categories (EP-36 / US-16).
+ * Public endpoint: GET /api/events/categories
+ * @returns {Promise<Array<{value: string, label: string}>>}
+ */
+export async function getEventCategories() {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/categories`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load event categories (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}

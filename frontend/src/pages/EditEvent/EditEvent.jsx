@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
-import { getMySubmission, getEventUpdateRequest, submitEventUpdateRequest, getEventCancellationRequest } from '../../services/eventService';
-import { EVENT_CATEGORIES, VENUE_TYPES } from '../../data/eventConstants';
+import { getMySubmission, getEventUpdateRequest, submitEventUpdateRequest, getEventCancellationRequest, getEventCategories } from '../../services/eventService';
+import { EVENT_CATEGORIES, VENUE_TYPES, normalizeCategory } from '../../data/eventConstants';
 import {
   Calendar,
   MapPin,
@@ -36,11 +36,26 @@ export function EditEvent() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
 
-  // Form states
+  const [categories, setCategories] = useState(EVENT_CATEGORIES);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(EVENT_CATEGORIES[0]);
   const [venueType, setVenueType] = useState('Indoor');
+
+  useEffect(() => {
+    let mounted = true;
+    getEventCategories()
+      .then((cats) => {
+        if (mounted && Array.isArray(cats) && cats.length > 0) {
+          const catValues = cats.map((c) => (typeof c === 'string' ? c : c.value));
+          setCategories(catValues);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const [venue, setVenue] = useState('');
   const [eventDate, setEventDate] = useState('');
 
@@ -94,7 +109,7 @@ export function EditEvent() {
       setEvent(eventData);
       setTitle(eventData.title || '');
       setDescription(eventData.description || '');
-      setCategory(eventData.category || EVENT_CATEGORIES[0]);
+      setCategory(normalizeCategory(eventData.category) || EVENT_CATEGORIES[0]);
       setVenueType(eventData.venueType || 'Indoor');
       setVenue(eventData.venue || '');
       setEventDate(toLocalDatetimeInput(eventData.eventDate));
@@ -613,7 +628,7 @@ export function EditEvent() {
                         cursor: isFormDisabled ? 'not-allowed' : 'pointer',
                       }}
                     >
-                      {EVENT_CATEGORIES.map((cat) => (
+                      {categories.map((cat) => (
                         <option key={cat} value={cat}>
                           {cat}
                         </option>

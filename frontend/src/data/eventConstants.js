@@ -4,13 +4,27 @@
  */
 
 export const EVENT_CATEGORIES = [
-  'Musical Concert',
+  'Music',
+  'Sports',
   'Conference',
   'Workshop',
   'Festival',
-  'Sports',
-  'Theatre / Performance',
+  'Arts & Theatre',
+  'Community',
   'Other',
 ];
 
 export const VENUE_TYPES = ['Indoor', 'Outdoor'];
+
+const LEGACY_CATEGORY_MAP = {
+  'Musical Concert': 'Music',
+  'Theatre / Performance': 'Arts & Theatre',
+  'Theatre': 'Arts & Theatre',
+  'Arts': 'Arts & Theatre',
+};
+
+export function normalizeCategory(category) {
+  if (!category) return category;
+  const trimmed = category.trim();
+  return LEGACY_CATEGORY_MAP[trimmed] || trimmed;
+}
