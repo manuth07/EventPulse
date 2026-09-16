@@ -212,6 +212,21 @@ export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
       marginBottom: '32px',
       overflow: 'visible',
     }}>
+      {/* Semi-transparent dark overlay to improve text contrast while keeping stage lighting vibrant */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'linear-gradient(180deg, rgba(0, 0, 0, 0.44) 0%, rgba(0, 0, 0, 0.52) 100%)',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
+        aria-hidden="true"
+      />
+
       <div className="container" style={{ maxWidth: '840px', textAlign: 'center', position: 'relative', zIndex: 10 }}>
         {/* Search Control with Autocomplete Dropdown */}
         <div ref={containerRef} style={{ position: 'relative', maxWidth: '560px', width: '100%', margin: '0 auto 28px' }}>
