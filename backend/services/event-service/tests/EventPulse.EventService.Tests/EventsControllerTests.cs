@@ -370,4 +370,25 @@ public class EventsControllerTests
         Assert.Single(suggestions);
         Assert.Equal(published.Id, suggestions[0].Id);
     }
+
+    [Fact]
+    public async Task GetSuggestions_WithPosterImage_PopulatesImageUrl()
+    {
+        var publishedWithImage = MakeEvent(EventStatus.Published, "Rock Concert Live");
+        publishedWithImage.ImageBlobName = "posters/rock.webp";
+        var publishedWithoutImage = MakeEvent(EventStatus.Published, "Rock Acoustic");
+
+        using var context = CreateContextWithEvents(publishedWithImage, publishedWithoutImage);
+        var controller = new EventsController(context, imageStorage: new FakeImageStorage());
+
+        var result = await controller.GetSuggestions("Rock");
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var suggestions = Assert.IsAssignableFrom<IEnumerable<EventSuggestionDto>>(okResult.Value).ToList();
+
+        var withImage = suggestions.First(e => e.Title == "Rock Concert Live");
+        Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/posters/rock.webp", withImage.ImageUrl);
+
+        var withoutImage = suggestions.First(e => e.Title == "Rock Acoustic");
+        Assert.Null(withoutImage.ImageUrl);
+    }
 }

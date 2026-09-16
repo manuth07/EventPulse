@@ -1,4 +1,4 @@
-﻿namespace EventPulse.EventService.DTOs;
+namespace EventPulse.EventService.DTOs;
 
 /// <summary>
 /// Lightweight autocomplete suggestion item for customer search (EP-37 / US-17).
@@ -15,4 +15,10 @@ public class EventSuggestionDto
     public string? Venue { get; set; }
 
     public DateTime EventDate { get; set; }
+
+    /// <summary>
+    /// Public URL for the portrait event card/poster image.
+    /// Null for events without an uploaded poster.
+    /// </summary>
+    public string? ImageUrl { get; set; }
 }

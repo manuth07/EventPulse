@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, ArrowRight, Loader2 } from 'lucide-react';
+import { Search, ArrowRight, Loader2, Ticket } from 'lucide-react';
 import heroBackground from '../../assets/images/hero/hero-background.webp';
 import { useDebounce } from '../../hooks/useDebounce';
 import { fetchEventSuggestions } from '../../services/eventService';
@@ -13,6 +13,63 @@ function formatSuggestionDate(dateString) {
   } catch (e) {
     return '';
   }
+}
+
+function SuggestionThumbnail({ src, alt }) {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  if (!src || hasError) {
+    return (
+      <div
+        style={{
+          width: '52px',
+          height: '52px',
+          minWidth: '52px',
+          borderRadius: '10px',
+          backgroundColor: '#F3F4F6',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          color: '#9CA3AF',
+        }}
+        aria-hidden="true"
+      >
+        <Ticket size={22} strokeWidth={1.75} />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: '52px',
+        height: '52px',
+        minWidth: '52px',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        backgroundColor: '#F3F4F6',
+        flexShrink: 0,
+      }}
+    >
+      <img
+        src={src}
+        alt={alt || ''}
+        loading="lazy"
+        onError={() => setHasError(true)}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block',
+        }}
+      />
+    </div>
+  );
 }
 
 export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
@@ -280,18 +337,21 @@ export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
                         }}
                         onMouseEnter={() => setActiveIndex(idx)}
                         style={{
-                          padding: '12px 18px',
+                          padding: '10px 16px',
                           cursor: 'pointer',
                           backgroundColor: isSelected ? '#F3F4F6' : '#ffffff',
                           borderBottom: idx < suggestions.length - 1 ? '1px solid #F3F4F6' : 'none',
                           transition: 'background-color 0.12s ease',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'space-between',
                           gap: '12px',
                         }}
                       >
-                        <div style={{ minWidth: 0, flex: 1 }}>
+                        {/* Event thumbnail */}
+                        <SuggestionThumbnail src={item.imageUrl} alt={item.title} />
+
+                        {/* Main information */}
+                        <div style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
                           <div style={{
                             fontSize: '14px',
                             fontWeight: 600,
@@ -299,6 +359,7 @@ export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
+                            lineHeight: '1.25',
                           }}>
                             {item.title}
                           </div>
@@ -306,21 +367,28 @@ export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
                             <div style={{
                               fontSize: '12px',
                               color: 'var(--ep-text-secondary, #6b7280)',
-                              marginTop: '2px',
+                              marginTop: '3px',
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
+                              lineHeight: '1.25',
                             }}>
                               {metaParts}
                             </div>
                           )}
                         </div>
+
+                        {/* Date aligned toward the right */}
                         {dateFormatted && (
                           <div style={{
                             fontSize: '12px',
                             fontWeight: 600,
                             color: 'var(--ep-text-secondary, #6b7280)',
                             flexShrink: 0,
+                            textAlign: 'right',
+                            marginLeft: 'auto',
+                            paddingLeft: '8px',
+                            whiteSpace: 'nowrap',
                           }}>
                             {dateFormatted}
                           </div>

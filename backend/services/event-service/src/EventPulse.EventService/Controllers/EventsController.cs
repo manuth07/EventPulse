@@ -112,7 +112,7 @@ public class EventsController : ControllerBase
         var search = rawQuery.ToLower();
         var normalizedCategory = EventCategories.Normalize(rawQuery);
 
-        var suggestions = await _context.Events
+        var items = await _context.Events
             .AsNoTracking()
             .WhereCustomerVisible()
             .Where(e =>
@@ -122,15 +122,26 @@ public class EventsController : ControllerBase
                 (normalizedCategory != null && e.Category == normalizedCategory))
             .OrderBy(e => e.EventDate)
             .Take(5)
-            .Select(e => new EventSuggestionDto
+            .Select(e => new
             {
-                Id = e.Id,
-                Title = e.Title,
-                Category = e.Category,
-                Venue = e.Venue,
-                EventDate = e.EventDate
+                e.Id,
+                e.Title,
+                e.Category,
+                e.Venue,
+                e.EventDate,
+                e.ImageBlobName
             })
             .ToListAsync(cancellationToken);
+
+        var suggestions = items.Select(e => new EventSuggestionDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Category = e.Category,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
+        }).ToList();
 
         return Ok(suggestions);
     }
