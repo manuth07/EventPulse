@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
-import { getMySubmission, resubmitEvent, getEventUpdateRequest, getEventCancellationRequest, submitEventCancellationRequest } from '../../services/eventService';
+import { getMySubmission, resubmitEvent, getEventUpdateRequest, getEventCancellationRequest, submitEventCancellationRequest, startTicketSales } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { TicketTypesPanel } from '../../components/TicketTypes/TicketTypesPanel';
 
@@ -126,6 +126,10 @@ export function OrganizerEventDetails() {
   const [pendingUpdateRequest, setPendingUpdateRequest] = useState(null);
   const [pendingCancellationRequest, setPendingCancellationRequest] = useState(null);
 
+  // Start Ticket Sales state
+  const [startingSales, setStartingSales] = useState(false);
+  const [startSalesError, setStartSalesError] = useState(null);
+
   // Cancellation modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
@@ -197,6 +201,20 @@ export function OrganizerEventDetails() {
       setLoading(false);
     }
   }, [id, accessToken]);
+
+  const handleStartSales = async () => {
+    setStartSalesError(null);
+    setStartingSales(true);
+    try {
+      const token = accessToken || sessionStorage.getItem('ep_access_token');
+      await startTicketSales(id, token);
+      await loadSubmission();
+    } catch (err) {
+      setStartSalesError(err.message || 'Failed to start ticket sales.');
+    } finally {
+      setStartingSales(false);
+    }
+  };
 
   const handleOpenCancelModal = () => {
     setCancellationReason('');
@@ -653,6 +671,38 @@ export function OrganizerEventDetails() {
                 )
               )}
             </div>
+
+            {/* APPROVED — NOT YET ON SALE BANNER */}
+            {event.status === 'Approved' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '20px 24px',
+                backgroundColor: '#FFF8E1',
+                border: '1px solid #FFE082',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+              }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#8D6E00', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                  Approved — Not Yet On Sale
+                </h3>
+                <p style={{ fontSize: '14px', color: '#4B5563', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+                  Your event has been approved. Complete ticket setup below, then start ticket sales to make it visible to customers.
+                </p>
+                {startSalesError && (
+                  <div style={{ padding: '10px 12px', backgroundColor: '#FFF2F2', border: '1px solid var(--ep-danger)', borderRadius: '8px', fontSize: '12px', color: 'var(--ep-danger)', marginBottom: '12px' }}>
+                    {startSalesError}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleStartSales}
+                  disabled={startingSales}
+                  className="ep-btn-primary"
+                  style={{ fontSize: '13px', padding: '10px 20px' }}
+                >
+                  {startingSales ? 'Starting…' : 'Start Ticket Sales'}
+                </button>
+              </div>
+            )}
 
             {/* CANCELLATION PENDING REVIEW BANNER (EP-35 / US-15) */}
             {(event.status === 'Approved' || event.status === 'Published') && pendingCancellationRequest && pendingCancellationRequest.status === 'Pending' && (
