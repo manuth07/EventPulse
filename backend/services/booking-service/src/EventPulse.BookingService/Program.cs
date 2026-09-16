@@ -1,18 +1,19 @@
+using Prometheus;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
 // Booking Service
-// ---------------------------------------------------------------------------
-// Owns: ticket reservations, seat availability, booking lifecycle.
-// Does NOT reference: IdentityService, EventService, PaymentService.
-// Communicates with EventService (read event/seat data) → via HTTP client later.
-// Communicates with PaymentService (payment confirmation) → via Kafka later.
 // ---------------------------------------------------------------------------
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// Prometheus HTTP Request Metrics
+app.UseRouting();
+app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
 {
@@ -22,6 +23,9 @@ if (app.Environment.IsDevelopment())
 app.UseAuthorization();
 
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint
+app.MapMetrics();
 
 app.MapControllers();
 

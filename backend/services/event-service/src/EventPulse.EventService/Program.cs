@@ -1,13 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using EventPulse.EventService.Data;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
 // Event Service
-// ---------------------------------------------------------------------------
-// Owns: events, categories, venues, schedules.
-// Does NOT reference: IdentityService, BookingService, PaymentService.
 // ---------------------------------------------------------------------------
 builder.Services.AddDbContext<EventDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("EventDatabase")));
@@ -16,7 +14,24 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// Application Insights Telemetry (EP-200 / TECH-11)
+var appInsightsConn = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+                   ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+
+if (!string.IsNullOrWhiteSpace(appInsightsConn))
+{
+    builder.Services.AddApplicationInsightsTelemetry(options =>
+    {
+        options.ConnectionString = appInsightsConn;
+    });
+}
+
 var app = builder.Build();
+
+app.UseRouting();
+
+// Prometheus HTTP Request Metrics (TECH-12)
+app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
 {
@@ -31,8 +46,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseAuthorization();
 
+// Health endpoint
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint (TECH-12)
+app.MapMetrics();
 
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();
