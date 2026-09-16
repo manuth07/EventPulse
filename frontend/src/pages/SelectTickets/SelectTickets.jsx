@@ -2,11 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 import { fetchEventById } from '../../services/eventService';
 import { getPublicTicketTypes } from '../../services/ticketTypeService';
-import { addToCart } from '../../services/cartService';
 import { formatPrice } from '../../utils/currencyFormatter';
-import { ArrowLeft, Ticket, AlertCircle, ShoppingCart, Minus, Plus, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Ticket, AlertCircle, ShoppingCart, Minus, Plus } from 'lucide-react';
 
 function formatDateShort(dateString) {
   if (!dateString) return 'Date TBA';
@@ -24,21 +24,21 @@ function formatDateShort(dateString) {
 export function SelectTickets() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated, accessToken } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const { cart, addOrUpdateItem, refreshCart } = useCart();
 
   const [event, setEvent] = useState(null);
   const [ticketTypes, setTicketTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // quantities[ticketTypeId] = number selected (0 means not added yet)
+  // quantities[ticketTypeId] = desired quantity
   const [quantities, setQuantities] = useState({});
   const [sortBy, setSortBy] = useState('availability');
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
-
-  const getToken = () => accessToken || sessionStorage.getItem('ep_access_token');
+  const [conflictModal, setConflictModal] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,7 +57,20 @@ export function SelectTickets() {
     }
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Synchronize local quantities with active server cart when visiting this event
+  useEffect(() => {
+    if (cart && cart.eventId === id && Array.isArray(cart.items) && cart.items.length > 0) {
+      const initial = {};
+      for (const item of cart.items) {
+        initial[item.ticketTypeId] = item.quantity;
+      }
+      setQuantities(initial);
+    }
+  }, [cart, id]);
 
   const sortedTicketTypes = useMemo(() => {
     const list = [...ticketTypes];
@@ -98,7 +111,7 @@ export function SelectTickets() {
     });
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (clearExisting = false) => {
     if (!isAuthenticated) {
       navigate('/login', { state: { returnTo: `/events/${id}/tickets` } });
       return;
@@ -107,16 +120,44 @@ export function SelectTickets() {
 
     setSubmitError(null);
     setSubmitting(true);
+
     try {
+      // If updating, submit items with their desired final quantities
+      let isFirst = true;
       for (const item of selectedItems) {
-        await addToCart(id, item.id, item.qty, getToken());
+        await addOrUpdateItem(id, item.id, item.qty, isFirst && clearExisting, false);
+        isFirst = false;
       }
+
+      // Also remove any items that were previously in this cart but now have qty 0
+      if (cart && cart.eventId === id && Array.isArray(cart.items)) {
+        for (const previousItem of cart.items) {
+          if (!quantities[previousItem.ticketTypeId] || quantities[previousItem.ticketTypeId] === 0) {
+            await addOrUpdateItem(id, previousItem.ticketTypeId, 0, false, false);
+          }
+        }
+      }
+
+      await refreshCart();
       navigate('/cart');
     } catch (err) {
-      setSubmitError(err.message || 'Failed to add tickets to cart.');
+      if (err.status === 409 && err.conflictData) {
+        setConflictModal({
+          currentEventTitle: err.conflictData.currentEventTitle || 'another event',
+          currentEventId: err.conflictData.currentEventId,
+          attemptedEventId: id,
+        });
+      } else {
+        setSubmitError(err.message || 'Failed to add tickets to cart.');
+      }
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleConfirmClearAndContinue = async () => {
+    setConflictModal(null);
+    await handleCheckout(true);
   };
 
   return (
@@ -222,13 +263,13 @@ export function SelectTickets() {
                 </div>
                 <button
                   type="button"
-                  onClick={handleCheckout}
+                  onClick={() => handleCheckout(false)}
                   disabled={cartCount === 0 || submitting}
                   className="ep-btn-primary"
                   style={{ fontSize: '13px', padding: '10px 20px', display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: cartCount === 0 ? 0.5 : 1 }}
                 >
                   <ShoppingCart size={14} />
-                  <span>{submitting ? 'Adding…' : 'Checkout'}</span>
+                  <span>{submitting ? 'Saving…' : 'View Cart / Checkout'}</span>
                 </button>
               </div>
               {submitError && (
@@ -337,6 +378,59 @@ export function SelectTickets() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== DIFFERENT EVENT CONFLICT MODAL ===== */}
+        {conflictModal && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            backdropFilter: 'blur(2px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+          }}>
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 'var(--ep-radius-card)',
+              maxWidth: '480px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: 'var(--ep-shadow-hover)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                <AlertCircle size={22} color="var(--ep-primary)" />
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                  Start a new cart?
+                </h3>
+              </div>
+              <p style={{ fontSize: '14px', color: 'var(--ep-text-secondary)', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+                Your cart currently contains tickets for <strong>{conflictModal.currentEventTitle}</strong>.
+                To select tickets for <strong>{event?.title}</strong>, your current cart must be cleared.
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setConflictModal(null)}
+                  className="ep-btn-secondary"
+                  style={{ fontSize: '13px', padding: '9px 16px' }}
+                >
+                  Keep {conflictModal.currentEventTitle} Tickets
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmClearAndContinue}
+                  className="ep-btn-primary"
+                  style={{ fontSize: '13px', padding: '9px 18px' }}
+                >
+                  Clear Cart & Continue
+                </button>
               </div>
             </div>
           </div>
