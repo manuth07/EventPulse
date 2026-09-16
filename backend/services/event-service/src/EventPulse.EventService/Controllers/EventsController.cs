@@ -71,6 +71,70 @@ public class EventsController : ControllerBase
                 (normalizedCategory != null && e.Category == normalizedCategory));
         }
 
+        // Canonical Category filter (EP-38 / US-18)
+        if (query != null && !string.IsNullOrWhiteSpace(query.Category))
+        {
+            var rawCategory = query.Category.Trim();
+            var canonicalCategory = EventCategories.Normalize(rawCategory) ?? rawCategory;
+            baseQuery = baseQuery.Where(e =>
+                e.Category != null && (e.Category == canonicalCategory || e.Category.ToLower() == rawCategory.ToLower()));
+        }
+
+        // VenueType filter: "Indoor" or "Outdoor" (EP-38 / US-18)
+        if (query != null && !string.IsNullOrWhiteSpace(query.VenueType))
+        {
+            var rawVenueType = query.VenueType.Trim().ToLower();
+            if (rawVenueType == "indoor")
+            {
+                baseQuery = baseQuery.Where(e => e.VenueType != null && e.VenueType.ToLower() == "indoor");
+            }
+            else if (rawVenueType == "outdoor")
+            {
+                baseQuery = baseQuery.Where(e => e.VenueType != null && e.VenueType.ToLower() == "outdoor");
+            }
+            else
+            {
+                // Unrecognized venue type: yields empty result safely
+                baseQuery = baseQuery.Where(e => false);
+            }
+        }
+
+        // Date range filter: "today", "this-week", "this-month" (EP-38 / US-18)
+        if (query != null && !string.IsNullOrWhiteSpace(query.Date))
+        {
+            var rawDate = query.Date.Trim().ToLower().Replace("-", "").Replace("_", "");
+            var now = DateTime.UtcNow;
+            var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
+
+            if (rawDate == "today")
+            {
+                var todayEnd = todayStart.AddDays(1);
+                baseQuery = baseQuery.Where(e => e.EventDate >= todayStart && e.EventDate < todayEnd);
+            }
+            else if (rawDate == "thisweek")
+            {
+                int diff = (7 + (int)now.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+                var startOfWeek = todayStart.AddDays(-diff);
+                var endOfWeek = startOfWeek.AddDays(7);
+                baseQuery = baseQuery.Where(e => e.EventDate >= startOfWeek && e.EventDate < endOfWeek);
+            }
+            else if (rawDate == "thismonth")
+            {
+                var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                var endOfMonth = startOfMonth.AddMonths(1);
+                baseQuery = baseQuery.Where(e => e.EventDate >= startOfMonth && e.EventDate < endOfMonth);
+            }
+            else if (rawDate == "any" || rawDate == "all")
+            {
+                // Unrestricted
+            }
+            else
+            {
+                // Unrecognized date filter: yields empty result safely
+                baseQuery = baseQuery.Where(e => false);
+            }
+        }
+
         var events = await baseQuery
             .OrderBy(e => e.EventDate)
             .ToListAsync(cancellationToken);

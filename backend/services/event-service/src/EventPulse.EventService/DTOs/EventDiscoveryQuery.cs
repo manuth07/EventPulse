@@ -1,4 +1,4 @@
-﻿namespace EventPulse.EventService.DTOs;
+namespace EventPulse.EventService.DTOs;
 
 /// <summary>
 /// Query parameters for customer event discovery and search (EP-37 / US-17, extensible for US-18).
@@ -16,7 +16,12 @@ public class EventDiscoveryQuery
     public string? Category { get; set; }
 
     /// <summary>
-    /// Optional venue type filter (Indoor, Outdoor). Reserved for US-18.
+    /// Optional venue type filter (Indoor, Outdoor).
     /// </summary>
     public string? VenueType { get; set; }
+
+    /// <summary>
+    /// Optional date range filter ("today", "this-week", "this-month").
+    /// </summary>
+    public string? Date { get; set; }
 }
