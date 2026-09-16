@@ -106,15 +106,10 @@ public class EventUpdateRequestService : IEventUpdateRequestService
         if (eventDateUtc <= DateTime.UtcNow)
             return (null, "EventDate must be in the future.", false, false, false, false);
 
-        string? canonicalCategory = null;
-        if (!string.IsNullOrWhiteSpace(request.Category))
-        {
-            if (!EventSubmissionService.AllowedCategories.Contains(request.Category.Trim()))
-                return (null, $"Unsupported event category '{request.Category}'.", false, false, false, false);
+        if (string.IsNullOrWhiteSpace(request.Category) || !EventCategories.IsValid(request.Category))
+            return (null, "Please select a valid event category.", false, false, false, false);
 
-            canonicalCategory = EventSubmissionService.AllowedCategories.First(c =>
-                string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
-        }
+        var canonicalCategory = EventCategories.Normalize(request.Category);
 
         string? canonicalVenueType = null;
         if (!string.IsNullOrWhiteSpace(request.VenueType))

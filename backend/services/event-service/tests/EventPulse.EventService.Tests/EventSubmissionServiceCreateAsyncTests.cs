@@ -56,6 +56,8 @@ public class EventSubmissionServiceCreateAsyncTests
         Venue = "Some Venue",
         EventDate = DateTime.UtcNow.AddDays(30),
         Price = 1000m,
+        Category = "Music",
+        VenueType = "Indoor",
         Image = MakeFormFile("image/jpeg", 1024, "poster.jpg"),
         CoverImage = MakeFormFile("image/jpeg", 2048, "cover.jpg"),
     };

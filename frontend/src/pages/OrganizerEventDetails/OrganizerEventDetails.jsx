@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
-import { getMySubmission, resubmitEvent, getEventUpdateRequest, getEventCancellationRequest, submitEventCancellationRequest, startTicketSales } from '../../services/eventService';
+import { getMySubmission, resubmitEvent, getEventUpdateRequest, getEventCancellationRequest, submitEventCancellationRequest, startTicketSales, getEventCategories } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { TicketTypesPanel } from '../../components/TicketTypes/TicketTypesPanel';
+import { EVENT_CATEGORIES, VENUE_TYPES, normalizeCategory } from '../../data/eventConstants';
 
 import {
   Calendar,
@@ -103,28 +104,32 @@ const STATUS_CONFIG = {
   },
 };
 
-const EVENT_CATEGORIES = [
-  'Musical Concert',
-  'Conference',
-  'Workshop',
-  'Festival',
-  'Sports',
-  'Theatre / Performance',
-  'Other',
-];
-
-const VENUE_TYPES = ['Indoor', 'Outdoor'];
-
 export function OrganizerEventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { accessToken } = useAuth();
 
+  const [categories, setCategories] = useState(EVENT_CATEGORIES);
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pendingUpdateRequest, setPendingUpdateRequest] = useState(null);
   const [pendingCancellationRequest, setPendingCancellationRequest] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getEventCategories()
+      .then((cats) => {
+        if (mounted && Array.isArray(cats) && cats.length > 0) {
+          const catValues = cats.map((c) => (typeof c === 'string' ? c : c.value));
+          setCategories(catValues);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Start Ticket Sales state
   const [startingSales, setStartingSales] = useState(false);
@@ -274,7 +279,7 @@ export function OrganizerEventDetails() {
     if (!event || event.status !== 'Rejected') return;
     setTitle(event.title || '');
     setDescription(event.description || '');
-    setCategory(event.category || EVENT_CATEGORIES[0]);
+    setCategory(normalizeCategory(event.category) || EVENT_CATEGORIES[0]);
     setVenueType(event.venueType || 'Indoor');
     setVenue(event.venue || '');
     setEventDate(toLocalDatetimeInput(event.eventDate));
@@ -290,7 +295,7 @@ export function OrganizerEventDetails() {
   const handleCancelEdit = () => {
     setIsEditing(false);
     setFormError(null);
-    setCategory(event?.category || EVENT_CATEGORIES[0]);
+    setCategory(normalizeCategory(event?.category) || EVENT_CATEGORIES[0]);
     setVenueType(event?.venueType || 'Indoor');
     setImageFile(null);
     setImagePreview(event?.imageUrl || null);
@@ -1132,7 +1137,7 @@ export function OrganizerEventDetails() {
                           cursor: 'pointer',
                         }}
                       >
-                        {EVENT_CATEGORIES.map((cat) => (
+                        {categories.map((cat) => (
                           <option key={cat} value={cat}>
                             {cat}
                           </option>

@@ -74,6 +74,22 @@ public class EventsController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/events/categories
+    /// Public. Returns the authoritative list of supported event categories (EP-36 / US-16).
+    /// </summary>
+    [HttpGet("categories")]
+    public ActionResult<IEnumerable<EventCategoryItemDto>> GetCategories()
+    {
+        var dtos = EventCategories.All.Select(cat => new EventCategoryItemDto
+        {
+            Value = cat,
+            Label = cat
+        });
+
+        return Ok(dtos);
+    }
+
+    /// <summary>
     /// GET /api/events/{id}
     /// Public. Returns a single Published or Approved event.
     /// Returns 404 for non-existent, non-public, or invalid events.
