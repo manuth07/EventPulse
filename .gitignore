@@ -9,6 +9,7 @@ obj/
 node_modules/
 dist/
 build/
+.vite/
 
 # Environment files
 .env
@@ -37,4 +38,4 @@ coverage-report/
 
 # Secrets
 secrets.json
-appsettings.Development.json
+appsettings.Development.jsontests/performance-jmeter/*.jtl 

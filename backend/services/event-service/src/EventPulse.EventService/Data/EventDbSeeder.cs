@@ -7,6 +7,53 @@ public static class EventDbSeeder
 {
     public static async Task SeedAsync(EventDbContext context)
     {
+        if (await context.Events.AnyAsync())
+        {
+            // Backfill existing seed events that have null or legacy Category/VenueType
+            var legacyEvents = await context.Events.Where(e => e.Category == null || e.Category == "Musical Concert" || e.Category == "Theatre / Performance").ToListAsync();
+            if (legacyEvents.Any())
+            {
+                foreach (var ev in legacyEvents)
+                {
+                    if (ev.Category == "Musical Concert")
+                    {
+                        ev.Category = "Music";
+                    }
+                    else if (ev.Category == "Theatre / Performance")
+                    {
+                        ev.Category = "Arts & Theatre";
+                    }
+                    else if (ev.Id == Guid.Parse("a1111111-1111-1111-1111-111111111111"))
+                    {
+                        ev.Category = "Conference";
+                        ev.VenueType = "Indoor";
+                    }
+                    else if (ev.Id == Guid.Parse("b2222222-2222-2222-2222-222222222222"))
+                    {
+                        ev.Category = "Music";
+                        ev.VenueType = "Outdoor";
+                    }
+                    else if (ev.Id == Guid.Parse("c3333333-3333-3333-3333-333333333333"))
+                    {
+                        ev.Category = "Conference";
+                        ev.VenueType = "Indoor";
+                    }
+                    else if (ev.Id == Guid.Parse("d4444444-4444-4444-4444-444444444444"))
+                    {
+                        ev.Category = "Workshop";
+                        ev.VenueType = "Indoor";
+                    }
+                    else if (ev.Id == Guid.Parse("e5555555-5555-5555-5555-555555555555"))
+                    {
+                        ev.Category = "Other";
+                        ev.VenueType = "Indoor";
+                    }
+                }
+                await context.SaveChangesAsync();
+            }
+            return;
+        }
+
         var organizer1 = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var organizer2 = Guid.Parse("22222222-2222-2222-2222-222222222222");
         var organizer3 = Guid.Parse("33333333-3333-3333-3333-333333333333");
@@ -23,6 +70,8 @@ public static class EventDbSeeder
                 Venue = "BMICH, Colombo",
                 EventDate = DateTime.UtcNow.AddDays(30),
                 Price = 5000.00m,
+                Category = "Conference",
+                VenueType = "Indoor",
                 Status = EventStatus.Published,
                 OrganizerId = organizer1,
                 CreatedAt = DateTime.UtcNow.AddDays(-10),
@@ -37,6 +86,8 @@ public static class EventDbSeeder
                 Venue = "Galle Face Green, Colombo",
                 EventDate = DateTime.UtcNow.AddDays(45),
                 Price = 3500.00m,
+                Category = "Music",
+                VenueType = "Outdoor",
                 Status = EventStatus.Published,
                 OrganizerId = organizer2,
                 CreatedAt = DateTime.UtcNow.AddDays(-8),
@@ -51,6 +102,8 @@ public static class EventDbSeeder
                 Venue = "Trace Expert City, Colombo 10",
                 EventDate = DateTime.UtcNow.AddDays(15),
                 Price = 0.00m,
+                Category = "Conference",
+                VenueType = "Indoor",
                 Status = EventStatus.Pending,
                 OrganizerId = organizer1,
                 CreatedAt = DateTime.UtcNow.AddDays(-2),
@@ -65,7 +118,9 @@ public static class EventDbSeeder
                 Venue = "SLIIT Auditorium, Malabe",
                 EventDate = DateTime.UtcNow.AddDays(60),
                 Price = 2500.00m,
-                Status = EventStatus.Approved,
+                Category = "Workshop",
+                VenueType = "Indoor",
+                Status = EventStatus.Published,
                 OrganizerId = organizer2,
                 CreatedAt = DateTime.UtcNow.AddDays(-6),
                 ReviewedAt = DateTime.UtcNow.AddDays(-1),
@@ -79,6 +134,8 @@ public static class EventDbSeeder
                 Venue = "Virtual / Online",
                 EventDate = DateTime.UtcNow.AddDays(10),
                 Price = 1000.00m,
+                Category = "Other",
+                VenueType = "Indoor",
                 Status = EventStatus.Rejected,
                 OrganizerId = organizer1,
                 CreatedAt = DateTime.UtcNow.AddDays(-12),
@@ -252,6 +309,8 @@ public static class EventDbSeeder
                 CreatedAt = DateTime.UtcNow.AddDays(-4),
                 ReviewedAt = DateTime.UtcNow.AddDays(-1),
                 ReviewedBy = adminId
+                ReviewedBy = adminId,
+                ReviewComment = "The venue address is incomplete. Please provide the full physical venue address and detailed event schedule."
             }
         };
 

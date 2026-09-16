@@ -101,7 +101,7 @@ export function Login() {
     if (result?.user?.profileCompleted === false) {
       navigate('/complete-profile', { replace: true });
     } else {
-      const from = location.state?.from?.pathname || '/';
+      const from = location.state?.returnTo || location.state?.from?.pathname || '/';
       navigate(from, { replace: true });
     }
   }
@@ -246,7 +246,7 @@ export function Login() {
         )}
 
         <form onSubmit={handleSubmit} noValidate>
-          <Field label="Email" id="login-email" error={fieldErrors.email} style={{ marginBottom: '16px' }}>
+          <Field label={<>Email <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="login-email" error={fieldErrors.email} style={{ marginBottom: '16px' }}>
             <input
               id="login-email"
               type="email"
@@ -260,7 +260,7 @@ export function Login() {
             />
           </Field>
 
-          <Field label="Password" id="login-password" error={fieldErrors.password} style={{ marginBottom: '24px' }}>
+          <Field label={<>Password <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="login-password" error={fieldErrors.password} style={{ marginBottom: '24px' }}>
             <div style={{ position: 'relative' }}>
               <input
                 id="login-password"
@@ -311,7 +311,7 @@ export function Login() {
 
         <p style={{ textAlign: 'center', marginTop: '20px', marginBottom: 0, fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
           Don't have an account?{' '}
-          <Link to="/register" style={{ color: 'var(--ep-primary)', fontWeight: 500, textDecoration: 'none' }}>
+          <Link to="/register" state={location.state} style={{ color: 'var(--ep-primary)', fontWeight: 500, textDecoration: 'none' }}>
             Create account
           </Link>
         </p>

@@ -106,6 +106,9 @@ public class RegistrationService : IRegistrationService
         // ------------------------------------------------------------------
         // 7. Generate and send email verification OTP
         // ------------------------------------------------------------------
+	// Requires Email:SmtpHost/Port/Username/Password/FromAddress/FromName/UseSsl to be
+	// configured via dotnet user-secrets (e.g. Brevo SMTP). Without these, registration
+	// still succeeds but the verification email silently fails to send.
         bool emailSent = true;
         try
         {

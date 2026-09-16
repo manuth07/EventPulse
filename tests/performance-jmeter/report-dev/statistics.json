@@ -1,0 +1,50 @@
+{
+  "Total" : {
+    "transaction" : "Total",
+    "sampleCount" : 200,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 10.685000000000002,
+    "medianResTime" : 4.5,
+    "minResTime" : 2.0,
+    "maxResTime" : 589.0,
+    "pct1ResTime" : 8.0,
+    "pct2ResTime" : 15.749999999999943,
+    "pct3ResTime" : 236.84000000000106,
+    "throughput" : 21.35155332550443,
+    "receivedKBytesPerSec" : 20.694742847229634,
+    "sentKBytesPerSec" : 3.638521538379417
+  },
+  "GET /api/events" : {
+    "transaction" : "GET /api/events",
+    "sampleCount" : 100,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 13.959999999999999,
+    "medianResTime" : 4.0,
+    "minResTime" : 2.0,
+    "maxResTime" : 589.0,
+    "pct1ResTime" : 9.0,
+    "pct2ResTime" : 21.749999999999943,
+    "pct3ResTime" : 585.4899999999982,
+    "throughput" : 10.678056593699948,
+    "receivedKBytesPerSec" : 15.850240256273358,
+    "sentKBytesPerSec" : 1.313901494927923
+  },
+  "GET /api/events/{id}" : {
+    "transaction" : "GET /api/events/{id}",
+    "sampleCount" : 100,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 7.409999999999998,
+    "medianResTime" : 5.0,
+    "minResTime" : 2.0,
+    "maxResTime" : 122.0,
+    "pct1ResTime" : 8.0,
+    "pct2ResTime" : 10.949999999999989,
+    "pct3ResTime" : 121.97999999999999,
+    "throughput" : 11.396011396011396,
+    "receivedKBytesPerSec" : 5.174946581196581,
+    "sentKBytesPerSec" : 2.4817485754985755
+  }
+}

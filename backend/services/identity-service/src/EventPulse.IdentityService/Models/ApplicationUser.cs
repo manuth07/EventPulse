@@ -43,4 +43,6 @@ public class ApplicationUser : IdentityUser<Guid>
     // -----------------------------------------------------------------------
 
     public ICollection<EmailVerificationCode> EmailVerificationCodes { get; set; } = [];
+
+    public OrganizerApplication? OrganizerApplication { get; set; }
 }

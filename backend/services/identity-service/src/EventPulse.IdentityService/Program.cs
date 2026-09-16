@@ -52,6 +52,8 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("Email"));
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<GoogleSettings>(builder.Configuration.GetSection("Google"));
+builder.Services.Configure<AdminBootstrapSettings>(builder.Configuration.GetSection("AdminBootstrap"));
+builder.Services.Configure<DevOrganizerSettings>(builder.Configuration.GetSection("DevOrganizer"));
 
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
@@ -61,6 +63,8 @@ builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationService>();
+builder.Services.AddScoped<IdentityDataSeeder>();
 
 // ---------------------------------------------------------------------------
 // JWT Bearer Authentication Infrastructure
@@ -93,6 +97,21 @@ builder.Services.AddAuthentication(options =>
 
 // ---------------------------------------------------------------------------
 // API, Observability & Infrastructure
+// Authorization Policies
+// ---------------------------------------------------------------------------
+builder.Services.AddAuthorization(options =>
+{
+    // Organizer-only endpoints (e.g., create/manage events)
+    options.AddPolicy("OrganizerOnly", policy =>
+        policy.RequireRole(EventPulse.IdentityService.Models.AppRoles.Organizer));
+
+    // Administrator-only endpoints (e.g., event approval, user management)
+    options.AddPolicy("AdministratorOnly", policy =>
+        policy.RequireRole(EventPulse.IdentityService.Models.AppRoles.Administrator));
+});
+
+// ---------------------------------------------------------------------------
+// API & Infrastructure
 // ---------------------------------------------------------------------------
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -122,5 +141,14 @@ app.MapHealthChecks("/health");
 app.MapMetrics();
 
 app.MapControllers();
+
+// ---------------------------------------------------------------------------
+// Startup: Seed roles and optional bootstrap admin
+// ---------------------------------------------------------------------------
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<IdentityDataSeeder>();
+    await seeder.SeedAsync();
+}
 
 app.Run();

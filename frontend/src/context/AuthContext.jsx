@@ -5,6 +5,17 @@ const USER_KEY = 'ep_user';
 
 const AuthContext = createContext(null);
 
+function isTokenExpired(token) {
+  if (!token) return true;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    if (!payload.exp) return false; // no exp claim — treat as non-expiring
+    return Date.now() >= payload.exp * 1000;
+  } catch {
+    return true; // malformed token — treat as invalid
+  }
+}
+
 export function AuthProvider({ children }) {
   const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || null);
   const [currentUser, setCurrentUser] = useState(() => {
@@ -33,14 +44,25 @@ export function AuthProvider({ children }) {
     setCurrentUser(null);
   };
 
+  const hasRole = (role) => {
+    if (!currentUser || !Array.isArray(currentUser.roles)) return false;
+    return currentUser.roles.includes(role);
+  };
+
+  const hasAnyRole = (roles) => {
+    if (!currentUser || !Array.isArray(currentUser.roles)) return false;
+    return roles.some((r) => currentUser.roles.includes(r));
+  };
+
   const value = {
     accessToken,
     currentUser,
-    isAuthenticated: Boolean(accessToken),
+    isAuthenticated: Boolean(accessToken) && !isTokenExpired(accessToken),
     login: loginUser,
     logout: logoutUser,
+    hasRole,
+    hasAnyRole,
   };
-
   return (
     <AuthContext.Provider value={value}>
       {children}
