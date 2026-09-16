@@ -1,7 +1,38 @@
 import React from 'react';
 import { Search, CalendarX } from 'lucide-react';
 
-export function EmptyState({ isSearchResults = false, searchQuery = '', onResetSearch }) {
+export function EmptyState({
+  isSearchResults = false,
+  searchQuery = '',
+  hasActiveFilters = false,
+  onResetSearch,
+  onClearFilters,
+}) {
+  const getHeading = () => {
+    if (isSearchResults && hasActiveFilters) {
+      return searchQuery
+        ? `No events found for "${searchQuery}" with these filters`
+        : 'No events match this search and filter combination';
+    }
+    if (hasActiveFilters) {
+      return 'No events match these filters';
+    }
+    if (isSearchResults) {
+      return searchQuery ? `No events found for "${searchQuery}"` : 'No matching events found';
+    }
+    return 'No events available yet';
+  };
+
+  const getSubtext = () => {
+    if (hasActiveFilters) {
+      return 'Try changing category, venue type, or date range.';
+    }
+    if (isSearchResults) {
+      return 'Try another event name, venue, or category.';
+    }
+    return 'New experiences are being prepared. Check back soon for upcoming events.';
+  };
+
   return (
     <div style={{
       textAlign: 'center',
@@ -18,7 +49,7 @@ export function EmptyState({ isSearchResults = false, searchQuery = '', onResetS
         alignItems: 'center',
         marginBottom: '16px'
       }}>
-        {isSearchResults ? (
+        {isSearchResults || hasActiveFilters ? (
           <Search size={40} color="var(--ep-text-secondary)" />
         ) : (
           <CalendarX size={40} color="var(--ep-text-secondary)" />
@@ -26,25 +57,33 @@ export function EmptyState({ isSearchResults = false, searchQuery = '', onResetS
       </div>
 
       <h3 className="ep-h3 mb-2">
-        {isSearchResults
-          ? (searchQuery ? `No events found for "${searchQuery}"` : 'No matching events found')
-          : 'No events available yet'}
+        {getHeading()}
       </h3>
-      <p className="ep-body mb-4" style={{ maxWidth: '400px', margin: '0 auto 24px' }}>
-        {isSearchResults
-          ? 'Try another event name, venue, or category.'
-          : 'New experiences are being prepared. Check back soon for upcoming events.'}
+      <p className="ep-body mb-4" style={{ maxWidth: '420px', margin: '0 auto 24px' }}>
+        {getSubtext()}
       </p>
 
-      {isSearchResults && onResetSearch && (
-        <button
-          type="button"
-          className="ep-btn-secondary"
-          onClick={onResetSearch}
-        >
-          Clear Search
-        </button>
-      )}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        {hasActiveFilters && onClearFilters && (
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            onClick={onClearFilters}
+          >
+            Clear filters
+          </button>
+        )}
+
+        {isSearchResults && onResetSearch && !hasActiveFilters && (
+          <button
+            type="button"
+            className="ep-btn-secondary"
+            onClick={onResetSearch}
+          >
+            Clear Search
+          </button>
+        )}
+      </div>
     </div>
   );
 }

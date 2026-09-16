@@ -391,4 +391,306 @@ public class EventsControllerTests
         var withoutImage = suggestions.First(e => e.Title == "Rock Acoustic");
         Assert.Null(withoutImage.ImageUrl);
     }
+
+    // =========================================================================
+    // EP-38 / US-18: Filter Events Tests
+    // =========================================================================
+
+    [Fact]
+    public async Task GetEvents_WithCategoryFilter_ReturnsMatchingEventsOnly()
+    {
+        var music = MakeEvent(EventStatus.Published, "Rock Night");
+        music.Category = "Music";
+        var conference = MakeEvent(EventStatus.Published, "Tech Conf");
+        conference.Category = "Conference";
+
+        using var context = CreateContextWithEvents(music, conference);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Category = "Music" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Rock Night", dtos[0].Title);
+        Assert.Equal("Music", dtos[0].Category);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithCategoryFilter_NormalizedAlias_ReturnsCanonicalEvents()
+    {
+        var music = MakeEvent(EventStatus.Published, "Acoustic Session");
+        music.Category = "Music";
+
+        using var context = CreateContextWithEvents(music);
+        var controller = CreateController(context);
+
+        // Alias "Musical Concert" normalizes to "Music"
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Category = "Musical Concert" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Acoustic Session", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithVenueTypeFilter_ReturnsMatchingEventsOnly()
+    {
+        var indoor = MakeEvent(EventStatus.Published, "Indoor Concert");
+        indoor.VenueType = "Indoor";
+        var outdoor = MakeEvent(EventStatus.Published, "Open Air Fest");
+        outdoor.VenueType = "Outdoor";
+
+        using var context = CreateContextWithEvents(indoor, outdoor);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { VenueType = "Outdoor" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Open Air Fest", dtos[0].Title);
+        Assert.Equal("Outdoor", dtos[0].VenueType);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithDateFilter_Today_ReturnsEventsHappeningToday()
+    {
+        var todayEvent = MakeEvent(EventStatus.Published, "Today Show");
+        todayEvent.EventDate = DateTime.UtcNow.Date.AddHours(14); // Today at 14:00 UTC
+        var nextMonthEvent = MakeEvent(EventStatus.Published, "Future Show");
+        nextMonthEvent.EventDate = DateTime.UtcNow.Date.AddDays(40);
+
+        using var context = CreateContextWithEvents(todayEvent, nextMonthEvent);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Date = "today" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Today Show", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithDateFilter_ThisWeek_ReturnsEventsWithinCurrentWeek()
+    {
+        var now = DateTime.UtcNow;
+        var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
+        int diff = (7 + (int)now.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+        var startOfWeek = todayStart.AddDays(-diff);
+
+        var thisWeekEvent = MakeEvent(EventStatus.Published, "Midweek Event");
+        thisWeekEvent.EventDate = startOfWeek.AddDays(3).AddHours(10); // Thursday of this week
+        var farEvent = MakeEvent(EventStatus.Published, "Far Future Event");
+        farEvent.EventDate = startOfWeek.AddDays(25);
+
+        using var context = CreateContextWithEvents(thisWeekEvent, farEvent);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Date = "this-week" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Midweek Event", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithDateFilter_ThisMonth_ReturnsEventsWithinCurrentMonth()
+    {
+        var now = DateTime.UtcNow;
+        var thisMonthEvent = MakeEvent(EventStatus.Published, "Month Gala");
+        thisMonthEvent.EventDate = new DateTime(now.Year, now.Month, 15, 12, 0, 0, DateTimeKind.Utc);
+        var nextYearEvent = MakeEvent(EventStatus.Published, "Next Year Gala");
+        nextYearEvent.EventDate = thisMonthEvent.EventDate.AddYears(1);
+
+        using var context = CreateContextWithEvents(thisMonthEvent, nextYearEvent);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Date = "this-month" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Month Gala", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithSearchAndCategory_CombinesBothFilters()
+    {
+        var match = MakeEvent(EventStatus.Published, "Rock Fest 2026");
+        match.Category = "Music";
+
+        var wrongCat = MakeEvent(EventStatus.Published, "Rock Climb Challenge");
+        wrongCat.Category = "Sports";
+
+        var wrongSearch = MakeEvent(EventStatus.Published, "Jazz Fest");
+        wrongSearch.Category = "Music";
+
+        using var context = CreateContextWithEvents(match, wrongCat, wrongSearch);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery
+        {
+            Search = "Rock",
+            Category = "Music"
+        });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Rock Fest 2026", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithSearchAndVenueType_CombinesBothFilters()
+    {
+        var match = MakeEvent(EventStatus.Published, "Sunset Acoustic");
+        match.VenueType = "Outdoor";
+
+        var indoor = MakeEvent(EventStatus.Published, "Sunset Arena");
+        indoor.VenueType = "Indoor";
+
+        using var context = CreateContextWithEvents(match, indoor);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery
+        {
+            Search = "Sunset",
+            VenueType = "Outdoor"
+        });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Sunset Acoustic", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithCategoryAndVenueType_CombinesBothFilters()
+    {
+        var outdoorMusic = MakeEvent(EventStatus.Published, "Garden Symphony");
+        outdoorMusic.Category = "Music";
+        outdoorMusic.VenueType = "Outdoor";
+
+        var indoorMusic = MakeEvent(EventStatus.Published, "Hall Symphony");
+        indoorMusic.Category = "Music";
+        indoorMusic.VenueType = "Indoor";
+
+        var outdoorSports = MakeEvent(EventStatus.Published, "Garden Marathon");
+        outdoorSports.Category = "Sports";
+        outdoorSports.VenueType = "Outdoor";
+
+        using var context = CreateContextWithEvents(outdoorMusic, indoorMusic, outdoorSports);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery
+        {
+            Category = "Music",
+            VenueType = "Outdoor"
+        });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Garden Symphony", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithSearchCategoryVenueTypeAndDate_CombinesAllFilters()
+    {
+        var now = DateTime.UtcNow;
+        var match = MakeEvent(EventStatus.Published, "Lakeside Acoustic");
+        match.Category = "Music";
+        match.VenueType = "Outdoor";
+        match.EventDate = new DateTime(now.Year, now.Month, 10, 15, 0, 0, DateTimeKind.Utc);
+
+        var wrongVenue = MakeEvent(EventStatus.Published, "Lakeside Acoustic Indoor");
+        wrongVenue.Category = "Music";
+        wrongVenue.VenueType = "Indoor";
+        wrongVenue.EventDate = match.EventDate;
+
+        var wrongDate = MakeEvent(EventStatus.Published, "Lakeside Acoustic Future");
+        wrongDate.Category = "Music";
+        wrongDate.VenueType = "Outdoor";
+        wrongDate.EventDate = match.EventDate.AddMonths(2);
+
+        using var context = CreateContextWithEvents(match, wrongVenue, wrongDate);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery
+        {
+            Search = "Lakeside",
+            Category = "Music",
+            VenueType = "Outdoor",
+            Date = "this-month"
+        });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal("Lakeside Acoustic", dtos[0].Title);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithInvalidFilterValues_ReturnsEmptyListSafely()
+    {
+        var ev = MakeEvent(EventStatus.Published, "Real Event");
+        ev.Category = "Music";
+        ev.VenueType = "Outdoor";
+
+        using var context = CreateContextWithEvents(ev);
+        var controller = CreateController(context);
+
+        var resultInvalidVenue = await controller.GetEvents(new EventDiscoveryQuery { VenueType = "Space" });
+        var okVenue = Assert.IsType<OkObjectResult>(resultInvalidVenue.Result);
+        Assert.Empty(Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okVenue.Value));
+
+        var resultInvalidDate = await controller.GetEvents(new EventDiscoveryQuery { Date = "banana" });
+        var okDate = Assert.IsType<OkObjectResult>(resultInvalidDate.Result);
+        Assert.Empty(Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okDate.Value));
+
+        var resultInvalidCat = await controller.GetEvents(new EventDiscoveryQuery { Category = "NonExistentCategory" });
+        var okCat = Assert.IsType<OkObjectResult>(resultInvalidCat.Result);
+        Assert.Empty(Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okCat.Value));
+    }
+
+    [Fact]
+    public async Task GetEvents_WithFilters_EnforcesCustomerVisibilityExcludingPendingAndCancelled()
+    {
+        var publishedMusic = MakeEvent(EventStatus.Published, "Published Music");
+        publishedMusic.Category = "Music";
+        var pendingMusic = MakeEvent(EventStatus.Pending, "Pending Music");
+        pendingMusic.Category = "Music";
+        var cancelledMusic = MakeEvent(EventStatus.Cancelled, "Cancelled Music");
+        cancelledMusic.Category = "Music";
+
+        using var context = CreateContextWithEvents(publishedMusic, pendingMusic, cancelledMusic);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Category = "Music" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal(publishedMusic.Id, dtos[0].Id);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithNoFilters_ReturnsAllPublishedEvents()
+    {
+        var ev1 = MakeEvent(EventStatus.Published, "Event 1");
+        var ev2 = MakeEvent(EventStatus.Published, "Event 2");
+
+        using var context = CreateContextWithEvents(ev1, ev2);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery());
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Equal(2, dtos.Count);
+    }
 }

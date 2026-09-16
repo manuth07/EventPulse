@@ -11,6 +11,9 @@ export async function fetchPublishedEvents(params = {}, options = {}) {
   if (params.venueType && typeof params.venueType === 'string' && params.venueType.trim()) {
     url.searchParams.set('venueType', params.venueType.trim());
   }
+  if (params.date && typeof params.date === 'string' && params.date.trim()) {
+    url.searchParams.set('date', params.date.trim());
+  }
 
   const response = await fetch(url.toString(), {
     method: 'GET',
