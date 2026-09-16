@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 
 export function Header({ location = 'Colombo, LK' }) {
   const navigate = useNavigate();
   const routerLocation = useLocation();
   const { isAuthenticated, currentUser, logout, hasRole } = useAuth();
+  const { cartCount } = useCart();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -126,6 +128,58 @@ export function Header({ location = 'Colombo, LK' }) {
             <MapPin size={15} color="var(--ep-text-secondary)" />
             <span>{location}</span>
           </div>
+
+          {/* Cart Icon & Live Ticket Count Badge */}
+          <Link
+            to="/cart"
+            id="global-cart-button"
+            aria-label={`Shopping cart with ${cartCount} tickets`}
+            style={{
+              position: 'relative',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '8px',
+              borderRadius: 'var(--ep-radius-pill)',
+              color: 'var(--ep-text-primary)',
+              textDecoration: 'none',
+              backgroundColor: routerLocation.pathname === '/cart' ? 'var(--ep-canvas)' : 'transparent',
+              transition: 'var(--ep-transition)',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-canvas)')}
+            onMouseLeave={(e) => {
+              if (routerLocation.pathname !== '/cart') {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            <ShoppingCart size={20} color="var(--ep-text-primary)" />
+            {cartCount > 0 && (
+              <span
+                id="global-cart-badge"
+                style={{
+                  position: 'absolute',
+                  top: '-2px',
+                  right: '-4px',
+                  backgroundColor: 'var(--ep-primary)',
+                  color: '#ffffff',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  minWidth: '18px',
+                  height: '18px',
+                  borderRadius: '9px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                  lineHeight: 1,
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }}
+              >
+                {cartCount}
+              </span>
+            )}
+          </Link>
 
           {isAuthenticated ? (
             /* ---- Account menu (all roles) ---- */
