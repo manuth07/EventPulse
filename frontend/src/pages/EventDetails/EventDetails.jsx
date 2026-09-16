@@ -71,18 +71,18 @@ export function EventDetails() {
           <div style={{ marginBottom: '24px' }}>
             <Link
               to="/"
-              className="ep-btn-secondary"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '6px',
                 fontSize: '13px',
-                padding: '8px 16px',
-                textDecoration: 'none'
+                fontWeight: 500,
+                color: 'var(--ep-text-secondary)',
+                textDecoration: 'none',
               }}
             >
-              <ArrowLeft size={16} color="var(--ep-text-primary)" />
-              Back to events
+              <ArrowLeft size={14} />
+              <span>Back to events</span>
             </Link>
           </div>
 
