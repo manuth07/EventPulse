@@ -219,4 +219,176 @@ public class EventsControllerTests
 
         Assert.IsType<NotFoundResult>(result.Result);
     }
+
+    // =========================================================================
+    // EP-37 / US-17 — SEARCH & AUTOCOMPLETE TESTS
+    // =========================================================================
+
+    [Fact]
+    public async Task GetEvents_WithSearchMatchingTitle_ReturnsMatchingPublishedEvents()
+    {
+        var ev1 = MakeEvent(EventStatus.Published, "Sensation Live in Concert");
+        var ev2 = MakeEvent(EventStatus.Published, "Tech Future Summit");
+
+        using var context = CreateContextWithEvents(ev1, ev2);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Search = "sensation" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal(ev1.Id, dtos[0].Id);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithSearchMatchingVenue_ReturnsMatchingPublishedEvents()
+    {
+        var ev1 = MakeEvent(EventStatus.Published, "Grand Gala");
+        ev1.Venue = "Nelum Pokuna Theatre";
+
+        var ev2 = MakeEvent(EventStatus.Published, "Cricket Match");
+        ev2.Venue = "R. Premadasa Stadium";
+
+        using var context = CreateContextWithEvents(ev1, ev2);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Search = "pokuna" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal(ev1.Id, dtos[0].Id);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithSearchMatchingCategoryAndAlias_ReturnsMatchingEvents()
+    {
+        var ev1 = MakeEvent(EventStatus.Published, "Melody Night");
+        ev1.Category = "Music";
+
+        var ev2 = MakeEvent(EventStatus.Published, "Badminton Cup");
+        ev2.Category = "Sports";
+
+        using var context = CreateContextWithEvents(ev1, ev2);
+        var controller = CreateController(context);
+
+        // Search canonical category "Music"
+        var res1 = await controller.GetEvents(new EventDiscoveryQuery { Search = "music" });
+        var ok1 = Assert.IsType<OkObjectResult>(res1.Result);
+        var dtos1 = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(ok1.Value).ToList();
+        Assert.Single(dtos1);
+        Assert.Equal(ev1.Id, dtos1[0].Id);
+
+        // Search legacy alias "Musical Concert" which normalizes to "Music"
+        var res2 = await controller.GetEvents(new EventDiscoveryQuery { Search = "Musical Concert" });
+        var ok2 = Assert.IsType<OkObjectResult>(res2.Result);
+        var dtos2 = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(ok2.Value).ToList();
+        Assert.Single(dtos2);
+        Assert.Equal(ev1.Id, dtos2[0].Id);
+    }
+
+    [Fact]
+    public async Task GetEvents_WithSearch_ExcludesNonPublishedEventsEvenIfTitleMatches()
+    {
+        var published = MakeEvent(EventStatus.Published, "Rock Fest Live");
+        var pending = MakeEvent(EventStatus.Pending, "Rock Fest Live");
+        var approved = MakeEvent(EventStatus.Approved, "Rock Fest Live");
+        var rejected = MakeEvent(EventStatus.Rejected, "Rock Fest Live");
+        var cancelled = MakeEvent(EventStatus.Cancelled, "Rock Fest Live");
+
+        using var context = CreateContextWithEvents(published, pending, approved, rejected, cancelled);
+        var controller = CreateController(context);
+
+        var result = await controller.GetEvents(new EventDiscoveryQuery { Search = "Rock" });
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var dtos = Assert.IsAssignableFrom<IEnumerable<EventListDto>>(okResult.Value).ToList();
+
+        Assert.Single(dtos);
+        Assert.Equal(published.Id, dtos[0].Id);
+        Assert.Equal(EventStatus.Published, dtos[0].Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("a")]
+    [InlineData(" s ")]
+    public async Task GetSuggestions_WithShorterThan2Chars_ReturnsEmptyListImmediately(string? query)
+    {
+        var ev = MakeEvent(EventStatus.Published, "Sensation Live");
+        using var context = CreateContextWithEvents(ev);
+        var controller = CreateController(context);
+
+        var result = await controller.GetSuggestions(query);
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsAssignableFrom<IEnumerable<EventSuggestionDto>>(okResult.Value).ToList();
+
+        Assert.Empty(items);
+    }
+
+    [Fact]
+    public async Task GetSuggestions_WithValidQuery_ReturnsAtMost5LightweightItemsOrderedByDate()
+    {
+        var events = new System.Collections.Generic.List<EventPulse.EventService.Models.Event>();
+        for (int i = 0; i < 8; i++)
+        {
+            var e = MakeEvent(EventStatus.Published, $"Festival Day {i + 1}");
+            e.Category = "Festival";
+            e.Venue = $"Venue {i}";
+            e.EventDate = System.DateTime.UtcNow.AddDays(i + 1);
+            events.Add(e);
+        }
+
+        using var context = CreateContextWithEvents(events.ToArray());
+        var controller = CreateController(context);
+
+        var result = await controller.GetSuggestions("Festival");
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var suggestions = Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<EventSuggestionDto>>(okResult.Value).ToList();
+
+        Assert.Equal(5, suggestions.Count);
+        Assert.Equal("Festival Day 1", suggestions[0].Title);
+        Assert.Equal("Festival Day 5", suggestions[4].Title);
+    }
+
+    [Fact]
+    public async Task GetSuggestions_ExcludesNonPublishedEvents()
+    {
+        var published = MakeEvent(EventStatus.Published, "Jazz Evening");
+        var pending = MakeEvent(EventStatus.Pending, "Jazz Afternoon");
+        var cancelled = MakeEvent(EventStatus.Cancelled, "Jazz Night");
+
+        using var context = CreateContextWithEvents(published, pending, cancelled);
+        var controller = CreateController(context);
+
+        var result = await controller.GetSuggestions("Jazz");
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var suggestions = Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<EventSuggestionDto>>(okResult.Value).ToList();
+
+        Assert.Single(suggestions);
+        Assert.Equal(published.Id, suggestions[0].Id);
+    }
+
+    [Fact]
+    public async Task GetSuggestions_WithPosterImage_PopulatesImageUrl()
+    {
+        var publishedWithImage = MakeEvent(EventStatus.Published, "Rock Concert Live");
+        publishedWithImage.ImageBlobName = "posters/rock.webp";
+        var publishedWithoutImage = MakeEvent(EventStatus.Published, "Rock Acoustic");
+
+        using var context = CreateContextWithEvents(publishedWithImage, publishedWithoutImage);
+        var controller = new EventsController(context, imageStorage: new FakeImageStorage());
+
+        var result = await controller.GetSuggestions("Rock");
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var suggestions = Assert.IsAssignableFrom<IEnumerable<EventSuggestionDto>>(okResult.Value).ToList();
+
+        var withImage = suggestions.First(e => e.Title == "Rock Concert Live");
+        Assert.Equal("http://127.0.0.1:10000/devstoreaccount1/event-posters/posters/rock.webp", withImage.ImageUrl);
+
+        var withoutImage = suggestions.First(e => e.Title == "Rock Acoustic");
+        Assert.Null(withoutImage.ImageUrl);
+    }
 }

@@ -46,16 +46,35 @@ public class EventsController : ControllerBase
 
     /// <summary>
     /// GET /api/events
-    /// Public. Returns all events (EP-103 foundation; filtering added in EP-104).
+    /// Public. Returns customer-visible events, optionally filtered by search terms or future categories (EP-37 / US-17, US-18).
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<EventListDto>>> GetEvents()
+    public async Task<ActionResult<IEnumerable<EventListDto>>> GetEvents(
+        [FromQuery] EventDiscoveryQuery? query = null,
+        CancellationToken cancellationToken = default)
     {
-        // Only Published events are visible to public visitors.
-        var events = await _context.Events
+        var baseQuery = _context.Events
             .AsNoTracking()
-            .Where(e => e.Status == EventStatus.Published)
-            .ToListAsync();
+            .WhereCustomerVisible();
+
+        if (query != null && !string.IsNullOrWhiteSpace(query.Search))
+        {
+            var rawSearch = query.Search.Trim();
+            var search = rawSearch.ToLower();
+            var normalizedCategory = EventCategories.Normalize(rawSearch);
+
+            baseQuery = baseQuery.Where(e =>
+                (e.Title != null && e.Title.ToLower().Contains(search)) ||
+                (e.Venue != null && e.Venue.ToLower().Contains(search)) ||
+                (e.Description != null && e.Description.ToLower().Contains(search)) ||
+                (e.Category != null && e.Category.ToLower().Contains(search)) ||
+                (normalizedCategory != null && e.Category == normalizedCategory));
+        }
+
+        var events = await baseQuery
+            .OrderBy(e => e.EventDate)
+            .ToListAsync(cancellationToken);
+
         var dtos = events.Select(e => new EventListDto
         {
             Id = e.Id,
@@ -71,6 +90,60 @@ public class EventsController : ControllerBase
         }).ToList();
 
         return Ok(dtos);
+    }
+
+    /// <summary>
+    /// GET /api/events/suggestions?query=...
+    /// Public. Lightweight autocomplete suggestions for customer search (EP-37 / US-17).
+    /// Returns maximum 5 customer-visible events matching query across Title, Category, or Venue.
+    /// Returns empty array immediately if query is null, whitespace, or shorter than 2 characters.
+    /// </summary>
+    [HttpGet("suggestions")]
+    public async Task<ActionResult<IEnumerable<EventSuggestionDto>>> GetSuggestions(
+        [FromQuery] string? query = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2)
+        {
+            return Ok(Enumerable.Empty<EventSuggestionDto>());
+        }
+
+        var rawQuery = query.Trim();
+        var search = rawQuery.ToLower();
+        var normalizedCategory = EventCategories.Normalize(rawQuery);
+
+        var items = await _context.Events
+            .AsNoTracking()
+            .WhereCustomerVisible()
+            .Where(e =>
+                (e.Title != null && e.Title.ToLower().Contains(search)) ||
+                (e.Venue != null && e.Venue.ToLower().Contains(search)) ||
+                (e.Category != null && e.Category.ToLower().Contains(search)) ||
+                (normalizedCategory != null && e.Category == normalizedCategory))
+            .OrderBy(e => e.EventDate)
+            .Take(5)
+            .Select(e => new
+            {
+                e.Id,
+                e.Title,
+                e.Category,
+                e.Venue,
+                e.EventDate,
+                e.ImageBlobName
+            })
+            .ToListAsync(cancellationToken);
+
+        var suggestions = items.Select(e => new EventSuggestionDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Category = e.Category,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
+        }).ToList();
+
+        return Ok(suggestions);
     }
 
     /// <summary>

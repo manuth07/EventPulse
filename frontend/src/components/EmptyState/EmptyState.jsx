@@ -1,11 +1,11 @@
 import React from 'react';
 import { Search, CalendarX } from 'lucide-react';
 
-export function EmptyState({ isSearchResults = false, onResetSearch }) {
+export function EmptyState({ isSearchResults = false, searchQuery = '', onResetSearch }) {
   return (
     <div style={{
       textAlign: 'center',
-      padding: '64px 20px',
+      padding: '56px 20px',
       backgroundColor: '#ffffff',
       borderRadius: 'var(--ep-radius-card)',
       border: '1px solid var(--ep-border)',
@@ -26,11 +26,13 @@ export function EmptyState({ isSearchResults = false, onResetSearch }) {
       </div>
 
       <h3 className="ep-h3 mb-2">
-        {isSearchResults ? 'No matching events found' : 'No events available yet'}
+        {isSearchResults
+          ? (searchQuery ? `No events found for "${searchQuery}"` : 'No matching events found')
+          : 'No events available yet'}
       </h3>
       <p className="ep-body mb-4" style={{ maxWidth: '400px', margin: '0 auto 24px' }}>
         {isSearchResults
-          ? 'Try tweaking your search keywords or venue name to find what you are looking for.'
+          ? 'Try another event name, venue, or category.'
           : 'New experiences are being prepared. Check back soon for upcoming events.'}
       </p>
 
@@ -40,7 +42,7 @@ export function EmptyState({ isSearchResults = false, onResetSearch }) {
           className="ep-btn-secondary"
           onClick={onResetSearch}
         >
-          Clear Search Filter
+          Clear Search
         </button>
       )}
     </div>
