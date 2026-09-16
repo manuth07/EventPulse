@@ -28,16 +28,7 @@ public class EventSubmissionService : IEventSubmissionService
         "image/webp",
     };
 
-    public static readonly HashSet<string> AllowedCategories = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Musical Concert",
-        "Conference",
-        "Workshop",
-        "Festival",
-        "Sports",
-        "Theatre / Performance",
-        "Other",
-    };
+    public static readonly HashSet<string> AllowedCategories = new(EventCategories.All, StringComparer.OrdinalIgnoreCase);
 
     public static readonly HashSet<string> AllowedVenueTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -88,14 +79,10 @@ public class EventSubmissionService : IEventSubmissionService
         if (request.Price != decimal.Truncate(request.Price))
             return (null, "Ticket price must be entered in whole LKR.");
 
-        string? canonicalCategory = null;
-        if (!string.IsNullOrWhiteSpace(request.Category))
-        {
-            if (!AllowedCategories.Contains(request.Category.Trim()))
-                return (null, $"Unsupported event category '{request.Category}'.");
+        if (string.IsNullOrWhiteSpace(request.Category) || !EventCategories.IsValid(request.Category))
+            return (null, "Please select a valid event category.");
 
-            canonicalCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
-        }
+        var canonicalCategory = EventCategories.Normalize(request.Category);
 
         string? canonicalVenueType = null;
         if (!string.IsNullOrWhiteSpace(request.VenueType))
@@ -355,10 +342,14 @@ public class EventSubmissionService : IEventSubmissionService
         var canonicalResubmitCategory = eventItem.Category;
         if (!string.IsNullOrWhiteSpace(request.Category))
         {
-            if (!AllowedCategories.Contains(request.Category.Trim()))
-                return (null, $"Unsupported event category '{request.Category}'.", false, false, false);
+            if (!EventCategories.IsValid(request.Category))
+                return (null, "Please select a valid event category.", false, false, false);
 
-            canonicalResubmitCategory = AllowedCategories.First(c => string.Equals(c, request.Category.Trim(), StringComparison.OrdinalIgnoreCase));
+            canonicalResubmitCategory = EventCategories.Normalize(request.Category);
+        }
+        else if (string.IsNullOrWhiteSpace(canonicalResubmitCategory))
+        {
+            return (null, "Please select a valid event category.", false, false, false);
         }
 
         var canonicalResubmitVenueType = eventItem.VenueType;
