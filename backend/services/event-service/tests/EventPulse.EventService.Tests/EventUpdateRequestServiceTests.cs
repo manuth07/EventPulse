@@ -357,7 +357,7 @@ public class EventUpdateRequestServiceTests
             await service.SubmitUpdateRequestAsync(ev.Id, request, organizerId);
 
         Assert.Null(result);
-        Assert.Contains("Unsupported event category", error);
+        Assert.Contains("Please select a valid event category.", error);
     }
 
     // =========================================================================
