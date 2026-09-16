@@ -4,6 +4,7 @@ import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getMySubmission, getEventUpdateRequest, submitEventUpdateRequest, getEventCancellationRequest, getEventCategories } from '../../services/eventService';
 import { EVENT_CATEGORIES, VENUE_TYPES, normalizeCategory } from '../../data/eventConstants';
+import { validateEditEventForm } from '../../utils/editEventValidation';
 import {
   Calendar,
   MapPin,
@@ -72,7 +73,8 @@ export function EditEvent() {
   const [pendingUpdateRequest, setPendingUpdateRequest] = useState(null);
   const [pendingCancellationRequest, setPendingCancellationRequest] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [submitError, setSubmitError] = useState(null);
   const [success, setSuccess] = useState(false);
 
   // Cleanup object URLs to prevent memory leaks
@@ -144,21 +146,35 @@ export function EditEvent() {
     loadEventData();
   }, [loadEventData]);
 
+  const handleFieldChange = (field, value, setter) => {
+    setter(value);
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const updated = { ...prev };
+      delete updated[field];
+      return updated;
+    });
+  };
+
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setFormError('Please select a valid image file (JPEG, PNG, or WebP) for the poster.');
+      setFieldErrors((prev) => ({ ...prev, image: 'Please select a valid image file (JPEG, PNG, or WebP) for the poster.' }));
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setFormError('Event poster must be less than 5 MB.');
+      setFieldErrors((prev) => ({ ...prev, image: 'Event poster must be less than 5 MB.' }));
       return;
     }
 
-    setFormError(null);
+    setFieldErrors((prev) => {
+      const updated = { ...prev };
+      delete updated.image;
+      return updated;
+    });
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
   };
@@ -169,6 +185,11 @@ export function EditEvent() {
     }
     setImageFile(null);
     setImagePreview(null);
+    setFieldErrors((prev) => {
+      const updated = { ...prev };
+      delete updated.image;
+      return updated;
+    });
   };
 
   const handleCoverChange = (e) => {
@@ -176,16 +197,20 @@ export function EditEvent() {
     if (!file) return;
 
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setFormError('Please select a valid image file (JPEG, PNG, or WebP) for the cover banner.');
+      setFieldErrors((prev) => ({ ...prev, cover: 'Please select a valid image file (JPEG, PNG, or WebP) for the cover banner.' }));
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setFormError('Event cover image must be less than 5 MB.');
+      setFieldErrors((prev) => ({ ...prev, cover: 'Event cover image must be less than 5 MB.' }));
       return;
     }
 
-    setFormError(null);
+    setFieldErrors((prev) => {
+      const updated = { ...prev };
+      delete updated.cover;
+      return updated;
+    });
     setCoverFile(file);
     setCoverPreview(URL.createObjectURL(file));
   };
@@ -196,54 +221,51 @@ export function EditEvent() {
     }
     setCoverFile(null);
     setCoverPreview(null);
+    setFieldErrors((prev) => {
+      const updated = { ...prev };
+      delete updated.cover;
+      return updated;
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setFormError(null);
+    setSubmitError(null);
 
+    // Business constraint checks
     if (pendingCancellationRequest && pendingCancellationRequest.status === 'Pending') {
-      setFormError('This event has a cancellation request awaiting administrator review. Editing is not permitted.');
+      setSubmitError('This event has a cancellation request awaiting administrator review. Editing is not permitted.');
       return;
     }
 
     if (pendingUpdateRequest && pendingUpdateRequest.status === 'Pending') {
-      setFormError('This event already has an update request awaiting administrator review.');
+      setSubmitError('This event already has an update request awaiting administrator review.');
       return;
     }
 
-    if (!title.trim() || title.trim().length < 3 || title.trim().length > 200) {
-      setFormError('Event title must be between 3 and 200 characters.');
-      return;
+    // Always validate the fresh current form state
+    const currentValidationErrors = validateEditEventForm({
+      title,
+      description,
+      venue,
+      eventDate,
+      category,
+      venueType,
+    });
+
+    // Retain any pending image/cover selection errors if still applicable
+    if (fieldErrors.image) {
+      currentValidationErrors.image = fieldErrors.image;
+    }
+    if (fieldErrors.cover) {
+      currentValidationErrors.cover = fieldErrors.cover;
     }
 
-    if (!description.trim() || description.trim().length < 10 || description.trim().length > 2000) {
-      setFormError('Description must be between 10 and 2000 characters.');
-      return;
-    }
+    // Replace obsolete validation errors with only the current ones
+    setFieldErrors(currentValidationErrors);
 
-    if (!venue.trim() || venue.trim().length < 3 || venue.trim().length > 200) {
-      setFormError('Venue location must be between 3 and 200 characters.');
-      return;
-    }
-
-    if (!eventDate) {
-      setFormError('Event date and time is required.');
-      return;
-    }
-
-    if (new Date(eventDate) <= new Date()) {
-      setFormError('Event date must be in the future.');
-      return;
-    }
-
-    if (!category) {
-      setFormError('Please select a valid event category.');
-      return;
-    }
-
-    if (!venueType) {
-      setFormError('Please select a valid venue type.');
+    if (Object.keys(currentValidationErrors).length > 0) {
+      // Do NOT send API request if form is invalid client-side
       return;
     }
 
@@ -275,11 +297,11 @@ export function EditEvent() {
       }, 2500);
     } catch (err) {
       if (err.status === 409) {
-        setFormError(err.message || 'This event already has a pending review request.');
+        setSubmitError(err.message || 'This event already has a pending review request.');
       } else if (err.status === 403) {
-        setFormError('You do not have permission to update this event.');
+        setSubmitError('You do not have permission to update this event.');
       } else {
-        setFormError(err.message || 'Failed to submit update request. Please try again.');
+        setSubmitError(err.message || 'Failed to submit update request. Please try again.');
       }
     } finally {
       setSubmitting(false);
@@ -543,86 +565,119 @@ export function EditEvent() {
                 </p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {formError && (
-                  <div style={{
-                    padding: '12px 16px',
-                    backgroundColor: '#FFF2F2',
-                    border: '1px solid var(--ep-danger)',
-                    borderRadius: 'var(--ep-radius-container)',
-                    fontSize: '13px',
-                    color: 'var(--ep-danger)',
-                  }}>
-                    {formError}
+              <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {submitError && (
+                  <div
+                    role="alert"
+                    style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#FFF2F2',
+                      border: '1px solid var(--ep-danger)',
+                      borderRadius: 'var(--ep-radius-container)',
+                      fontSize: '13px',
+                      color: 'var(--ep-danger)',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                    }}
+                  >
+                    <AlertCircle size={16} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                    <span>{submitError}</span>
                   </div>
                 )}
 
                 {/* Event Title */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                  <label htmlFor="edit-event-title" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
                     Event Title *
                   </label>
                   <input
+                    id="edit-event-title"
                     type="text"
-                    required
                     disabled={isFormDisabled}
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    onChange={(e) => handleFieldChange('title', e.target.value, setTitle)}
                     placeholder="e.g. Summer Music Festival 2026"
+                    aria-invalid={!!fieldErrors.title}
+                    aria-describedby={fieldErrors.title ? 'edit-event-title-error' : undefined}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
                       fontSize: '14px',
                       borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
+                      border: fieldErrors.title ? '1px solid var(--ep-danger)' : '1px solid var(--ep-border)',
                       boxSizing: 'border-box',
                       backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                     }}
                   />
+                  {fieldErrors.title && (
+                    <p
+                      id="edit-event-title-error"
+                      role="alert"
+                      style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.title}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                  <label htmlFor="edit-event-description" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
                     Description *
                   </label>
                   <textarea
-                    required
+                    id="edit-event-description"
                     rows={4}
                     disabled={isFormDisabled}
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    onChange={(e) => handleFieldChange('description', e.target.value, setDescription)}
                     placeholder="Describe your event, highlights, and schedule..."
+                    aria-invalid={!!fieldErrors.description}
+                    aria-describedby={fieldErrors.description ? 'edit-event-description-error' : undefined}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
                       fontSize: '14px',
                       borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
+                      border: fieldErrors.description ? '1px solid var(--ep-danger)' : '1px solid var(--ep-border)',
                       boxSizing: 'border-box',
                       fontFamily: 'inherit',
                       backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                     }}
                   />
+                  {fieldErrors.description && (
+                    <p
+                      id="edit-event-description-error"
+                      role="alert"
+                      style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.description}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Category & Venue Type */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                    <label htmlFor="edit-event-category" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
                       Event Category *
                     </label>
                     <select
-                      required
+                      id="edit-event-category"
                       disabled={isFormDisabled}
                       value={category}
-                      onChange={(e) => setCategory(e.target.value)}
+                      onChange={(e) => handleFieldChange('category', e.target.value, setCategory)}
+                      aria-invalid={!!fieldErrors.category}
+                      aria-describedby={fieldErrors.category ? 'edit-event-category-error' : undefined}
                       style={{
                         width: '100%',
                         padding: '10px 14px',
                         fontSize: '14px',
                         borderRadius: 'var(--ep-radius-btn)',
-                        border: '1px solid var(--ep-border)',
+                        border: fieldErrors.category ? '1px solid var(--ep-danger)' : '1px solid var(--ep-border)',
                         backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                         boxSizing: 'border-box',
                         cursor: isFormDisabled ? 'not-allowed' : 'pointer',
@@ -634,23 +689,35 @@ export function EditEvent() {
                         </option>
                       ))}
                     </select>
+                    {fieldErrors.category && (
+                      <p
+                        id="edit-event-category-error"
+                        role="alert"
+                        style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{fieldErrors.category}</span>
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                    <label htmlFor="edit-event-venue-type" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
                       Venue Type *
                     </label>
                     <select
-                      required
+                      id="edit-event-venue-type"
                       disabled={isFormDisabled}
                       value={venueType}
-                      onChange={(e) => setVenueType(e.target.value)}
+                      onChange={(e) => handleFieldChange('venueType', e.target.value, setVenueType)}
+                      aria-invalid={!!fieldErrors.venueType}
+                      aria-describedby={fieldErrors.venueType ? 'edit-event-venue-type-error' : undefined}
                       style={{
                         width: '100%',
                         padding: '10px 14px',
                         fontSize: '14px',
                         borderRadius: 'var(--ep-radius-btn)',
-                        border: '1px solid var(--ep-border)',
+                        border: fieldErrors.venueType ? '1px solid var(--ep-danger)' : '1px solid var(--ep-border)',
                         backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                         boxSizing: 'border-box',
                         cursor: isFormDisabled ? 'not-allowed' : 'pointer',
@@ -662,60 +729,94 @@ export function EditEvent() {
                         </option>
                       ))}
                     </select>
+                    {fieldErrors.venueType && (
+                      <p
+                        id="edit-event-venue-type-error"
+                        role="alert"
+                        style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        <span>{fieldErrors.venueType}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 {/* Venue Location */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                  <label htmlFor="edit-event-venue" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
                     Venue Location *
                   </label>
                   <div style={{ position: 'relative' }}>
                     <MapPin size={16} color="var(--ep-text-secondary)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                     <input
+                      id="edit-event-venue"
                       type="text"
-                      required
                       disabled={isFormDisabled}
                       value={venue}
-                      onChange={(e) => setVenue(e.target.value)}
+                      onChange={(e) => handleFieldChange('venue', e.target.value, setVenue)}
                       placeholder="e.g. Nelum Pokuna Theater, Colombo"
+                      aria-invalid={!!fieldErrors.venue}
+                      aria-describedby={fieldErrors.venue ? 'edit-event-venue-error' : undefined}
                       style={{
                         width: '100%',
                         padding: '10px 14px 10px 36px',
                         fontSize: '14px',
                         borderRadius: 'var(--ep-radius-btn)',
-                        border: '1px solid var(--ep-border)',
+                        border: fieldErrors.venue ? '1px solid var(--ep-danger)' : '1px solid var(--ep-border)',
                         boxSizing: 'border-box',
                         backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                       }}
                     />
                   </div>
+                  {fieldErrors.venue && (
+                    <p
+                      id="edit-event-venue-error"
+                      role="alert"
+                      style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.venue}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Event Date & Time */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
+                  <label htmlFor="edit-event-date" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}>
                     Event Date & Time *
                   </label>
                   <div style={{ position: 'relative' }}>
                     <Calendar size={16} color="var(--ep-text-secondary)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                     <input
+                      id="edit-event-date"
                       type="datetime-local"
-                      required
                       disabled={isFormDisabled}
                       value={eventDate}
-                      onChange={(e) => setEventDate(e.target.value)}
+                      onChange={(e) => handleFieldChange('eventDate', e.target.value, setEventDate)}
+                      aria-invalid={!!fieldErrors.eventDate}
+                      aria-describedby={fieldErrors.eventDate ? 'edit-event-date-error' : undefined}
                       style={{
                         width: '100%',
                         padding: '10px 14px 10px 36px',
                         fontSize: '14px',
                         borderRadius: 'var(--ep-radius-btn)',
-                        border: '1px solid var(--ep-border)',
+                        border: fieldErrors.eventDate ? '1px solid var(--ep-danger)' : '1px solid var(--ep-border)',
                         boxSizing: 'border-box',
                         backgroundColor: isFormDisabled ? 'var(--ep-canvas)' : '#ffffff',
                       }}
                     />
                   </div>
+                  {fieldErrors.eventDate && (
+                    <p
+                      id="edit-event-date-error"
+                      role="alert"
+                      style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.eventDate}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Step 10: Explicit Separation Note for Ticket Types */}
@@ -857,6 +958,15 @@ export function EditEvent() {
                       />
                     </label>
                   )}
+                  {fieldErrors.image && (
+                    <p
+                      role="alert"
+                      style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.image}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Event Cover / Banner (Optional Replacement) */}
@@ -978,11 +1088,20 @@ export function EditEvent() {
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
-                        disabled={hasPendingUpdate}
+                        disabled={isFormDisabled}
                         onChange={handleCoverChange}
                         style={{ display: 'none' }}
                       />
                     </label>
+                  )}
+                  {fieldErrors.cover && (
+                    <p
+                      role="alert"
+                      style={{ fontSize: '12px', color: 'var(--ep-danger)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                      <span>{fieldErrors.cover}</span>
+                    </p>
                   )}
                 </div>
 
