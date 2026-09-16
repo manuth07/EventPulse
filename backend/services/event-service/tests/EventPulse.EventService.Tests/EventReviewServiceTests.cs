@@ -158,14 +158,14 @@ public class EventReviewServiceTests
     }
 
     // =========================================================================
-    // ApproveEventAsync Tests (Pending -> Published)
-    // Approve now merges the old Approve+Publish two-step flow into a single
-    // transition: Pending -> Published directly. There is no separate
-    // "Approved" holding state left in the reachable workflow anymore.
+    // ApproveEventAsync Tests (Pending -> Approved)
+    // Approve transitions an event from Pending to Approved only.
+    // Publishing an Approved event is a separate step (EP-33) not covered
+    // by this service method.
     // =========================================================================
 
     [Fact]
-    public async Task ApproveEventAsync_WhenPending_TransitionsToPublishedAndSetsMetadata()
+    public async Task ApproveEventAsync_WhenPending_TransitionsToApprovedAndSetsMetadata()
     {
         using var context = CreateContext();
         var pending = MakeEvent(EventStatus.Pending, "Awaiting Approval");
@@ -180,14 +180,14 @@ public class EventReviewServiceTests
         Assert.False(isNotFound);
         Assert.Null(error);
         Assert.NotNull(result);
-        Assert.Equal("Published", result.Status);
+        Assert.Equal("Approved", result.Status);
         Assert.Equal(reviewerId, result.ReviewedBy);
         Assert.NotNull(result.ReviewedAt);
 
         // Verify persisted state in DB
         var dbItem = await context.Events.FindAsync(pending.Id);
         Assert.NotNull(dbItem);
-        Assert.Equal(EventStatus.Published, dbItem.Status);
+        Assert.Equal(EventStatus.Approved, dbItem.Status);
         Assert.Equal(reviewerId, dbItem.ReviewedBy);
         Assert.NotNull(dbItem.ReviewedAt);
     }
@@ -401,7 +401,7 @@ public class EventReviewServiceTests
 
         var okResult = Assert.IsType<OkObjectResult>(actionResult);
         var dto = Assert.IsType<AdminEventReviewDto>(okResult.Value);
-        Assert.Equal("Published", dto.Status);
+        Assert.Equal("Approved", dto.Status);
         Assert.NotNull(dto.ReviewedAt);
     }
 
