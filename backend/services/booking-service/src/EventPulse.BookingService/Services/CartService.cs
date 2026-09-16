@@ -21,53 +21,131 @@ public class CartService : ICartService
         _logger = logger;
     }
 
-    public async Task<(CartItemDto? Result, string? Error)> AddToCartAsync(
+    public async Task<CartOperationResult> AddOrUpdateItemAsync(
         Guid customerId,
         AddToCartRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request.Quantity < 1)
-            return (null, "Quantity must be at least 1.");
+        if (request.Quantity < 0)
+            return CartOperationResult.Fail("Quantity cannot be negative.");
 
-        var availability = await _availabilityClient.GetTicketTypeAsync(request.EventId, request.TicketTypeId, cancellationToken);
+        // 1. Locate current active cart for customer
+        var activeCart = await _context.Carts
+            .Include(c => c.Items)
+            .FirstOrDefaultAsync(c => c.CustomerId == customerId && c.Status == CartStatus.Active, cancellationToken);
 
-        if (availability == null)
-            return (null, "This ticket type is no longer available.");
-
-        if (availability.IsSoldOut)
-            return (null, "This ticket type is sold out.");
-
-        var existing = await _context.CartItems.FirstOrDefaultAsync(
-            c => c.CustomerId == customerId && c.TicketTypeId == request.TicketTypeId, cancellationToken);
-
-        var requestedTotal = (existing?.Quantity ?? 0) + request.Quantity;
-
-        if (requestedTotal > availability.AvailableQuantity)
-            return (null,
-                $"Only {availability.AvailableQuantity} ticket(s) available. You already have {existing?.Quantity ?? 0} in your cart.");
-
-        if (existing != null)
+        // 2. Single-Event Rule enforcement
+        if (activeCart != null && activeCart.EventId != request.EventId)
         {
-            existing.Quantity = requestedTotal;
-            existing.UnitPrice = availability.Price; // keep price in sync in case it changed
-            existing.UpdatedAt = DateTime.UtcNow;
+            if (activeCart.Items.Count > 0)
+            {
+                if (!request.ClearExisting)
+                {
+                    // Fetch existing event title for friendly modal prompt
+                    var existingEvent = await _availabilityClient.GetEventSummaryAsync(activeCart.EventId, cancellationToken);
+                    var existingTitle = !string.IsNullOrWhiteSpace(existingEvent?.Title) ? existingEvent.Title : "another event";
+
+                    return CartOperationResult.EventConflict(new EventConflictDto
+                    {
+                        CurrentEventId = activeCart.EventId,
+                        CurrentEventTitle = existingTitle,
+                        AttemptedEventId = request.EventId,
+                        Message = $"Your cart currently contains tickets for {existingTitle}. Starting a new ticket selection will clear your current cart."
+                    });
+                }
+
+                // Explicit customer confirmation: Clear/abandon previous cart
+                activeCart.Status = CartStatus.Abandoned;
+                activeCart.UpdatedAt = DateTime.UtcNow;
+                activeCart = null; // will create a new active cart below
+            }
+            else
+            {
+                // Previous cart has 0 items, simply switch event
+                activeCart.EventId = request.EventId;
+                activeCart.UpdatedAt = DateTime.UtcNow;
+            }
         }
-        else
+
+        // 3. Create active cart if needed
+        if (activeCart == null)
         {
-            existing = new CartItem
+            activeCart = new Cart
             {
                 Id = Guid.NewGuid(),
                 CustomerId = customerId,
                 EventId = request.EventId,
-                TicketTypeId = request.TicketTypeId,
-                TicketTypeName = availability.Name,
-                UnitPrice = availability.Price,
-                Quantity = request.Quantity,
-                AddedAt = DateTime.UtcNow,
+                Status = CartStatus.Active,
+                CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             };
-            _context.CartItems.Add(existing);
+            _context.Carts.Add(activeCart);
         }
+
+        // 4. Validate live availability and purchasability with EventService
+        var availability = await _availabilityClient.GetTicketTypeAsync(request.EventId, request.TicketTypeId, cancellationToken);
+        if (availability == null)
+            return CartOperationResult.Fail("This ticket type is no longer available.");
+
+        if (availability.IsSoldOut)
+            return CartOperationResult.Fail("This ticket type is sold out.");
+
+        var eventSummary = await _availabilityClient.GetEventSummaryAsync(request.EventId, cancellationToken);
+        if (eventSummary != null && eventSummary.Status != null && eventSummary.Status != "Published")
+        {
+            return CartOperationResult.Fail("Tickets for this event are not currently available for purchase.");
+        }
+
+        // 5. Calculate target quantity (preferred: desired final count, with delta support if specified)
+        var existingItem = activeCart.Items.FirstOrDefault(i => i.TicketTypeId == request.TicketTypeId);
+        int targetQuantity = request.IsDelta
+            ? (existingItem?.Quantity ?? 0) + request.Quantity
+            : request.Quantity;
+
+        if (targetQuantity <= 0)
+        {
+            if (existingItem != null)
+            {
+                _context.CartItems.Remove(existingItem);
+                activeCart.Items.Remove(existingItem);
+            }
+        }
+        else
+        {
+            if (targetQuantity > availability.AvailableQuantity)
+            {
+                return CartOperationResult.Fail(
+                    $"Only {availability.AvailableQuantity} ticket(s) available. You requested {targetQuantity}.");
+            }
+
+            if (existingItem != null)
+            {
+                existingItem.Quantity = targetQuantity;
+                existingItem.UnitPrice = availability.Price; // authoritative server-side price update
+                existingItem.TicketTypeName = availability.Name;
+                existingItem.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                existingItem = new CartItem
+                {
+                    Id = Guid.NewGuid(),
+                    CartId = activeCart.Id,
+                    CustomerId = customerId,
+                    EventId = request.EventId,
+                    TicketTypeId = request.TicketTypeId,
+                    TicketTypeName = availability.Name,
+                    UnitPrice = availability.Price,
+                    Quantity = targetQuantity,
+                    AddedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                activeCart.Items.Add(existingItem);
+                _context.CartItems.Add(existingItem);
+            }
+        }
+
+        activeCart.UpdatedAt = DateTime.UtcNow;
 
         try
         {
@@ -75,31 +153,156 @@ public class CartService : ICartService
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "DB save failed while adding to cart for Customer {CustomerId}", customerId);
-            return (null, "Failed to add to cart. Please try again.");
+            _logger?.LogError(ex, "Failed to persist cart changes for Customer {CustomerId}", customerId);
+            return CartOperationResult.Fail("Failed to update cart. Please try again.");
         }
 
-        return (MapToDto(existing), null);
+        var dto = await MapCartDtoAsync(activeCart, eventSummary, cancellationToken);
+        return CartOperationResult.Ok(dto);
     }
 
-    public async Task<CartSummaryDto> GetCartAsync(Guid customerId, CancellationToken cancellationToken = default)
+    public async Task<(CartSummaryDto? Cart, string? Error)> SetItemQuantityAsync(
+        Guid customerId,
+        Guid ticketTypeId,
+        int quantity,
+        CancellationToken cancellationToken = default)
     {
-        var items = await _context.CartItems
+        var activeCart = await _context.Carts
+            .Include(c => c.Items)
+            .FirstOrDefaultAsync(c => c.CustomerId == customerId && c.Status == CartStatus.Active, cancellationToken);
+
+        if (activeCart == null)
+            return (null, "No active cart found.");
+
+        var item = activeCart.Items.FirstOrDefault(i => i.TicketTypeId == ticketTypeId);
+        if (item == null)
+            return (null, "Ticket type not found in cart.");
+
+        if (quantity <= 0)
+        {
+            _context.CartItems.Remove(item);
+            activeCart.Items.Remove(item);
+        }
+        else
+        {
+            var availability = await _availabilityClient.GetTicketTypeAsync(activeCart.EventId, ticketTypeId, cancellationToken);
+            if (availability == null || availability.IsSoldOut)
+                return (null, "This ticket type is no longer available.");
+
+            if (quantity > availability.AvailableQuantity)
+                return (null, $"Only {availability.AvailableQuantity} ticket(s) currently available.");
+
+            item.Quantity = quantity;
+            item.UnitPrice = availability.Price;
+            item.TicketTypeName = availability.Name;
+            item.UpdatedAt = DateTime.UtcNow;
+        }
+
+        activeCart.UpdatedAt = DateTime.UtcNow;
+
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to update item quantity for Customer {CustomerId}", customerId);
+            return (null, "Failed to update quantity. Please try again.");
+        }
+
+        var dto = await MapCartDtoAsync(activeCart, null, cancellationToken);
+        return (dto, null);
+    }
+
+    public async Task<(CartSummaryDto? Cart, string? Error)> RemoveItemAsync(
+        Guid customerId,
+        Guid ticketTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        return await SetItemQuantityAsync(customerId, ticketTypeId, 0, cancellationToken);
+    }
+
+    public async Task<CartSummaryDto> GetActiveCartAsync(
+        Guid customerId,
+        CancellationToken cancellationToken = default)
+    {
+        var activeCart = await _context.Carts
+            .Include(c => c.Items)
             .AsNoTracking()
-            .Where(c => c.CustomerId == customerId)
-            .OrderBy(c => c.AddedAt)
-            .ToListAsync(cancellationToken);
+            .FirstOrDefaultAsync(c => c.CustomerId == customerId && c.Status == CartStatus.Active, cancellationToken);
 
-        return new CartSummaryDto { Items = items.Select(MapToDto).ToList() };
+        if (activeCart == null || activeCart.Items.Count == 0)
+        {
+            return new CartSummaryDto { Items = new List<CartItemDto>() };
+        }
+
+        return await MapCartDtoAsync(activeCart, null, cancellationToken);
     }
 
-    private static CartItemDto MapToDto(CartItem c) => new CartItemDto
+    public async Task<bool> ClearActiveCartAsync(
+        Guid customerId,
+        CancellationToken cancellationToken = default)
     {
-        Id = c.Id,
-        EventId = c.EventId,
-        TicketTypeId = c.TicketTypeId,
-        TicketTypeName = c.TicketTypeName,
-        UnitPrice = c.UnitPrice,
-        Quantity = c.Quantity,
-    };
+        var activeCart = await _context.Carts
+            .Include(c => c.Items)
+            .FirstOrDefaultAsync(c => c.CustomerId == customerId && c.Status == CartStatus.Active, cancellationToken);
+
+        if (activeCart == null)
+            return true;
+
+        _context.CartItems.RemoveRange(activeCart.Items);
+        activeCart.Status = CartStatus.Abandoned;
+        activeCart.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> CompleteActiveCartAsync(
+        Guid customerId,
+        CancellationToken cancellationToken = default)
+    {
+        var activeCart = await _context.Carts
+            .FirstOrDefaultAsync(c => c.CustomerId == customerId && c.Status == CartStatus.Active, cancellationToken);
+
+        if (activeCart == null)
+            return false;
+
+        activeCart.Status = CartStatus.Completed;
+        activeCart.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task<CartSummaryDto> MapCartDtoAsync(
+        Cart cart,
+        EventSummaryInfo? eventSummary = null,
+        CancellationToken cancellationToken = default)
+    {
+        eventSummary ??= await _availabilityClient.GetEventSummaryAsync(cart.EventId, cancellationToken);
+
+        return new CartSummaryDto
+        {
+            CartId = cart.Id,
+            EventId = cart.EventId,
+            EventTitle = eventSummary?.Title ?? "Event Tickets",
+            EventVenue = eventSummary?.Venue,
+            EventDate = eventSummary?.EventDate,
+            EventImageUrl = eventSummary?.ImageUrl,
+            Items = cart.Items
+                .OrderBy(i => i.AddedAt)
+                .Select(i => new CartItemDto
+                {
+                    Id = i.Id,
+                    CartId = i.CartId,
+                    EventId = i.EventId,
+                    TicketTypeId = i.TicketTypeId,
+                    TicketTypeName = i.TicketTypeName,
+                    UnitPrice = i.UnitPrice,
+                    Quantity = i.Quantity,
+                })
+                .ToList()
+        };
+    }
 }
