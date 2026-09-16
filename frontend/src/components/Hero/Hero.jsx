@@ -1,11 +1,145 @@
-import React from 'react';
-import { Search } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, ArrowRight, Loader2 } from 'lucide-react';
 import heroBackground from '../../assets/images/hero/hero-background.webp';
+import { useDebounce } from '../../hooks/useDebounce';
+import { fetchEventSuggestions } from '../../services/eventService';
+
+function formatSuggestionDate(dateString) {
+  if (!dateString) return '';
+  try {
+    const d = new Date(dateString);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  } catch (e) {
+    return '';
+  }
+}
 
 export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
+  const navigate = useNavigate();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
+  const abortControllerRef = useRef(null);
+
+  const debouncedQuery = useDebounce(searchQuery, 300);
+
+  // Fetch suggestions when debounced query changes
+  useEffect(() => {
+    const trimmed = (debouncedQuery || '').trim();
+
+    // Minimum query length: 2 characters
+    if (trimmed.length < 2) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      setSuggestions([]);
+      setLoading(false);
+      setIsOpen(false);
+      setActiveIndex(-1);
+      return;
+    }
+
+    // Abort previous in-flight suggestion request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setLoading(true);
+
+    fetchEventSuggestions(trimmed, { signal: controller.signal })
+      .then((data) => {
+        setSuggestions(Array.isArray(data) ? data : []);
+        setIsOpen(true);
+        setActiveIndex(-1);
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setSuggestions([]);
+        }
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [debouncedQuery]);
+
+  // Click outside to close suggestion dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setActiveIndex(-1);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleSelectSuggestion = useCallback((suggestion) => {
+    setIsOpen(false);
+    setActiveIndex(-1);
+    if (suggestion && suggestion.id) {
+      navigate(`/events/${suggestion.id}`);
+    }
+  }, [navigate]);
+
+  const handleExecuteFullSearch = useCallback((term) => {
+    setIsOpen(false);
+    setActiveIndex(-1);
+    if (onSearchSubmit) {
+      onSearchSubmit(term || searchQuery);
+    }
+  }, [onSearchSubmit, searchQuery]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (onSearchSubmit) onSearchSubmit(searchQuery);
+    if (activeIndex >= 0 && activeIndex < suggestions.length) {
+      handleSelectSuggestion(suggestions[activeIndex]);
+    } else {
+      handleExecuteFullSearch(searchQuery);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (!isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      if ((searchQuery || '').trim().length >= 2) {
+        setIsOpen(true);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = activeIndex < suggestions.length - 1 ? activeIndex + 1 : 0;
+      setActiveIndex(nextIndex);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIndex = activeIndex > 0 ? activeIndex - 1 : suggestions.length - 1;
+      setActiveIndex(prevIndex);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+      setActiveIndex(-1);
+    } else if (e.key === 'Enter') {
+      if (activeIndex >= 0 && activeIndex < suggestions.length) {
+        e.preventDefault();
+        handleSelectSuggestion(suggestions[activeIndex]);
+      }
+    }
   };
 
   return (
@@ -19,61 +153,209 @@ export function Hero({ searchQuery, onSearchChange, onSearchSubmit }) {
       paddingTop: '48px',
       paddingBottom: '56px',
       marginBottom: '32px',
-      overflow: 'hidden',
+      overflow: 'visible',
     }}>
-      <div className="container" style={{ maxWidth: '840px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
-        {/* Compact Pill Search Bar at the Top */}
-        <form onSubmit={handleSubmit} style={{
-          display: 'flex',
-          alignItems: 'center',
-          maxWidth: '560px',
-          width: '100%',
-          minHeight: '48px',
-          maxHeight: '52px',
-          margin: '0 auto 28px',
-          backgroundColor: '#ffffff',
-          padding: '4px 6px 4px 16px',
-          borderRadius: '9999px',
-          border: '1px solid rgba(255, 255, 255, 0.25)',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.20)',
-        }}>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-            <Search size={18} color="var(--ep-text-secondary, #6b7280)" style={{ marginRight: '10px', flexShrink: 0 }} />
-            <input
-              type="text"
-              className="ep-input"
+      <div className="container" style={{ maxWidth: '840px', textAlign: 'center', position: 'relative', zIndex: 10 }}>
+        {/* Search Control with Autocomplete Dropdown */}
+        <div ref={containerRef} style={{ position: 'relative', maxWidth: '560px', width: '100%', margin: '0 auto 28px' }}>
+          <form onSubmit={handleSubmit} style={{
+            display: 'flex',
+            alignItems: 'center',
+            width: '100%',
+            minHeight: '48px',
+            maxHeight: '52px',
+            backgroundColor: '#ffffff',
+            padding: '4px 6px 4px 16px',
+            borderRadius: '9999px',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.20)',
+            position: 'relative',
+            zIndex: 2,
+          }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+              <Search size={18} color="var(--ep-text-secondary, #6b7280)" style={{ marginRight: '10px', flexShrink: 0 }} />
+              <input
+                ref={inputRef}
+                type="text"
+                className="ep-input"
+                style={{
+                  border: 'none',
+                  boxShadow: 'none',
+                  outline: 'none',
+                  padding: '8px 0',
+                  backgroundColor: 'transparent',
+                  color: '#111827',
+                  fontSize: '14px',
+                }}
+                placeholder="Search events, venues, or categories..."
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onFocus={() => {
+                  if ((searchQuery || '').trim().length >= 2) {
+                    setIsOpen(true);
+                  }
+                }}
+                onKeyDown={handleKeyDown}
+                role="combobox"
+                aria-expanded={isOpen}
+                aria-haspopup="listbox"
+                aria-autocomplete="list"
+                aria-label="Search events, venues, or categories"
+              />
+            </div>
+            <button
+              type="submit"
+              className="ep-btn-primary"
               style={{
-                border: 'none',
-                boxShadow: 'none',
-                outline: 'none',
-                padding: '8px 0',
-                backgroundColor: 'transparent',
-                color: '#111827',
+                borderRadius: '9999px',
+                padding: '8px 20px',
                 fontSize: '14px',
+                fontWeight: 600,
+                flexShrink: 0,
+                backgroundColor: 'var(--ep-primary, #FF5B00)',
+                border: 'none',
+                cursor: 'pointer',
               }}
-              placeholder="Search by event title, venue, or keyword..."
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              aria-label="Search events"
-            />
-          </div>
-          <button
-            type="submit"
-            className="ep-btn-primary"
-            style={{
-              borderRadius: '9999px',
-              padding: '8px 20px',
-              fontSize: '14px',
-              fontWeight: 600,
-              flexShrink: 0,
-              backgroundColor: 'var(--ep-primary, #FF5B00)',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            Search
-          </button>
-        </form>
+            >
+              Search
+            </button>
+          </form>
+
+          {/* Autocomplete Suggestion Panel */}
+          {isOpen && (searchQuery || '').trim().length >= 2 && (
+            <div
+              role="listbox"
+              aria-label="Search suggestions"
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                left: 0,
+                right: 0,
+                backgroundColor: '#ffffff',
+                borderRadius: '16px',
+                border: '1px solid var(--ep-border, #E5E7EB)',
+                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.18)',
+                overflow: 'hidden',
+                zIndex: 50,
+                textAlign: 'left',
+              }}
+            >
+              {loading && suggestions.length === 0 ? (
+                <div style={{
+                  padding: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  color: 'var(--ep-text-secondary, #6b7280)',
+                  fontSize: '13px',
+                }}>
+                  <Loader2 size={16} className="ep-spin" />
+                  <span>Searching events...</span>
+                </div>
+              ) : suggestions.length === 0 ? (
+                <div style={{
+                  padding: '16px 20px',
+                  color: 'var(--ep-text-secondary, #6b7280)',
+                  fontSize: '13px',
+                  textAlign: 'center',
+                }}>
+                  No matching events
+                </div>
+              ) : (
+                <div>
+                  {suggestions.map((item, idx) => {
+                    const isSelected = activeIndex === idx;
+                    const dateFormatted = formatSuggestionDate(item.eventDate);
+                    const metaParts = [item.category, item.venue].filter(Boolean).join(' · ');
+
+                    return (
+                      <div
+                        key={item.id}
+                        role="option"
+                        aria-selected={isSelected}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectSuggestion(item);
+                        }}
+                        onMouseEnter={() => setActiveIndex(idx)}
+                        style={{
+                          padding: '12px 18px',
+                          cursor: 'pointer',
+                          backgroundColor: isSelected ? '#F3F4F6' : '#ffffff',
+                          borderBottom: idx < suggestions.length - 1 ? '1px solid #F3F4F6' : 'none',
+                          transition: 'background-color 0.12s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            color: isSelected ? 'var(--ep-primary, #FF5B00)' : 'var(--ep-text-primary, #111827)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}>
+                            {item.title}
+                          </div>
+                          {metaParts && (
+                            <div style={{
+                              fontSize: '12px',
+                              color: 'var(--ep-text-secondary, #6b7280)',
+                              marginTop: '2px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}>
+                              {metaParts}
+                            </div>
+                          )}
+                        </div>
+                        {dateFormatted && (
+                          <div style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: 'var(--ep-text-secondary, #6b7280)',
+                            flexShrink: 0,
+                          }}>
+                            {dateFormatted}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* See all results for query link */}
+                  <div
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleExecuteFullSearch(searchQuery);
+                    }}
+                    style={{
+                      padding: '11px 18px',
+                      borderTop: '1px solid var(--ep-border, #E5E7EB)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: 'var(--ep-primary, #FF5B00)',
+                      backgroundColor: '#FAFAFA',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span>See all results for &ldquo;{searchQuery.trim()}&rdquo;</span>
+                    <ArrowRight size={14} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Badge */}
         <div style={{

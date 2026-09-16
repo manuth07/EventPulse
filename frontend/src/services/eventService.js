@@ -1,11 +1,23 @@
 import { API_BASE_URL, getApiBaseUrl } from './apiConfig';
 
-export async function fetchPublishedEvents() {
-  const response = await fetch(`${getApiBaseUrl()}/api/events`, {
+export async function fetchPublishedEvents(params = {}, options = {}) {
+  const url = new URL(`${getApiBaseUrl()}/api/events`);
+  if (params.search && typeof params.search === 'string' && params.search.trim()) {
+    url.searchParams.set('search', params.search.trim());
+  }
+  if (params.category && typeof params.category === 'string' && params.category.trim()) {
+    url.searchParams.set('category', params.category.trim());
+  }
+  if (params.venueType && typeof params.venueType === 'string' && params.venueType.trim()) {
+    url.searchParams.set('venueType', params.venueType.trim());
+  }
+
+  const response = await fetch(url.toString(), {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
     },
+    signal: options.signal,
   });
 
   if (!response.ok) {
@@ -14,6 +26,29 @@ export async function fetchPublishedEvents() {
 
   const data = await response.json();
   return data;
+}
+
+export async function fetchEventSuggestions(query, options = {}) {
+  if (!query || typeof query !== 'string' || query.trim().length < 2) {
+    return [];
+  }
+
+  const url = new URL(`${getApiBaseUrl()}/api/events/suggestions`);
+  url.searchParams.set('query', query.trim());
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch suggestions (${response.status})`);
+  }
+
+  return response.json();
 }
 
 export async function fetchEventById(id) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from '../../components/Header/Header';
 import { Hero } from '../../components/Hero/Hero';
 import { EventCard } from '../../components/EventCard/EventCard';
@@ -11,7 +11,15 @@ export function Home() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+
+  // Search state
+  const [searchInputValue, setSearchInputValue] = useState('');
+  const [executedSearchQuery, setExecutedSearchQuery] = useState('');
+  const [searchEvents, setSearchEvents] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+
+  const searchAbortControllerRef = useRef(null);
 
   const loadEvents = async () => {
     setLoading(true);
@@ -29,17 +37,60 @@ export function Home() {
 
   useEffect(() => {
     loadEvents();
+    return () => {
+      if (searchAbortControllerRef.current) {
+        searchAbortControllerRef.current.abort();
+      }
+    };
   }, []);
 
-  const filteredEvents = useMemo(() => {
-    if (!searchQuery.trim()) return events;
-    const q = searchQuery.toLowerCase().trim();
-    return events.filter((e) =>
-      (e.title && e.title.toLowerCase().includes(q)) ||
-      (e.venue && e.venue.toLowerCase().includes(q)) ||
-      (e.description && e.description.toLowerCase().includes(q))
-    );
-  }, [events, searchQuery]);
+  const handleSearchSubmit = useCallback((query) => {
+    const trimmed = (query || '').trim();
+    if (!trimmed) {
+      handleClearSearch();
+      return;
+    }
+
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    searchAbortControllerRef.current = controller;
+
+    setExecutedSearchQuery(trimmed);
+    setSearchLoading(true);
+    setSearchError(null);
+
+    fetchPublishedEvents({ search: trimmed }, { signal: controller.signal })
+      .then((data) => {
+        setSearchEvents(Array.isArray(data) ? data : (data.value || []));
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error('Search error:', err);
+          setSearchError(err.message || 'Failed to search events');
+          setSearchEvents([]);
+        }
+      })
+      .finally(() => {
+        setSearchLoading(false);
+      });
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort();
+    }
+    setSearchInputValue('');
+    setExecutedSearchQuery('');
+    setSearchEvents([]);
+    setSearchError(null);
+  }, []);
+
+  const isSearchActive = Boolean(executedSearchQuery);
+  const displayEvents = isSearchActive ? searchEvents : events;
+  const currentLoading = isSearchActive ? searchLoading : loading;
+  const currentError = isSearchActive ? searchError : error;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--ep-canvas)' }}>
@@ -47,8 +98,9 @@ export function Home() {
 
       <main style={{ flex: 1, paddingBottom: '64px' }}>
         <Hero
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          searchQuery={searchInputValue}
+          onSearchChange={setSearchInputValue}
+          onSearchSubmit={handleSearchSubmit}
         />
 
         <div className="container" style={{ paddingLeft: '16px', paddingRight: '16px' }}>
@@ -57,23 +109,27 @@ export function Home() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '24px'
+            marginBottom: '24px',
+            flexWrap: 'wrap',
+            gap: '12px',
           }}>
             <div>
-              <h2 className="ep-h2">Upcoming Events</h2>
+              <h2 className="ep-h2">
+                {isSearchActive ? `Search results for "${executedSearchQuery}"` : 'Upcoming Events'}
+              </h2>
               <p className="ep-body" style={{ margin: 0 }}>
-                {loading
+                {currentLoading
                   ? 'Fetching available experiences...'
-                  : `${filteredEvents.length} ${filteredEvents.length === 1 ? 'event' : 'events'} available`}
+                  : `${displayEvents.length} ${displayEvents.length === 1 ? 'event' : 'events'} ${isSearchActive ? 'found' : 'available'}`}
               </p>
             </div>
 
-            {searchQuery && (
+            {isSearchActive && (
               <button
                 type="button"
                 className="ep-btn-secondary"
-                style={{ fontSize: '13px', padding: '6px 12px' }}
-                onClick={() => setSearchQuery('')}
+                style={{ fontSize: '13px', padding: '6px 14px' }}
+                onClick={handleClearSearch}
               >
                 Clear Search
               </button>
@@ -81,7 +137,7 @@ export function Home() {
           </div>
 
           {/* Main Grid / States */}
-          {loading && (
+          {currentLoading && (
             <div className="row g-4">
               {[1, 2, 3, 4, 5, 6].map((key) => (
                 <div key={key} className="col-12 col-md-6 col-lg-4">
@@ -91,24 +147,28 @@ export function Home() {
             </div>
           )}
 
-          {!loading && error && (
-            <ErrorState message={error} onRetry={loadEvents} />
-          )}
-
-          {!loading && !error && events.length === 0 && (
-            <EmptyState />
-          )}
-
-          {!loading && !error && events.length > 0 && filteredEvents.length === 0 && (
-            <EmptyState
-              isSearchResults={true}
-              onResetSearch={() => setSearchQuery('')}
+          {!currentLoading && currentError && (
+            <ErrorState
+              message={currentError}
+              onRetry={isSearchActive ? () => handleSearchSubmit(executedSearchQuery) : loadEvents}
             />
           )}
 
-          {!loading && !error && filteredEvents.length > 0 && (
+          {!currentLoading && !currentError && !isSearchActive && displayEvents.length === 0 && (
+            <EmptyState />
+          )}
+
+          {!currentLoading && !currentError && isSearchActive && displayEvents.length === 0 && (
+            <EmptyState
+              isSearchResults={true}
+              searchQuery={executedSearchQuery}
+              onResetSearch={handleClearSearch}
+            />
+          )}
+
+          {!currentLoading && !currentError && displayEvents.length > 0 && (
             <div className="row g-4">
-              {filteredEvents.map((event) => (
+              {displayEvents.map((event) => (
                 <div key={event.id} className="col-12 col-md-6 col-lg-4">
                   <EventCard event={event} />
                 </div>
@@ -125,7 +185,7 @@ export function Home() {
         padding: '24px 0',
         textAlign: 'center',
         color: 'var(--ep-text-secondary)',
-        fontSize: '13px'
+        fontSize: '13px',
       }}>
         <div className="container">
           <p style={{ margin: 0 }}>© 2026 EventPulse. All rights reserved.</p>
