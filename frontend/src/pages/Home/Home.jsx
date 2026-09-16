@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { Hero } from '../../components/Hero/Hero';
+import { EventFilters } from '../../components/EventFilters/EventFilters';
 import { EventCard } from '../../components/EventCard/EventCard';
 import { EventSkeleton } from '../../components/EventSkeleton/EventSkeleton';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
@@ -8,89 +10,96 @@ import { ErrorState } from '../../components/ErrorState/ErrorState';
 import { fetchPublishedEvents } from '../../services/eventService';
 
 export function Home() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Committed discovery criteria from URL parameters
+  const searchQuery = searchParams.get('search') || '';
+  const category = searchParams.get('category') || '';
+  const venueType = searchParams.get('venueType') || '';
+  const date = searchParams.get('date') || '';
+
+  // Local hero input state (supports autocomplete typing without mutating grid)
+  const [searchInputValue, setSearchInputValue] = useState(searchQuery);
+
+  // Discovery results state
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Search state
-  const [searchInputValue, setSearchInputValue] = useState('');
-  const [executedSearchQuery, setExecutedSearchQuery] = useState('');
-  const [searchEvents, setSearchEvents] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState(null);
+  const abortControllerRef = useRef(null);
 
-  const searchAbortControllerRef = useRef(null);
-
-  const loadEvents = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchPublishedEvents();
-      setEvents(Array.isArray(data) ? data : (data.value || []));
-    } catch (err) {
-      console.error('Error fetching events:', err);
-      setError(err.message || 'Failed to fetch events');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Sync hero input value if URL search param changes (e.g. Back/Forward button)
   useEffect(() => {
-    loadEvents();
-    return () => {
-      if (searchAbortControllerRef.current) {
-        searchAbortControllerRef.current.abort();
-      }
-    };
-  }, []);
+    setSearchInputValue(searchQuery);
+  }, [searchQuery]);
 
-  const handleSearchSubmit = useCallback((query) => {
-    const trimmed = (query || '').trim();
-    if (!trimmed) {
-      handleClearSearch();
-      return;
-    }
-
-    if (searchAbortControllerRef.current) {
-      searchAbortControllerRef.current.abort();
+  // Unified discovery fetch triggered by URL param changes
+  useEffect(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
     const controller = new AbortController();
-    searchAbortControllerRef.current = controller;
+    abortControllerRef.current = controller;
 
-    setExecutedSearchQuery(trimmed);
-    setSearchLoading(true);
-    setSearchError(null);
+    setLoading(true);
+    setError(null);
 
-    fetchPublishedEvents({ search: trimmed }, { signal: controller.signal })
+    const queryParams = {};
+    if (searchQuery.trim()) queryParams.search = searchQuery.trim();
+    if (category.trim()) queryParams.category = category.trim();
+    if (venueType.trim()) queryParams.venueType = venueType.trim();
+    if (date.trim()) queryParams.date = date.trim();
+
+    fetchPublishedEvents(queryParams, { signal: controller.signal })
       .then((data) => {
-        setSearchEvents(Array.isArray(data) ? data : (data.value || []));
+        setEvents(Array.isArray(data) ? data : (data.value || []));
       })
       .catch((err) => {
         if (err.name !== 'AbortError') {
-          console.error('Search error:', err);
-          setSearchError(err.message || 'Failed to search events');
-          setSearchEvents([]);
+          console.error('Error fetching discovery events:', err);
+          setError(err.message || 'Failed to load events');
+          setEvents([]);
         }
       })
       .finally(() => {
-        setSearchLoading(false);
+        setLoading(false);
       });
-  }, []);
+
+    return () => {
+      controller.abort();
+    };
+  }, [searchQuery, category, venueType, date]);
+
+  const updateDiscoveryParams = useCallback((newParams) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      Object.entries(newParams).forEach(([key, val]) => {
+        if (val && typeof val === 'string' && val.trim()) {
+          next.set(key, val.trim());
+        } else {
+          next.delete(key);
+        }
+      });
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const handleSearchSubmit = useCallback((query) => {
+    const trimmed = (query || '').trim();
+    updateDiscoveryParams({ search: trimmed });
+  }, [updateDiscoveryParams]);
 
   const handleClearSearch = useCallback(() => {
-    if (searchAbortControllerRef.current) {
-      searchAbortControllerRef.current.abort();
-    }
     setSearchInputValue('');
-    setExecutedSearchQuery('');
-    setSearchEvents([]);
-    setSearchError(null);
-  }, []);
+    updateDiscoveryParams({ search: '' });
+  }, [updateDiscoveryParams]);
 
-  const isSearchActive = Boolean(executedSearchQuery);
-  const displayEvents = isSearchActive ? searchEvents : events;
-  const currentLoading = isSearchActive ? searchLoading : loading;
-  const currentError = isSearchActive ? searchError : error;
+  const handleClearFilters = useCallback(() => {
+    updateDiscoveryParams({ category: '', venueType: '', date: '' });
+  }, [updateDiscoveryParams]);
+
+  const isSearchActive = Boolean(searchQuery.trim());
+  const hasActiveFilters = Boolean(category || venueType || date);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--ep-canvas)' }}>
@@ -109,18 +118,18 @@ export function Home() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '24px',
+            marginBottom: '16px',
             flexWrap: 'wrap',
             gap: '12px',
           }}>
             <div>
               <h2 className="ep-h2">
-                {isSearchActive ? `Search results for "${executedSearchQuery}"` : 'Upcoming Events'}
+                {isSearchActive ? `Search results for "${searchQuery}"` : 'Upcoming Events'}
               </h2>
               <p className="ep-body" style={{ margin: 0 }}>
-                {currentLoading
+                {loading
                   ? 'Fetching available experiences...'
-                  : `${displayEvents.length} ${displayEvents.length === 1 ? 'event' : 'events'} ${isSearchActive ? 'found' : 'available'}`}
+                  : `${events.length} ${events.length === 1 ? 'event' : 'events'} ${isSearchActive || hasActiveFilters ? 'found' : 'available'}`}
               </p>
             </div>
 
@@ -136,8 +145,19 @@ export function Home() {
             )}
           </div>
 
+          {/* Filter Controls */}
+          <EventFilters
+            category={category}
+            venueType={venueType}
+            date={date}
+            onCategoryChange={(val) => updateDiscoveryParams({ category: val })}
+            onVenueTypeChange={(val) => updateDiscoveryParams({ venueType: val })}
+            onDateChange={(val) => updateDiscoveryParams({ date: val })}
+            onClearFilters={handleClearFilters}
+          />
+
           {/* Main Grid / States */}
-          {currentLoading && (
+          {loading && (
             <div className="row g-4">
               {[1, 2, 3, 4, 5, 6].map((key) => (
                 <div key={key} className="col-12 col-md-6 col-lg-4">
@@ -147,28 +167,33 @@ export function Home() {
             </div>
           )}
 
-          {!currentLoading && currentError && (
+          {!loading && error && (
             <ErrorState
-              message={currentError}
-              onRetry={isSearchActive ? () => handleSearchSubmit(executedSearchQuery) : loadEvents}
+              message={error}
+              onRetry={() => {
+                const queryParams = {};
+                if (searchQuery.trim()) queryParams.search = searchQuery.trim();
+                if (category.trim()) queryParams.category = category.trim();
+                if (venueType.trim()) queryParams.venueType = venueType.trim();
+                if (date.trim()) queryParams.date = date.trim();
+                fetchPublishedEvents(queryParams).then((d) => setEvents(Array.isArray(d) ? d : (d.value || [])));
+              }}
             />
           )}
 
-          {!currentLoading && !currentError && !isSearchActive && displayEvents.length === 0 && (
-            <EmptyState />
-          )}
-
-          {!currentLoading && !currentError && isSearchActive && displayEvents.length === 0 && (
+          {!loading && !error && events.length === 0 && (
             <EmptyState
-              isSearchResults={true}
-              searchQuery={executedSearchQuery}
+              isSearchResults={isSearchActive}
+              searchQuery={searchQuery}
+              hasActiveFilters={hasActiveFilters}
               onResetSearch={handleClearSearch}
+              onClearFilters={handleClearFilters}
             />
           )}
 
-          {!currentLoading && !currentError && displayEvents.length > 0 && (
+          {!loading && !error && events.length > 0 && (
             <div className="row g-4">
-              {displayEvents.map((event) => (
+              {events.map((event) => (
                 <div key={event.id} className="col-12 col-md-6 col-lg-4">
                   <EventCard event={event} />
                 </div>
