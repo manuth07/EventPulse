@@ -1,13 +1,15 @@
 namespace EventPulse.BookingService.Models;
 
 /// <summary>
-/// Represents one ticket-type selection in a customer's cart.
-/// One row per (CustomerId, EventId, TicketTypeId) — adding the same
-/// ticket type again updates Quantity rather than duplicating a row.
+/// Represents one ticket-type selection within a specific Cart.
+/// Exactly one row per (CartId, TicketTypeId) is enforced.
 /// </summary>
 public class CartItem
 {
     public Guid Id { get; set; }
+    public Guid CartId { get; set; }
+    public Cart? Cart { get; set; }
+
     public Guid CustomerId { get; set; }
     public Guid EventId { get; set; }
     public Guid TicketTypeId { get; set; }
