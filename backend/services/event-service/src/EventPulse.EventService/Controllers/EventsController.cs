@@ -17,6 +17,8 @@ public class EventsController : ControllerBase
     private readonly EventDbContext _context;
     private readonly IEventSubmissionService? _submissionService;
     private readonly IEventReviewService? _reviewService;
+    private readonly IEventUpdateRequestService? _updateRequestService;
+    private readonly IEventCancellationRequestService? _cancellationRequestService;
     private readonly IEventImageStorage? _imageStorage;
     private readonly ILogger<EventsController>? _logger;
 
@@ -24,12 +26,16 @@ public class EventsController : ControllerBase
         EventDbContext context,
         IEventSubmissionService? submissionService = null,
         IEventReviewService? reviewService = null,
+        IEventUpdateRequestService? updateRequestService = null,
+        IEventCancellationRequestService? cancellationRequestService = null,
         IEventImageStorage? imageStorage = null,
         ILogger<EventsController>? logger = null)
     {
         _context = context;
         _submissionService = submissionService;
         _reviewService = reviewService;
+        _updateRequestService = updateRequestService;
+        _cancellationRequestService = cancellationRequestService;
         _imageStorage = imageStorage;
         _logger = logger;
     }
@@ -40,17 +46,98 @@ public class EventsController : ControllerBase
 
     /// <summary>
     /// GET /api/events
-    /// Public. Returns all events (EP-103 foundation; filtering added in EP-104).
+    /// Public. Returns customer-visible events, optionally filtered by search terms or future categories (EP-37 / US-17, US-18).
     /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<EventListDto>>> GetEvents()
+    public async Task<ActionResult<IEnumerable<EventListDto>>> GetEvents(
+        [FromQuery] EventDiscoveryQuery? query = null,
+        CancellationToken cancellationToken = default)
     {
-        // Only Published or Approved events are visible to public visitors.
-        // Pending and Rejected events are never exposed here.
-        var events = await _context.Events
+        var baseQuery = _context.Events
             .AsNoTracking()
-            .Where(e => e.Status == EventStatus.Published || e.Status == EventStatus.Approved)
-            .ToListAsync();
+            .WhereCustomerVisible();
+
+        if (query != null && !string.IsNullOrWhiteSpace(query.Search))
+        {
+            var rawSearch = query.Search.Trim();
+            var search = rawSearch.ToLower();
+            var normalizedCategory = EventCategories.Normalize(rawSearch);
+
+            baseQuery = baseQuery.Where(e =>
+                (e.Title != null && e.Title.ToLower().Contains(search)) ||
+                (e.Venue != null && e.Venue.ToLower().Contains(search)) ||
+                (e.Description != null && e.Description.ToLower().Contains(search)) ||
+                (e.Category != null && e.Category.ToLower().Contains(search)) ||
+                (normalizedCategory != null && e.Category == normalizedCategory));
+        }
+
+        // Canonical Category filter (EP-38 / US-18)
+        if (query != null && !string.IsNullOrWhiteSpace(query.Category))
+        {
+            var rawCategory = query.Category.Trim();
+            var canonicalCategory = EventCategories.Normalize(rawCategory) ?? rawCategory;
+            baseQuery = baseQuery.Where(e =>
+                e.Category != null && (e.Category == canonicalCategory || e.Category.ToLower() == rawCategory.ToLower()));
+        }
+
+        // VenueType filter: "Indoor" or "Outdoor" (EP-38 / US-18)
+        if (query != null && !string.IsNullOrWhiteSpace(query.VenueType))
+        {
+            var rawVenueType = query.VenueType.Trim().ToLower();
+            if (rawVenueType == "indoor")
+            {
+                baseQuery = baseQuery.Where(e => e.VenueType != null && e.VenueType.ToLower() == "indoor");
+            }
+            else if (rawVenueType == "outdoor")
+            {
+                baseQuery = baseQuery.Where(e => e.VenueType != null && e.VenueType.ToLower() == "outdoor");
+            }
+            else
+            {
+                // Unrecognized venue type: yields empty result safely
+                baseQuery = baseQuery.Where(e => false);
+            }
+        }
+
+        // Date range filter: "today", "this-week", "this-month" (EP-38 / US-18)
+        if (query != null && !string.IsNullOrWhiteSpace(query.Date))
+        {
+            var rawDate = query.Date.Trim().ToLower().Replace("-", "").Replace("_", "");
+            var now = DateTime.UtcNow;
+            var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
+
+            if (rawDate == "today")
+            {
+                var todayEnd = todayStart.AddDays(1);
+                baseQuery = baseQuery.Where(e => e.EventDate >= todayStart && e.EventDate < todayEnd);
+            }
+            else if (rawDate == "thisweek")
+            {
+                int diff = (7 + (int)now.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+                var startOfWeek = todayStart.AddDays(-diff);
+                var endOfWeek = startOfWeek.AddDays(7);
+                baseQuery = baseQuery.Where(e => e.EventDate >= startOfWeek && e.EventDate < endOfWeek);
+            }
+            else if (rawDate == "thismonth")
+            {
+                var startOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                var endOfMonth = startOfMonth.AddMonths(1);
+                baseQuery = baseQuery.Where(e => e.EventDate >= startOfMonth && e.EventDate < endOfMonth);
+            }
+            else if (rawDate == "any" || rawDate == "all")
+            {
+                // Unrestricted
+            }
+            else
+            {
+                // Unrecognized date filter: yields empty result safely
+                baseQuery = baseQuery.Where(e => false);
+            }
+        }
+
+        var events = await baseQuery
+            .OrderBy(e => e.EventDate)
+            .ToListAsync(cancellationToken);
 
         var dtos = events.Select(e => new EventListDto
         {
@@ -65,6 +152,76 @@ public class EventsController : ControllerBase
             VenueType = e.VenueType,
             ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
         }).ToList();
+
+        return Ok(dtos);
+    }
+
+    /// <summary>
+    /// GET /api/events/suggestions?query=...
+    /// Public. Lightweight autocomplete suggestions for customer search (EP-37 / US-17).
+    /// Returns maximum 5 customer-visible events matching query across Title, Category, or Venue.
+    /// Returns empty array immediately if query is null, whitespace, or shorter than 2 characters.
+    /// </summary>
+    [HttpGet("suggestions")]
+    public async Task<ActionResult<IEnumerable<EventSuggestionDto>>> GetSuggestions(
+        [FromQuery] string? query = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2)
+        {
+            return Ok(Enumerable.Empty<EventSuggestionDto>());
+        }
+
+        var rawQuery = query.Trim();
+        var search = rawQuery.ToLower();
+        var normalizedCategory = EventCategories.Normalize(rawQuery);
+
+        var items = await _context.Events
+            .AsNoTracking()
+            .WhereCustomerVisible()
+            .Where(e =>
+                (e.Title != null && e.Title.ToLower().Contains(search)) ||
+                (e.Venue != null && e.Venue.ToLower().Contains(search)) ||
+                (e.Category != null && e.Category.ToLower().Contains(search)) ||
+                (normalizedCategory != null && e.Category == normalizedCategory))
+            .OrderBy(e => e.EventDate)
+            .Take(5)
+            .Select(e => new
+            {
+                e.Id,
+                e.Title,
+                e.Category,
+                e.Venue,
+                e.EventDate,
+                e.ImageBlobName
+            })
+            .ToListAsync(cancellationToken);
+
+        var suggestions = items.Select(e => new EventSuggestionDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Category = e.Category,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
+        }).ToList();
+
+        return Ok(suggestions);
+    }
+
+    /// <summary>
+    /// GET /api/events/categories
+    /// Public. Returns the authoritative list of supported event categories (EP-36 / US-16).
+    /// </summary>
+    [HttpGet("categories")]
+    public ActionResult<IEnumerable<EventCategoryItemDto>> GetCategories()
+    {
+        var dtos = EventCategories.All.Select(cat => new EventCategoryItemDto
+        {
+            Value = cat,
+            Label = cat
+        });
 
         return Ok(dtos);
     }
@@ -87,10 +244,8 @@ public class EventsController : ControllerBase
         if (eventItem == null)
             return NotFound();
 
-        // Only Published or Approved events are visible to public visitors
-        if (eventItem.Status != EventStatus.Published && eventItem.Status != EventStatus.Approved)
+        if (eventItem.Status != EventStatus.Published)
             return NotFound();
-
         var details = new EventDetailsDto
         {
             Id = eventItem.Id,
@@ -277,6 +432,194 @@ public class EventsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// POST /api/events/{id}/update-request
+    /// EP-34 / US-14 — Organizer submits an update request for an Approved or Published event.
+    /// Does NOT modify the live event record. Changes are stored in Pending status for Admin review.
+    /// Exactly one Pending update request is allowed at a time.
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpPost("{id}/update-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> SubmitUpdateRequest(
+        string id,
+        [FromForm] SubmitEventUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("SubmitUpdateRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden, isInvalidState, isConflict) =
+            await _updateRequestService.SubmitUpdateRequestAsync(guidId, request, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (isConflict)
+            return Conflict(new { code = "CONFLICT", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return CreatedAtAction(nameof(GetUpdateRequest), new { id = guidId.ToString() }, result);
+    }
+
+    /// <summary>
+    /// GET /api/events/{id}/update-request
+    /// EP-34 / US-14 — Retrieves the latest update request for an event owned by the authenticated Organizer.
+    /// Includes change detection flags (HasVenueChanged, HasDateChanged, IsMajorChange).
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpGet("{id}/update-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<EventUpdateRequestDto>> GetUpdateRequest(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("GetUpdateRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden) =
+            await _updateRequestService.GetUpdateRequestAsync(guidId, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST /api/events/{id}/cancellation-request
+    /// EP-35 / US-15 — Organizer submits a cancellation request for an Approved or Published event.
+    /// Does NOT modify the live event status. Creates an EventCancellationRequest in Pending status.
+    /// Exactly one Pending cancellation request is allowed at a time.
+    /// Mutually exclusive with pending update requests.
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpPost("{id}/cancellation-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<IActionResult> SubmitCancellationRequest(
+        string id,
+        [FromBody] SubmitEventCancellationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("SubmitCancellationRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden, isInvalidState, isConflict) =
+            await _cancellationRequestService.SubmitCancellationRequestAsync(guidId, request, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (isConflict)
+            return Conflict(new { code = "CONFLICT", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return CreatedAtAction(nameof(GetCancellationRequest), new { id = guidId.ToString() }, result);
+    }
+
+    /// <summary>
+    /// GET /api/events/{id}/cancellation-request
+    /// EP-35 / US-15 — Retrieves the latest cancellation request for an event owned by the authenticated Organizer.
+    /// Requires: OrganizerOnly policy.
+    /// </summary>
+    [HttpGet("{id}/cancellation-request")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<ActionResult<EventCancellationRequestDto>> GetCancellationRequest(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("GetCancellationRequest: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var (result, error, isNotFound, isForbidden) =
+            await _cancellationRequestService.GetCancellationRequestAsync(guidId, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = error });
+
+        return Ok(result);
+    }
+
     // =========================================================================
     // EP-31 / EP-97 — ADMINISTRATOR REVIEW ENDPOINTS
     // Require: Administrator role (AdministratorOnly policy)
@@ -322,6 +665,38 @@ public class EventsController : ControllerBase
             return NotFound();
 
         return Ok(eventDto);
+    }
+
+    /// <summary>
+    /// GET /api/events/admin/approved
+    /// Retrieves all Approved events awaiting publication.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/approved")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<IEnumerable<EventListDto>>> GetApprovedEvents()
+    {
+        var events = await _context.Events
+            .AsNoTracking()
+            .Where(e => e.Status == EventStatus.Approved)
+            .OrderByDescending(e => e.ReviewedAt)
+            .ToListAsync();
+
+        var dtos = events.Select(e => new EventListDto
+        {
+            Id = e.Id,
+            Title = e.Title,
+            Description = e.Description,
+            Venue = e.Venue,
+            EventDate = e.EventDate,
+            Price = e.Price,
+            Status = e.Status,
+            Category = e.Category,
+            VenueType = e.VenueType,
+            ImageUrl = _imageStorage?.GetPublicUrl(e.ImageBlobName)
+        }).ToList();
+
+        return Ok(dtos);
     }
 
     /// <summary>
@@ -415,43 +790,315 @@ public class EventsController : ControllerBase
     }
 
     /// <summary>
-    /// PUT /api/events/{id}/publish
-    /// EP-97 — Administrator publishes an Approved event, making it visible to the public.
-    /// Requires: AdministratorOnly policy.
+    /// PUT /api/events/{id}/start-sales
+    /// Organizer publishes their own Approved event once at least one ticket
+    /// type has been configured. Transitions Approved -> Published.
+    /// Requires: OrganizerOnly policy, caller must own the event.
     /// </summary>
-    [HttpPut("{id}/publish")]
-    [Authorize(Policy = AppPolicies.AdministratorOnly)]
-    public async Task<IActionResult> PublishEvent(string id)
+    [HttpPut("{id}/start-sales")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<IActionResult> StartTicketSales(string id, CancellationToken cancellationToken)
     {
         if (!Guid.TryParse(id, out var guidId))
             return NotFound();
 
-        var eventItem = await _context.Events.FindAsync(guidId);
+        var eventItem = await _context.Events.FirstOrDefaultAsync(e => e.Id == guidId, cancellationToken);
         if (eventItem == null)
-            return NotFound();
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found." });
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+
+        if (eventItem.OrganizerId != organizerId)
+            return StatusCode(403, new { code = "FORBIDDEN", message = "You do not have permission to publish this event." });
 
         if (eventItem.Status != EventStatus.Approved)
         {
             return Conflict(new
             {
                 code = "INVALID_STATE",
-                message = $"Only Approved events can be published. Current status: {eventItem.Status}."
+                message = $"Only Approved events can start ticket sales. Current status: {eventItem.Status}."
             });
         }
 
-        var publisherIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                             ?? User.FindFirst("sub")?.Value;
-        Guid.TryParse(publisherIdStr, out var publisherId);
+        var hasTicketTypes = await _context.TicketTypes.AnyAsync(t => t.EventId == guidId, cancellationToken);
+        if (!hasTicketTypes)
+        {
+            return Conflict(new
+            {
+                code = "NO_TICKET_TYPES",
+                message = "At least one ticket type must be configured before starting ticket sales."
+            });
+        }
 
         eventItem.Status = EventStatus.Published;
-        // ReviewedBy/ReviewedAt already set at approve time; preserve them
+        await _context.SaveChangesAsync(cancellationToken);
 
-        await _context.SaveChangesAsync();
+        _logger?.LogInformation("Ticket sales started. EventId={EventId}, OrganizerId={OrganizerId}", guidId, organizerId);
 
-        _logger?.LogInformation(
-            "Event published. EventId={EventId}, PublishedBy={PublisherId}",
-            guidId, publisherId);
+        return Ok(new { message = "Ticket sales started. Your event is now live.", eventId = guidId, status = "Published" });
+    }
+    // =========================================================================
+    // EP-210 / US-14 — ADMINISTRATOR EVENT UPDATE REQUEST REVIEW ENDPOINTS
+    // Require: Administrator role (AdministratorOnly policy)
+    // No JWT -> 401. Valid JWT, non-admin -> 403.
+    // =========================================================================
 
-        return Ok(new { message = "Event published successfully.", eventId = guidId, status = "Published" });
+    /// <summary>
+    /// GET /api/events/admin/update-requests/pending
+    /// EP-210 / US-14 — Retrieves all Event Update Requests awaiting Administrator review (Status = Pending).
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/update-requests/pending")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<IReadOnlyList<AdminEventUpdateComparisonDto>>> GetPendingUpdateRequests(
+        CancellationToken cancellationToken)
+    {
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var requests = await _updateRequestService.GetPendingUpdateRequestsAsync(cancellationToken);
+        return Ok(requests);
+    }
+
+    /// <summary>
+    /// GET /api/events/admin/update-requests/{id}
+    /// EP-210 / US-14 — Retrieves a single Event Update Request with side-by-side comparison for Admin review.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/update-requests/{id}")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<AdminEventUpdateComparisonDto>> GetUpdateRequestReview(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Update request not found." });
+
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var comparison = await _updateRequestService.GetUpdateRequestReviewAsync(guidId, cancellationToken);
+        if (comparison == null)
+            return NotFound(new { code = "NOT_FOUND", message = "Update request not found." });
+
+        return Ok(comparison);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/admin/update-requests/{id}/approve
+    /// EP-210 / US-14 — Administrator approves an Event Update Request.
+    /// Atomically applies proposed changes to the live Event record, updates request status to Approved,
+    /// and records reviewer metadata.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("admin/update-requests/{id}/approve")]
+    [HttpPut("admin/update-requests/{id}/approve")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> ApproveUpdateRequest(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Update request not found." });
+
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound, isInvalidState) = await _updateRequestService.ApproveUpdateRequestAsync(
+            guidId, reviewerId, request?.Notes, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/admin/update-requests/{id}/reject
+    /// EP-210 / US-14 — Administrator rejects an Event Update Request.
+    /// Requires mandatory rejection feedback/notes. Leaves live Event unchanged, sets status to Rejected.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("admin/update-requests/{id}/reject")]
+    [HttpPut("admin/update-requests/{id}/reject")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> RejectUpdateRequest(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Update request not found." });
+
+        if (string.IsNullOrWhiteSpace(request?.Notes))
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Rejection feedback is required." });
+        }
+
+        if (_updateRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Update request service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound, isInvalidState) = await _updateRequestService.RejectUpdateRequestAsync(
+            guidId, reviewerId, request.Notes.Trim(), cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
+
+    // =========================================================================
+    // EP-35 / US-15 — ADMINISTRATOR EVENT CANCELLATION REQUEST REVIEW ENDPOINTS
+    // Require: Administrator role (AdministratorOnly policy)
+    // No JWT -> 401. Valid JWT, non-admin -> 403.
+    // =========================================================================
+
+    /// <summary>
+    /// GET /api/events/admin/cancellation-requests/pending
+    /// EP-35 / US-15 — Retrieves all Event Cancellation Requests awaiting Administrator review (Status = Pending).
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/cancellation-requests/pending")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<IReadOnlyList<AdminEventCancellationReviewDto>>> GetPendingCancellationRequests(
+        CancellationToken cancellationToken)
+    {
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var requests = await _cancellationRequestService.GetPendingCancellationRequestsAsync(cancellationToken);
+        return Ok(requests);
+    }
+
+    /// <summary>
+    /// GET /api/events/admin/cancellation-requests/{id}
+    /// EP-35 / US-15 — Retrieves a single Event Cancellation Request with live event details and ticket sales summary.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpGet("admin/cancellation-requests/{id}")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<ActionResult<AdminEventCancellationReviewDto>> GetCancellationRequestReview(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var review = await _cancellationRequestService.GetCancellationRequestReviewAsync(guidId, cancellationToken);
+        if (review == null)
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        return Ok(review);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/admin/cancellation-requests/{id}/approve
+    /// EP-35 / US-15 — Administrator approves an Event Cancellation Request.
+    /// Transitions the live Event to Cancelled status, marks request as Approved, and records reviewer metadata.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("admin/cancellation-requests/{id}/approve")]
+    [HttpPut("admin/cancellation-requests/{id}/approve")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> ApproveCancellationRequest(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound, isInvalidState) = await _cancellationRequestService.ApproveCancellationRequestAsync(
+            guidId, reviewerId, request?.Notes, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// POST|PUT /api/events/admin/cancellation-requests/{id}/reject
+    /// EP-35 / US-15 — Administrator rejects an Event Cancellation Request.
+    /// Requires mandatory rejection feedback/notes. Leaves live Event unchanged, sets status to Rejected.
+    /// Requires: AdministratorOnly policy.
+    /// </summary>
+    [HttpPost("admin/cancellation-requests/{id}/reject")]
+    [HttpPut("admin/cancellation-requests/{id}/reject")]
+    [Authorize(Policy = AppPolicies.AdministratorOnly)]
+    public async Task<IActionResult> RejectCancellationRequest(
+        string id,
+        [FromBody] ReviewEventRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound(new { code = "NOT_FOUND", message = "Cancellation request not found." });
+
+        if (string.IsNullOrWhiteSpace(request?.Notes))
+        {
+            return BadRequest(new { code = "VALIDATION_ERROR", message = "Rejection feedback is required." });
+        }
+
+        if (_cancellationRequestService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Cancellation request service is not configured." });
+
+        var reviewerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? User.FindFirst("sub")?.Value;
+        Guid.TryParse(reviewerIdStr, out var reviewerId);
+
+        var (result, error, isNotFound, isInvalidState) = await _cancellationRequestService.RejectCancellationRequestAsync(
+            guidId, reviewerId, request.Notes.Trim(), cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = error });
+
+        if (isInvalidState)
+            return Conflict(new { code = "INVALID_STATE", message = error });
+
+        if (error != null)
+            return BadRequest(new { code = "VALIDATION_ERROR", message = error });
+
+        return Ok(result);
     }
 }

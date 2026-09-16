@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, MapPin, Ticket, RotateCcw, CalendarX, AlertCircle } from 'lucide-react';
 import { Header } from '../../components/Header/Header';
 import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
+import { getPublicTicketTypes, getStartingPrice } from '../../services/ticketTypeService';
+import { normalizeCategory } from '../../data/eventConstants';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
@@ -22,9 +24,11 @@ function formatDate(dateString) {
 
 export function EventDetails() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [startingPrice, setStartingPrice] = useState(null);
 
   const loadEventDetails = async () => {
     setLoading(true);
@@ -44,6 +48,16 @@ export function EventDetails() {
     loadEventDetails();
   }, [id]);
 
+  useEffect(() => {
+    if (!event?.id) return;
+    getPublicTicketTypes(event.id)
+      .then((data) => {
+        const computed = getStartingPrice(data);
+        setStartingPrice(computed !== null ? computed : (event.price ?? null));
+      })
+      .catch(() => setStartingPrice(event.price ?? null));
+  }, [event]);
+
   const heroImage = event?.coverUrl || event?.imageUrl;
 
   return (
@@ -57,18 +71,18 @@ export function EventDetails() {
           <div style={{ marginBottom: '24px' }}>
             <Link
               to="/"
-              className="ep-btn-secondary"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '6px',
                 fontSize: '13px',
-                padding: '8px 16px',
-                textDecoration: 'none'
+                fontWeight: 500,
+                color: 'var(--ep-text-secondary)',
+                textDecoration: 'none',
               }}
             >
-              <ArrowLeft size={16} color="var(--ep-text-primary)" />
-              Back to events
+              <ArrowLeft size={14} />
+              <span>Back to events</span>
             </Link>
           </div>
 
@@ -220,9 +234,12 @@ export function EventDetails() {
                         fontWeight: 600,
                         letterSpacing: '-0.01em',
                       }}>
-                        {event.venueType && event.category
-                          ? `${event.venueType} • ${event.category}`
-                          : (event.category || event.venueType)}
+                        {(() => {
+                          const cat = normalizeCategory(event.category) || event.category;
+                          return cat && event.venueType
+                            ? `${cat} · ${event.venueType}`
+                            : (cat || event.venueType);
+                        })()}
                       </span>
                     </div>
                   )}
@@ -272,10 +289,14 @@ export function EventDetails() {
                     border: '1px solid var(--ep-border)'
                   }}>
                     <div className="ep-caption" style={{ color: 'var(--ep-text-secondary)', marginBottom: '4px' }}>
-                      Starting Price
+                      Price
                     </div>
                     <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--ep-text-primary)', fontFamily: 'var(--ep-font-heading)' }}>
-                      {formatPrice(event.price)}
+                      {startingPrice !== null ? (
+                        <>{formatPrice(startingPrice)} <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ep-text-secondary)' }}>Upwards</span></>
+                      ) : (
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--ep-text-secondary)' }}>Not yet available</span>
+                      )}
                     </div>
                   </div>
 
@@ -283,9 +304,9 @@ export function EventDetails() {
                     type="button"
                     className="ep-btn-primary w-100"
                     style={{ padding: '14px', fontSize: '15px' }}
-                    onClick={() => alert('Ticket booking will be available in Sprint 2.')}
+                    onClick={() => navigate(`/events/${event.id}/tickets`)}
                   >
-                    Select Tickets
+                    Get Tickets
                   </button>
 
                   <p className="ep-caption text-center mt-3 mb-0" style={{ color: 'var(--ep-text-secondary)' }}>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { CartProvider } from './context/CartContext';
 import { Home } from './pages/Home/Home';
 import { EventDetails } from './pages/EventDetails/EventDetails';
 import { Register } from './pages/Register/Register';
@@ -11,45 +12,53 @@ import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
 import { OrganizerEventDetails } from './pages/OrganizerEventDetails/OrganizerEventDetails';
 import { CreateEvent } from './pages/CreateEvent/CreateEvent';
+import { EditEvent } from './pages/EditEvent/EditEvent';
 import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
 import { PendingEvents } from './pages/PendingEvents/PendingEvents';
-import { RequireRole } from './components/RouteGuards/RouteGuards';
+import { RequireAuth, RequireRole } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
+import { Cart } from './pages/Cart/Cart';
+import { SelectTickets } from './pages/SelectTickets/SelectTickets';
 
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public / Customer Routes */}
-          <Route path="/" element={<Home />} />
-          <Route path="/events/:id" element={<EventDetails />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/complete-profile" element={<CompleteProfile />} />
-          <Route path="/forbidden" element={<Forbidden />} />
-          <Route path="/list-your-event" element={<ListYourEvent />} />
+      <CartProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public / Customer Routes */}
+            <Route path="/" element={<Home />} />
+            <Route path="/events/:id" element={<EventDetails />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/complete-profile" element={<CompleteProfile />} />
+            <Route path="/forbidden" element={<Forbidden />} />
+            <Route path="/list-your-event" element={<ListYourEvent />} />
+            <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
+            <Route path="/events/:id/tickets" element={<SelectTickets />} />
 
-          {/* Organizer Protected Routes */}
-          <Route element={<RequireRole allowedRoles="Organizer" />}>
-            <Route path="/organizer" element={<OrganizerDashboard />} />
-            <Route path="/organizer/events/:id" element={<OrganizerEventDetails />} />
-            <Route path="/events/create" element={<CreateEvent />} />
-          </Route>
+            {/* Organizer Protected Routes */}
+            <Route element={<RequireRole allowedRoles="Organizer" />}>
+              <Route path="/organizer" element={<OrganizerDashboard />} />
+              <Route path="/organizer/events/:id" element={<OrganizerEventDetails />} />
+              <Route path="/organizer/events/:id/edit" element={<EditEvent />} />
+              <Route path="/events/create" element={<CreateEvent />} />
+            </Route>
 
-          {/* Administrator Protected Routes */}
-          <Route element={<RequireRole allowedRoles="Administrator" />}>
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/events/pending" element={<PendingEvents />} />
-            <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
-          </Route>
+            {/* Administrator Protected Routes */}
+            <Route element={<RequireRole allowedRoles="Administrator" />}>
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/events/pending" element={<PendingEvents />} />
+              <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
+            </Route>
 
-          {/* Catch-all */}
-          <Route path="*" element={<Home />} />
-        </Routes>
-      </BrowserRouter>
+            {/* Catch-all */}
+            <Route path="*" element={<Home />} />
+          </Routes>
+        </BrowserRouter>
+      </CartProvider>
     </AuthProvider>
   );
 }

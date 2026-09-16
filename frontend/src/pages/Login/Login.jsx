@@ -246,7 +246,7 @@ export function Login() {
         )}
 
         <form onSubmit={handleSubmit} noValidate>
-          <Field label="Email" id="login-email" error={fieldErrors.email} style={{ marginBottom: '16px' }}>
+          <Field label={<>Email <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="login-email" error={fieldErrors.email} style={{ marginBottom: '16px' }}>
             <input
               id="login-email"
               type="email"
@@ -260,7 +260,7 @@ export function Login() {
             />
           </Field>
 
-          <Field label="Password" id="login-password" error={fieldErrors.password} style={{ marginBottom: '24px' }}>
+          <Field label={<>Password <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="login-password" error={fieldErrors.password} style={{ marginBottom: '24px' }}>
             <div style={{ position: 'relative' }}>
               <input
                 id="login-password"

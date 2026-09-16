@@ -159,6 +159,9 @@ public class EventReviewServiceTests
 
     // =========================================================================
     // ApproveEventAsync Tests (Pending -> Approved)
+    // Approve transitions an event from Pending to Approved only.
+    // Publishing an Approved event is a separate step (EP-33) not covered
+    // by this service method.
     // =========================================================================
 
     [Fact]

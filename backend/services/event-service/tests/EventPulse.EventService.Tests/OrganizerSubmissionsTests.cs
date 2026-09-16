@@ -1143,12 +1143,12 @@ public class OrganizerSubmissionsTests
 
         Assert.Null(error);
         Assert.NotNull(result);
-        Assert.Equal("Musical Concert", result.Category);
+        Assert.Equal("Music", result.Category);
         Assert.Equal("Indoor", result.VenueType);
 
         var saved = await context.Events.FindAsync(result.Id);
         Assert.NotNull(saved);
-        Assert.Equal("Musical Concert", saved.Category);
+        Assert.Equal("Music", saved.Category);
         Assert.Equal("Indoor", saved.VenueType);
     }
 
@@ -1188,7 +1188,7 @@ public class OrganizerSubmissionsTests
         var (result, error) = await service.CreateAsync(request, Guid.NewGuid());
 
         Assert.Null(result);
-        Assert.Contains("Unsupported event category", error);
+        Assert.Contains("Please select a valid event category.", error);
     }
 
     [Fact]

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
-import { ShieldCheck, FileCheck, Users, UserCheck } from 'lucide-react';
+import { ShieldCheck, FileCheck, Users, UserCheck} from 'lucide-react';
 
 export function AdminDashboard() {
   return (

@@ -9,20 +9,28 @@ public static class EventDbSeeder
     {
         if (await context.Events.AnyAsync())
         {
-            // Backfill existing seed events that have null Category/VenueType
-            var unpopulated = await context.Events.Where(e => e.Category == null).ToListAsync();
-            if (unpopulated.Any())
+            // Backfill existing seed events that have null or legacy Category/VenueType
+            var legacyEvents = await context.Events.Where(e => e.Category == null || e.Category == "Musical Concert" || e.Category == "Theatre / Performance").ToListAsync();
+            if (legacyEvents.Any())
             {
-                foreach (var ev in unpopulated)
+                foreach (var ev in legacyEvents)
                 {
-                    if (ev.Id == Guid.Parse("a1111111-1111-1111-1111-111111111111"))
+                    if (ev.Category == "Musical Concert")
+                    {
+                        ev.Category = "Music";
+                    }
+                    else if (ev.Category == "Theatre / Performance")
+                    {
+                        ev.Category = "Arts & Theatre";
+                    }
+                    else if (ev.Id == Guid.Parse("a1111111-1111-1111-1111-111111111111"))
                     {
                         ev.Category = "Conference";
                         ev.VenueType = "Indoor";
                     }
                     else if (ev.Id == Guid.Parse("b2222222-2222-2222-2222-222222222222"))
                     {
-                        ev.Category = "Musical Concert";
+                        ev.Category = "Music";
                         ev.VenueType = "Outdoor";
                     }
                     else if (ev.Id == Guid.Parse("c3333333-3333-3333-3333-333333333333"))
@@ -76,7 +84,7 @@ public static class EventDbSeeder
                 Venue = "Galle Face Green, Colombo",
                 EventDate = DateTime.UtcNow.AddDays(45),
                 Price = 3500.00m,
-                Category = "Musical Concert",
+                Category = "Music",
                 VenueType = "Outdoor",
                 Status = EventStatus.Published,
                 OrganizerId = organizer2,
@@ -110,7 +118,7 @@ public static class EventDbSeeder
                 Price = 2500.00m,
                 Category = "Workshop",
                 VenueType = "Indoor",
-                Status = EventStatus.Approved,
+                Status = EventStatus.Published,
                 OrganizerId = organizer2,
                 CreatedAt = DateTime.UtcNow.AddDays(-6),
                 ReviewedAt = DateTime.UtcNow.AddDays(-1),

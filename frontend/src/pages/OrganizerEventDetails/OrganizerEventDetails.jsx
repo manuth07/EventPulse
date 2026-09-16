@@ -2,8 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
-import { getMySubmission, resubmitEvent } from '../../services/eventService';
+import { getMySubmission, resubmitEvent, getEventUpdateRequest, getEventCancellationRequest, submitEventCancellationRequest, startTicketSales, getEventCategories } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
+import { TicketTypesPanel } from '../../components/TicketTypes/TicketTypesPanel';
+import { EVENT_CATEGORIES, VENUE_TYPES, normalizeCategory } from '../../data/eventConstants';
+
 import {
   Calendar,
   MapPin,
@@ -92,28 +95,52 @@ const STATUS_CONFIG = {
     badgeBorder: '#BBDEFB',
     subtext: 'This event is published and visible to the public.',
   },
+  Cancelled: {
+    label: 'CANCELLED',
+    badgeBg: '#FFEBEE',
+    badgeColor: '#C62828',
+    badgeBorder: '#FFCDD2',
+    subtext: 'This event has been cancelled.',
+  },
 };
-
-const EVENT_CATEGORIES = [
-  'Musical Concert',
-  'Conference',
-  'Workshop',
-  'Festival',
-  'Sports',
-  'Theatre / Performance',
-  'Other',
-];
-
-const VENUE_TYPES = ['Indoor', 'Outdoor'];
 
 export function OrganizerEventDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { accessToken } = useAuth();
 
+  const [categories, setCategories] = useState(EVENT_CATEGORIES);
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [pendingUpdateRequest, setPendingUpdateRequest] = useState(null);
+  const [pendingCancellationRequest, setPendingCancellationRequest] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getEventCategories()
+      .then((cats) => {
+        if (mounted && Array.isArray(cats) && cats.length > 0) {
+          const catValues = cats.map((c) => (typeof c === 'string' ? c : c.value));
+          setCategories(catValues);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Start Ticket Sales state
+  const [startingSales, setStartingSales] = useState(false);
+  const [startSalesError, setStartSalesError] = useState(null);
+
+  // Cancellation modal state
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [cancellationSubmitting, setCancellationSubmitting] = useState(false);
+  const [cancellationError, setCancellationError] = useState(null);
+  const [cancellationSuccess, setCancellationSuccess] = useState(false);
 
   // Edit / Resubmission state
   const [isEditing, setIsEditing] = useState(false);
@@ -156,8 +183,14 @@ export function OrganizerEventDetails() {
     }
 
     try {
-      const data = await getMySubmission(id, token);
+      const [data, updateReq, cancellationReq] = await Promise.all([
+        getMySubmission(id, token),
+        getEventUpdateRequest(id, token).catch(() => null),
+        getEventCancellationRequest(id, token).catch(() => null),
+      ]);
       setEvent(data);
+      setPendingUpdateRequest(updateReq || null);
+      setPendingCancellationRequest(cancellationReq || null);
       setTitle(data.title || '');
       setDescription(data.description || '');
       setCategory(data.category || EVENT_CATEGORIES[0]);
@@ -174,6 +207,70 @@ export function OrganizerEventDetails() {
     }
   }, [id, accessToken]);
 
+  const handleStartSales = async () => {
+    setStartSalesError(null);
+    setStartingSales(true);
+    try {
+      const token = accessToken || sessionStorage.getItem('ep_access_token');
+      await startTicketSales(id, token);
+      await loadSubmission();
+    } catch (err) {
+      setStartSalesError(err.message || 'Failed to start ticket sales.');
+    } finally {
+      setStartingSales(false);
+    }
+  };
+
+  const handleOpenCancelModal = () => {
+    setCancellationReason('');
+    setCancellationError(null);
+    setShowCancelModal(true);
+  };
+
+  const handleCloseCancelModal = () => {
+    if (cancellationSubmitting) return;
+    setShowCancelModal(false);
+    setCancellationReason('');
+    setCancellationError(null);
+  };
+
+  const handleSubmitCancellation = async (e) => {
+    e.preventDefault();
+    setCancellationError(null);
+
+    const trimmedReason = cancellationReason.trim();
+    if (!trimmedReason) {
+      setCancellationError('Please provide a reason for requesting cancellation.');
+      return;
+    }
+
+    if (trimmedReason.length < 5) {
+      setCancellationError('Cancellation reason must be at least 5 characters.');
+      return;
+    }
+
+    if (trimmedReason.length > 1000) {
+      setCancellationError('Cancellation reason cannot exceed 1000 characters.');
+      return;
+    }
+
+    setCancellationSubmitting(true);
+
+    const token = accessToken || sessionStorage.getItem('ep_access_token');
+    try {
+      const createdRequest = await submitEventCancellationRequest(id, trimmedReason, token);
+      setPendingCancellationRequest(createdRequest);
+      setShowCancelModal(false);
+      setCancellationReason('');
+      setCancellationSuccess(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setCancellationError(err.message || 'Failed to submit cancellation request.');
+    } finally {
+      setCancellationSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     loadSubmission();
   }, [loadSubmission]);
@@ -182,7 +279,7 @@ export function OrganizerEventDetails() {
     if (!event || event.status !== 'Rejected') return;
     setTitle(event.title || '');
     setDescription(event.description || '');
-    setCategory(event.category || EVENT_CATEGORIES[0]);
+    setCategory(normalizeCategory(event.category) || EVENT_CATEGORIES[0]);
     setVenueType(event.venueType || 'Indoor');
     setVenue(event.venue || '');
     setEventDate(toLocalDatetimeInput(event.eventDate));
@@ -198,7 +295,7 @@ export function OrganizerEventDetails() {
   const handleCancelEdit = () => {
     setIsEditing(false);
     setFormError(null);
-    setCategory(event?.category || EVENT_CATEGORIES[0]);
+    setCategory(normalizeCategory(event?.category) || EVENT_CATEGORIES[0]);
     setVenueType(event?.venueType || 'Indoor');
     setImageFile(null);
     setImagePreview(event?.imageUrl || null);
@@ -425,6 +522,30 @@ export function OrganizerEventDetails() {
           </div>
         )}
 
+        {/* Cancellation Request Success Banner */}
+        {!loading && cancellationSuccess && (
+          <div style={{
+            padding: '16px 20px',
+            backgroundColor: '#F0FDF4',
+            border: '1px solid #BBF7D0',
+            borderRadius: 'var(--ep-radius-container, 12px)',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+          }}>
+            <CheckCircle2 size={20} color="#16A34A" style={{ flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: '14px', fontWeight: 600, color: '#166534', margin: 0 }}>
+                Cancellation request submitted.
+              </p>
+              <p style={{ fontSize: '13px', color: '#15803D', margin: 0 }}>
+                Your cancellation request is awaiting administrator review. The event has not been cancelled yet.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Main Event Card */}
         {!loading && !error && event && (
           <div style={{
@@ -489,7 +610,361 @@ export function OrganizerEventDetails() {
                   <span>Edit & Resubmit</span>
                 </button>
               )}
+
+              {/* Action Button: Edit Event for Approved or Published events (EP-34 / US-14) */}
+              {(event.status === 'Approved' || event.status === 'Published') && (
+                pendingCancellationRequest && pendingCancellationRequest.status === 'Pending' ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="ep-btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 18px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      borderRadius: 'var(--ep-radius-btn)',
+                      opacity: 0.65,
+                      cursor: 'not-allowed',
+                    }}
+                    title="A cancellation request is awaiting administrator review. Wait until it is reviewed before editing this event."
+                  >
+                    <Clock size={15} />
+                    <span>Cancellation Pending Review</span>
+                  </button>
+                ) : pendingUpdateRequest && pendingUpdateRequest.status === 'Pending' ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="ep-btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 18px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      borderRadius: 'var(--ep-radius-btn)',
+                      opacity: 0.65,
+                      cursor: 'not-allowed',
+                    }}
+                    title="An update request is already awaiting administrator review."
+                  >
+                    <Clock size={15} />
+                    <span>Update Pending Review</span>
+                  </button>
+                ) : (
+                  <Link
+                    to={`/organizer/events/${event.id}/edit`}
+                    className="ep-btn-secondary"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 18px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      borderRadius: 'var(--ep-radius-btn)',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <Edit3 size={15} />
+                    <span>Edit Event</span>
+                  </Link>
+                )
+              )}
             </div>
+
+            {/* APPROVED — NOT YET ON SALE BANNER */}
+            {event.status === 'Approved' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '20px 24px',
+                backgroundColor: '#FFF8E1',
+                border: '1px solid #FFE082',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+              }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#8D6E00', margin: '0 0 6px 0', textTransform: 'uppercase' }}>
+                  Approved — Not Yet On Sale
+                </h3>
+                <p style={{ fontSize: '14px', color: '#4B5563', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+                  Your event has been approved. Complete ticket setup below, then start ticket sales to make it visible to customers.
+                </p>
+                {startSalesError && (
+                  <div style={{ padding: '10px 12px', backgroundColor: '#FFF2F2', border: '1px solid var(--ep-danger)', borderRadius: '8px', fontSize: '12px', color: 'var(--ep-danger)', marginBottom: '12px' }}>
+                    {startSalesError}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleStartSales}
+                  disabled={startingSales}
+                  className="ep-btn-primary"
+                  style={{ fontSize: '13px', padding: '10px 20px' }}
+                >
+                  {startingSales ? 'Starting…' : 'Start Ticket Sales'}
+                </button>
+              </div>
+            )}
+
+            {/* CANCELLATION PENDING REVIEW BANNER (EP-35 / US-15) */}
+            {(event.status === 'Approved' || event.status === 'Published') && pendingCancellationRequest && pendingCancellationRequest.status === 'Pending' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '18px 24px',
+                backgroundColor: '#FFF5F5',
+                border: '1px solid #FED7D7',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '14px',
+              }}>
+                <AlertCircle size={20} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: '#FEE2E2',
+                    color: 'var(--ep-danger)',
+                    borderRadius: 'var(--ep-radius-pill)',
+                    padding: '3px 10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    marginBottom: '6px',
+                  }}>
+                    CANCELLATION PENDING REVIEW
+                  </div>
+                  <h3 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--ep-text-primary)',
+                    margin: '0 0 4px 0',
+                  }}>
+                    Your cancellation request is awaiting administrator review.
+                  </h3>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    lineHeight: 1.5,
+                    margin: '0 0 8px 0',
+                  }}>
+                    The event has not been cancelled yet. New ticket purchases are temporarily paused while this request is under review. Existing tickets remain valid until approved.
+                  </p>
+                  {pendingCancellationRequest.reason && (
+                    <div style={{
+                      fontSize: '13px',
+                      color: 'var(--ep-text-primary)',
+                      backgroundColor: '#FFFFFF',
+                      border: '1px solid #FED7D7',
+                      borderRadius: 'var(--ep-radius-container, 8px)',
+                      padding: '10px 14px',
+                      marginTop: '8px',
+                      marginBottom: '8px',
+                    }}>
+                      <span style={{ fontWeight: 600, color: 'var(--ep-danger)' }}>Reason submitted: </span>
+                      <span>{pendingCancellationRequest.reason}</span>
+                    </div>
+                  )}
+                  {pendingCancellationRequest.requestedAt && (
+                    <p style={{
+                      fontSize: '12px',
+                      color: 'var(--ep-text-secondary)',
+                      marginTop: '4px',
+                      margin: 0,
+                    }}>
+                      Submitted on {formatDate(pendingCancellationRequest.requestedAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* EVENT CANCELLED BANNER (EP-35 / US-15) */}
+            {event.status === 'Cancelled' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '18px 24px',
+                backgroundColor: '#FFF5F5',
+                border: '1px solid #FED7D7',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '14px',
+              }}>
+                <AlertCircle size={20} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <h3 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--ep-danger)',
+                    margin: '0 0 4px 0',
+                  }}>
+                    This event has been cancelled.
+                  </h3>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}>
+                    An administrator has approved the cancellation of this event. Public ticket sales have been stopped. Existing tickets and records remain preserved below.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* PREVIOUS CANCELLATION REQUEST REJECTED NOTICE (EP-35 / US-15) */}
+            {(event.status === 'Approved' || event.status === 'Published') && pendingCancellationRequest && pendingCancellationRequest.status === 'Rejected' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '16px 20px',
+                backgroundColor: '#FFF8F6',
+                border: '1px solid #FFCCBC',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '12px',
+              }}>
+                <AlertCircle size={18} color="var(--ep-primary)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', margin: '0 0 4px 0' }}>
+                    Cancellation request rejected — Your event remains active.
+                  </p>
+                  {(pendingCancellationRequest.reviewNote || pendingCancellationRequest.reviewComment) && (
+                    <p style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', margin: '0 0 6px 0' }}>
+                      <strong>Reason:</strong> {pendingCancellationRequest.reviewNote || pendingCancellationRequest.reviewComment}
+                    </p>
+                  )}
+                  <p style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', margin: 0 }}>
+                    You may submit another cancellation request later if the event is still cancellable.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* UPDATE PENDING REVIEW BANNER (EP-34 / US-14) */}
+            {(event.status === 'Approved' || event.status === 'Published') && pendingUpdateRequest && pendingUpdateRequest.status === 'Pending' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '18px 24px',
+                backgroundColor: '#FFF0E6',
+                border: '1px solid #FFE0CC',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '14px',
+              }}>
+                <Clock size={20} color="var(--ep-primary)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: '#FFE0CC',
+                    color: 'var(--ep-primary)',
+                    borderRadius: 'var(--ep-radius-pill)',
+                    padding: '3px 10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    marginBottom: '6px',
+                  }}>
+                    UPDATE PENDING REVIEW
+                  </div>
+                  <h3 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--ep-text-primary)',
+                    margin: '0 0 4px 0',
+                  }}>
+                    Your requested changes are awaiting administrator review.
+                  </h3>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}>
+                    The currently approved event remains live.
+                  </p>
+                  {pendingUpdateRequest.requestedAt && (
+                    <p style={{
+                      fontSize: '12px',
+                      color: 'var(--ep-text-secondary)',
+                      marginTop: '6px',
+                      margin: 0,
+                    }}>
+                      Submitted on {formatDate(pendingUpdateRequest.requestedAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* UPDATE REJECTED BANNER (EP-34 / EP-210) */}
+            {(event.status === 'Approved' || event.status === 'Published') && pendingUpdateRequest && pendingUpdateRequest.status === 'Rejected' && (
+              <div style={{
+                margin: '24px 32px 0 32px',
+                padding: '18px 24px',
+                backgroundColor: '#FFF5F5',
+                border: '1px solid #FED7D7',
+                borderRadius: 'var(--ep-radius-container, 12px)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '14px',
+              }}>
+                <AlertCircle size={20} color="var(--ep-danger)" style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: '#FED7D7',
+                    color: 'var(--ep-danger)',
+                    borderRadius: 'var(--ep-radius-pill)',
+                    padding: '3px 10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    marginBottom: '6px',
+                  }}>
+                    UPDATE REJECTED
+                  </div>
+                  <h3 style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'var(--ep-text-primary)',
+                    margin: '0 0 4px 0',
+                  }}>
+                    Your requested changes were not approved. The currently approved event remains live.
+                  </h3>
+                  {pendingUpdateRequest.reviewComment && (
+                    <p style={{
+                      fontSize: '13px',
+                      color: 'var(--ep-text-secondary)',
+                      lineHeight: 1.5,
+                      margin: '6px 0 0 0',
+                    }}>
+                      <strong>Reviewer Feedback:</strong> {pendingUpdateRequest.reviewComment}
+                    </p>
+                  )}
+                  {pendingUpdateRequest.reviewedAt && (
+                    <p style={{
+                      fontSize: '12px',
+                      color: 'var(--ep-text-secondary)',
+                      marginTop: '6px',
+                      margin: 0,
+                    }}>
+                      Reviewed on {formatDate(pendingUpdateRequest.reviewedAt)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* REJECTED FEEDBACK PANEL */}
             {event.status === 'Rejected' && !isEditing && (
@@ -662,7 +1137,7 @@ export function OrganizerEventDetails() {
                           cursor: 'pointer',
                         }}
                       >
-                        {EVENT_CATEGORIES.map((cat) => (
+                        {categories.map((cat) => (
                           <option key={cat} value={cat}>
                             {cat}
                           </option>
@@ -1126,10 +1601,371 @@ export function OrganizerEventDetails() {
                         <span>• Reviewed on {formatDate(event.reviewedAt)}</span>
                       )}
                     </div>
+
+                    {/* Ticket Types — only for events eligible to sell tickets */}
+                    {(event.status === 'Approved' || event.status === 'Published') && (
+                      <TicketTypesPanel eventId={event.id} accessToken={accessToken} />
+                    )}
                   </div>
                 </div>
+
+                {/* Event cancellation section (EP-35 / US-15) */}
+                {(event.status === 'Approved' || event.status === 'Published') && (
+                  <div style={{
+                    marginTop: '40px',
+                    paddingTop: '28px',
+                    borderTop: '1px solid var(--ep-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '20px',
+                  }}>
+                    <div style={{ flex: 1, minWidth: '280px', maxWidth: '600px' }}>
+                      <h3 style={{
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        color: 'var(--ep-text-primary)',
+                        margin: '0 0 4px 0',
+                      }}>
+                        Event cancellation
+                      </h3>
+                      <p style={{
+                        fontSize: '13px',
+                        color: 'var(--ep-text-secondary)',
+                        margin: 0,
+                        lineHeight: 1.5,
+                      }}>
+                        If this event can no longer take place, you can request cancellation. An administrator will review your request before the event is cancelled.
+                      </p>
+                    </div>
+
+                    <div style={{
+                      flexShrink: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: '6px',
+                    }}>
+                      {pendingCancellationRequest?.status === 'Pending' ? (
+                        <div style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 14px',
+                          backgroundColor: '#F5F5F7',
+                          color: 'var(--ep-text-primary)',
+                          borderRadius: 'var(--ep-radius-pill, 9999px)',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          border: '1px solid var(--ep-border)',
+                        }}>
+                          <Clock size={14} color="var(--ep-text-secondary)" />
+                          <span>Cancellation pending review</span>
+                        </div>
+                      ) : pendingUpdateRequest?.status === 'Pending' ? (
+                        <div>
+                          <button
+                            type="button"
+                            disabled
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '8px 16px',
+                              backgroundColor: '#F5F5F7',
+                              color: 'var(--ep-text-secondary)',
+                              border: '1px solid var(--ep-border)',
+                              borderRadius: 'var(--ep-radius-btn)',
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              cursor: 'not-allowed',
+                              opacity: 0.65,
+                            }}
+                            title="This event has an update request awaiting review. Wait until it is reviewed before requesting cancellation."
+                          >
+                            <span>Request cancellation</span>
+                          </button>
+                          <p style={{
+                            fontSize: '12px',
+                            color: 'var(--ep-text-secondary)',
+                            margin: '6px 0 0 0',
+                            maxWidth: '300px',
+                            lineHeight: 1.4,
+                          }}>
+                            An update request is currently pending review. Cancellation cannot be requested until the update is resolved.
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleOpenCancelModal}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 16px',
+                            backgroundColor: '#FFFFFF',
+                            color: 'var(--ep-danger)',
+                            border: '1px solid #FCA5A5',
+                            borderRadius: 'var(--ep-radius-btn)',
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            transition: 'var(--ep-transition)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#FEF2F2';
+                            e.currentTarget.style.borderColor = 'var(--ep-danger)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '#FFFFFF';
+                            e.currentTarget.style.borderColor = '#FCA5A5';
+                          }}
+                        >
+                          <span>Request cancellation</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* CANCELLATION CONFIRMATION MODAL */}
+        {showCancelModal && event && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-modal-title"
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.45)',
+              backdropFilter: 'blur(3px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '24px',
+              zIndex: 1000,
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !cancellationSubmitting) {
+                handleCloseCancelModal();
+              }
+            }}
+          >
+            <div style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 'var(--ep-radius-card)',
+              border: '1px solid var(--ep-border)',
+              boxShadow: 'var(--ep-shadow-modal, 0 12px 36px rgba(0,0,0,0.12))',
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}>
+              {/* Modal Header */}
+              <div style={{
+                padding: '20px 24px',
+                borderBottom: '1px solid var(--ep-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <h2
+                  id="cancel-modal-title"
+                  style={{
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    color: 'var(--ep-text-primary)',
+                    margin: 0,
+                  }}
+                >
+                  Request event cancellation
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleCloseCancelModal}
+                  disabled={cancellationSubmitting}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: cancellationSubmitting ? 'not-allowed' : 'pointer',
+                    color: 'var(--ep-text-secondary)',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 'var(--ep-radius-btn)',
+                  }}
+                  aria-label="Close modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <form onSubmit={handleSubmitCancellation} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{
+                  padding: '24px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                }}>
+                  <div>
+                    <p style={{
+                      fontSize: '13px',
+                      color: 'var(--ep-text-secondary)',
+                      margin: '0 0 4px 0',
+                    }}>
+                      You are requesting cancellation of:
+                    </p>
+                    <h3 style={{
+                      fontSize: '16px',
+                      fontWeight: 600,
+                      color: 'var(--ep-text-primary)',
+                      margin: 0,
+                    }}>
+                      {event.title}
+                    </h3>
+                  </div>
+
+                  {/* Informational Notice */}
+                  <div style={{
+                    padding: '12px 14px',
+                    backgroundColor: 'var(--ep-canvas)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--ep-border)',
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    lineHeight: 1.5,
+                  }}>
+                    This event will not be cancelled immediately. An administrator must review your request.
+                  </div>
+
+                  {/* Reason Field */}
+                  <div>
+                    <label
+                      htmlFor="cancellation-reason"
+                      style={{
+                        display: 'block',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        color: 'var(--ep-text-primary)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Cancellation reason <span style={{ color: 'var(--ep-danger)' }}>*</span>
+                    </label>
+                    <textarea
+                      id="cancellation-reason"
+                      rows={4}
+                      value={cancellationReason}
+                      onChange={(e) => {
+                        setCancellationReason(e.target.value);
+                        if (cancellationError) setCancellationError(null);
+                      }}
+                      placeholder="Please provide a reason for requesting cancellation (5 to 1000 characters)..."
+                      disabled={cancellationSubmitting}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: 'var(--ep-radius-input, 8px)',
+                        border: cancellationError ? '1px solid var(--ep-danger)' : '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        lineHeight: 1.5,
+                      }}
+                      maxLength={1000}
+                    />
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: '4px',
+                      fontSize: '11px',
+                      color: 'var(--ep-text-secondary)',
+                    }}>
+                      <span>Minimum 5 characters</span>
+                      <span>{cancellationReason.length} / 1000</span>
+                    </div>
+
+                    {cancellationError && (
+                      <div style={{
+                        marginTop: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        color: 'var(--ep-danger)',
+                        fontSize: '12px',
+                      }}>
+                        <AlertCircle size={14} />
+                        <span>{cancellationError}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div style={{
+                  padding: '16px 24px',
+                  borderTop: '1px solid var(--ep-border)',
+                  backgroundColor: 'var(--ep-canvas)',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '12px',
+                }}>
+                  <button
+                    type="button"
+                    onClick={handleCloseCancelModal}
+                    disabled={cancellationSubmitting}
+                    className="ep-btn-secondary"
+                    style={{
+                      padding: '8px 18px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      borderRadius: 'var(--ep-radius-btn)',
+                    }}
+                  >
+                    Keep event
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={cancellationSubmitting || !cancellationReason.trim()}
+                    style={{
+                      backgroundColor: 'var(--ep-danger)',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      padding: '8px 20px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: (cancellationSubmitting || !cancellationReason.trim()) ? 'not-allowed' : 'pointer',
+                      opacity: (cancellationSubmitting || !cancellationReason.trim()) ? 0.6 : 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'var(--ep-transition)',
+                    }}
+                  >
+                    {cancellationSubmitting && <Clock size={14} />}
+                    <span>{cancellationSubmitting ? 'Submitting...' : 'Request cancellation'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </main>

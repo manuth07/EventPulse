@@ -80,7 +80,6 @@ public class EventReviewService : IEventReviewService
         eventItem.Status = EventStatus.Approved;
         eventItem.ReviewedAt = DateTime.UtcNow;
         eventItem.ReviewedBy = reviewerId;
-
         await _context.SaveChangesAsync(cancellationToken);
 
         _logger?.LogInformation(
