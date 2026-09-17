@@ -24,4 +24,13 @@ public class AuthHealthController : ControllerBase
             timestamp = DateTime.UtcNow
         });
     }
+
+    /// <summary>
+    /// Deliberate failure endpoint for testing Prometheus alerts (e.g. HighHttp5xxRate)
+    /// </summary>
+    [HttpGet("/api/test/fail-500")]
+    public IActionResult Fail500()
+    {
+        return StatusCode(500, new { error = "Simulated Internal Server Error for testing Prometheus alerts" });
+    }
 }
