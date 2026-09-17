@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 using EventPulse.EventService;
 using EventPulse.EventService.Configuration;
 using EventPulse.EventService.Data;
+using Prometheus;
 using EventPulse.EventService.Services;
 using EventPulse.EventService.Storage;
 
@@ -105,7 +106,24 @@ builder.Services.AddControllers()
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// Application Insights Telemetry (EP-200 / TECH-11)
+var appInsightsConn = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+                   ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+
+if (!string.IsNullOrWhiteSpace(appInsightsConn))
+{
+    builder.Services.AddApplicationInsightsTelemetry(options =>
+    {
+        options.ConnectionString = appInsightsConn;
+    });
+}
+
 var app = builder.Build();
+
+app.UseRouting();
+
+// Prometheus HTTP Request Metrics (TECH-12)
+app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
 {
@@ -143,8 +161,12 @@ if (dbSettings.MigrateOnStartup || dbSettings.SeedOnStartup)
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Health endpoint
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint (TECH-12)
+app.MapMetrics();
 
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();

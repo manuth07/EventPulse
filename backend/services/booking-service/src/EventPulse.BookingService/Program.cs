@@ -1,3 +1,4 @@
+using Prometheus;
 using System.Text;
 using EventPulse.BookingService.Data;
 using EventPulse.BookingService.Services;
@@ -88,6 +89,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint
+app.MapMetrics();
 
 app.MapControllers();
 
