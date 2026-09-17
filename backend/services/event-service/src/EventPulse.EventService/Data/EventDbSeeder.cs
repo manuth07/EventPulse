@@ -147,4 +147,3 @@ public static class EventDbSeeder
         };
     }
 }
-
