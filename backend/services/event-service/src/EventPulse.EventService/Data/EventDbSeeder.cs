@@ -308,7 +308,6 @@ public static class EventDbSeeder
                 OrganizerId = organizer4,
                 CreatedAt = DateTime.UtcNow.AddDays(-4),
                 ReviewedAt = DateTime.UtcNow.AddDays(-1),
-                ReviewedBy = adminId
                 ReviewedBy = adminId,
                 ReviewComment = "The venue address is incomplete. Please provide the full physical venue address and detailed event schedule."
             }
