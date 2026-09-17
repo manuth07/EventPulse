@@ -21,6 +21,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -40,9 +41,6 @@ services:
     depends_on:
       - prometheus
 
-volumes:
-  eventpulse_postgres_data:
-    name: eventpulse_postgres_data
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest
     container_name: eventpulse-azurite
