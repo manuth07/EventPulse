@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using EventPulse.BookingService.DTOs;
 using EventPulse.BookingService.Models;
 using EventPulse.BookingService.Services;
@@ -179,4 +180,36 @@ public class BookingsController : ControllerBase
 
         return CreatedAtAction(nameof(CreateBooking), new { id = booking.Id }, responseDto);
     }
+
+    [HttpGet("{id:guid}/summary")]
+    public async Task<IActionResult> GetBookingSummary([FromRoute] Guid id, CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        var booking = await _dbContext.Bookings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
+
+        if (booking == null)
+        {
+            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
+        }
+
+        if (booking.CustomerId != customerId && !User.IsInRole("Administrator"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view this booking." });
+        }
+
+        return Ok(new BookingSummaryDto(
+            booking.Id,
+            booking.BookingReference,
+            booking.CustomerId,
+            booking.TotalAmount,
+            booking.Status.ToString()
+        ));
+    }
 }
+

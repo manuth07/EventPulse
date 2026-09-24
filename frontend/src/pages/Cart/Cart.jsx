@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import { createCheckoutSession } from '../../services/paymentService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import {
   ShoppingCart,
@@ -30,7 +32,9 @@ function formatDate(dateString) {
 
 export function Cart() {
   const navigate = useNavigate();
+  const { accessToken } = useAuth();
   const { cart, loading, error, setItemQuantity, removeItem, clearCurrentCart, checkout } = useCart();
+
 
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
@@ -342,9 +346,15 @@ export function Cart() {
                     setActionLoading(true);
                     try {
                       const response = await checkout();
-                      // Next phase will integrate Stripe. For now, alert success and redirect
-                      alert(`Booking successful! Reference: ${response.bookingReference}`);
-                      navigate(`/events/${cart.eventId}`);
+                      if (!response || !response.bookingId) {
+                        throw new Error('Booking could not be created.');
+                      }
+                      const session = await createCheckoutSession(response.bookingId, accessToken);
+                      if (session && session.checkoutUrl) {
+                        window.location.href = session.checkoutUrl;
+                      } else {
+                        throw new Error('Checkout session URL was not returned.');
+                      }
                     } catch (err) {
                       setActionError(err.message || 'Checkout failed.');
                     } finally {
@@ -365,9 +375,10 @@ export function Cart() {
                     borderRadius: 'var(--ep-radius-btn)',
                   }}
                 >
-                  <span>Continue to Checkout</span>
+                  <span>{actionLoading ? 'Processing Checkout…' : 'Continue to Payment'}</span>
                   <ArrowRight size={16} />
                 </button>
+
               </div>
             </div>
           </div>

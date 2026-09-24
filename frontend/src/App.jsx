@@ -20,6 +20,8 @@ import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
 import { Cart } from './pages/Cart/Cart';
 import { SelectTickets } from './pages/SelectTickets/SelectTickets';
+import { PaymentSuccess } from './pages/PaymentSuccess/PaymentSuccess';
+import { PaymentCancel } from './pages/PaymentCancel/PaymentCancel';
 
 function App() {
   return (
@@ -38,6 +40,9 @@ function App() {
             <Route path="/list-your-event" element={<ListYourEvent />} />
             <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
             <Route path="/events/:id/tickets" element={<SelectTickets />} />
+            <Route path="/payment-success" element={<RequireAuth><PaymentSuccess /></RequireAuth>} />
+            <Route path="/payment-cancel" element={<RequireAuth><PaymentCancel /></RequireAuth>} />
+
 
             {/* Organizer Protected Routes */}
             <Route element={<RequireRole allowedRoles="Organizer" />}>
