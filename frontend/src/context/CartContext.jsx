@@ -6,6 +6,7 @@ import {
   updateCartItemQuantity as apiUpdateQuantity,
   removeCartItem as apiRemoveItem,
   clearCart as apiClearCart,
+  createBooking as createBookingApi,
 } from '../services/cartService';
 
 const CartContext = createContext(null);
@@ -101,6 +102,27 @@ export function CartProvider({ children }) {
     setItemQuantity,
     removeItem,
     clearCurrentCart,
+    checkout: async () => {
+      const token = getToken();
+      if (!token) throw new Error('Authentication required.');
+      if (!cart || !cart.eventId || cart.items.length === 0) {
+        throw new Error('Cart is empty.');
+      }
+      
+      const response = await createBookingApi(cart.eventId, cart.items, token);
+      
+      // Update local cart state to empty after successful booking
+      setCart({
+        cartId: null,
+        eventId: null,
+        eventTitle: null,
+        items: [],
+        totalAmount: 0,
+        totalTicketCount: 0,
+      });
+
+      return response;
+    }
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

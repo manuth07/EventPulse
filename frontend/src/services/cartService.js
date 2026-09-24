@@ -159,3 +159,42 @@ export async function completeCart(token) {
 
   return response.json();
 }
+
+/**
+ * Create a new booking from the cart items.
+ */
+export async function createBooking(eventId, items, token) {
+  const payload = {
+    eventId,
+    items: items.map(item => ({
+      ticketTypeId: item.ticketTypeId,
+      quantity: item.quantity
+    }))
+  };
+
+  const response = await fetch(`${getApiBaseUrl()}/api/bookings`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to create booking (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) {
+      /* not JSON */
+    }
+
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}

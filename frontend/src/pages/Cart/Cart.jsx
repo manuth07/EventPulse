@@ -30,7 +30,7 @@ function formatDate(dateString) {
 
 export function Cart() {
   const navigate = useNavigate();
-  const { cart, loading, error, setItemQuantity, removeItem, clearCurrentCart } = useCart();
+  const { cart, loading, error, setItemQuantity, removeItem, clearCurrentCart, checkout } = useCart();
 
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
@@ -337,7 +337,20 @@ export function Cart() {
 
                 <button
                   type="button"
-                  onClick={() => alert('Checkout session will proceed to payment gateway.')}
+                  onClick={async () => {
+                    setActionError(null);
+                    setActionLoading(true);
+                    try {
+                      const response = await checkout();
+                      // Next phase will integrate Stripe. For now, alert success and redirect
+                      alert(`Booking successful! Reference: ${response.bookingReference}`);
+                      navigate(`/events/${cart.eventId}`);
+                    } catch (err) {
+                      setActionError(err.message || 'Checkout failed.');
+                    } finally {
+                      setActionLoading(false);
+                    }
+                  }}
                   disabled={actionLoading}
                   className="ep-btn-primary"
                   style={{
