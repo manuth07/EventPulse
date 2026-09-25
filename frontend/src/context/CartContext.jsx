@@ -52,6 +52,14 @@ export function CartProvider({ children }) {
     const token = getToken();
     if (!token) throw new Error('Authentication required.');
 
+    if (clearExisting) {
+      try {
+        await apiClearCart(token);
+      } catch (e) {
+        // Ignored if already empty or error handled by backend
+      }
+    }
+
     const updatedCart = await apiAddToCart(eventId, ticketTypeId, quantity, token, clearExisting, isDelta);
     setCart(updatedCart);
     return updatedCart;
@@ -101,6 +109,7 @@ export function CartProvider({ children }) {
     addOrUpdateItem,
     setItemQuantity,
     removeItem,
+    clearCart: clearCurrentCart,
     clearCurrentCart,
     checkout: async () => {
       const token = getToken();

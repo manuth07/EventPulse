@@ -102,7 +102,20 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
-    await dbContext.Database.MigrateAsync();
+    try
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+    catch (Npgsql.PostgresException ex) when (ex.SqlState == "42P07")
+    {
+        // Relation already exists in local dev environment
+        app.Logger.LogWarning("Payments table already exists. Skipping creation.");
+    }
+    catch (Exception ex) when (ex.InnerException is Npgsql.PostgresException inner && inner.SqlState == "42P07")
+    {
+        // Relation already exists in local dev environment
+        app.Logger.LogWarning("Payments table already exists. Skipping creation.");
+    }
 }
 
 // Prometheus HTTP Request Metrics (TECH-12)

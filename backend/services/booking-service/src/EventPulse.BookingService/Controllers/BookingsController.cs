@@ -44,6 +44,32 @@ public class BookingsController : ControllerBase
         return Guid.TryParse(customerIdStr, out customerId);
     }
 
+    /// <summary>
+    /// Authoritative booking summary lookup for PaymentService and internal microservices.
+    /// </summary>
+    [HttpGet("{id:guid}/summary")]
+    [Authorize]
+    public async Task<IActionResult> GetBookingSummary(Guid id, CancellationToken ct)
+    {
+        var booking = await _dbContext.Bookings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == id, ct);
+
+        if (booking == null)
+        {
+            return NotFound(new { message = $"Booking {id} not found." });
+        }
+
+        return Ok(new
+        {
+            Id = booking.Id,
+            BookingReference = booking.BookingReference,
+            CustomerId = booking.CustomerId,
+            TotalAmount = booking.TotalAmount,
+            Status = booking.Status.ToString()
+        });
+    }
+
     [HttpPost]
     public async Task<IActionResult> CreateBooking([FromBody] CreateBookingRequest request, CancellationToken cancellationToken)
     {

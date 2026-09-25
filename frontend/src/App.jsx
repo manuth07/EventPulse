@@ -40,9 +40,8 @@ function App() {
             <Route path="/list-your-event" element={<ListYourEvent />} />
             <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
             <Route path="/events/:id/tickets" element={<SelectTickets />} />
-            <Route path="/payment-success" element={<RequireAuth><PaymentSuccess /></RequireAuth>} />
-            <Route path="/payment-cancel" element={<RequireAuth><PaymentCancel /></RequireAuth>} />
-
+            <Route path="/payment-success" element={<PaymentSuccess />} />
+            <Route path="/payment-cancel" element={<PaymentCancel />} />
 
             {/* Organizer Protected Routes */}
             <Route element={<RequireRole allowedRoles="Organizer" />}>

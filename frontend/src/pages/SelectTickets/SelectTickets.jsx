@@ -25,7 +25,7 @@ export function SelectTickets() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { cart, addOrUpdateItem, refreshCart } = useCart();
+  const { cart, addOrUpdateItem, refreshCart, clearCart } = useCart();
 
   const [event, setEvent] = useState(null);
   const [ticketTypes, setTicketTypes] = useState([]);
@@ -118,10 +118,24 @@ export function SelectTickets() {
     }
     if (selectedItems.length === 0) return;
 
+    // Check if cart already holds items for a different event
+    if (!clearExisting && cart && cart.eventId && cart.eventId !== id && Array.isArray(cart.items) && cart.items.length > 0) {
+      setConflictModal({
+        currentEventTitle: cart.eventTitle || 'another event',
+        currentEventId: cart.eventId,
+        attemptedEventId: id,
+      });
+      return;
+    }
+
     setSubmitError(null);
     setSubmitting(true);
 
     try {
+      if (clearExisting && clearCart) {
+        await clearCart();
+      }
+
       // If updating, submit items with their desired final quantities
       let isFirst = true;
       for (const item of selectedItems) {
@@ -141,10 +155,11 @@ export function SelectTickets() {
       await refreshCart();
       navigate('/cart');
     } catch (err) {
-      if (err.status === 409 && err.conflictData) {
+      const conflict = err.data || err.conflictData;
+      if (err.status === 409 || conflict?.code === 'EVENT_CONFLICT' || conflict?.Code === 'EVENT_CONFLICT') {
         setConflictModal({
-          currentEventTitle: err.conflictData.currentEventTitle || 'another event',
-          currentEventId: err.conflictData.currentEventId,
+          currentEventTitle: conflict?.currentEventTitle || conflict?.CurrentEventTitle || cart?.eventTitle || 'another event',
+          currentEventId: conflict?.currentEventId || conflict?.CurrentEventId || cart?.eventId,
           attemptedEventId: id,
         });
       } else {

@@ -20,7 +20,7 @@ export function PaymentSuccess() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '32px 16px',
+        padding: '40px 16px',
       }}>
         <div style={{
           backgroundColor: '#ffffff',
@@ -28,10 +28,11 @@ export function PaymentSuccess() {
           border: '1px solid var(--ep-border)',
           boxShadow: 'var(--ep-shadow-hover)',
           padding: '48px 32px',
-          maxWidth: '500px',
+          maxWidth: '520px',
           width: '100%',
           textAlign: 'center',
         }}>
+          {/* Success Icon */}
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -40,57 +41,68 @@ export function PaymentSuccess() {
             height: '64px',
             borderRadius: '50%',
             backgroundColor: '#F0FDF4',
-            border: '1px solid #BBF7D0',
+            border: '2px solid #BBF7D0',
             marginBottom: '20px',
           }}>
-            <CheckCircle2 size={32} color="#16A34A" />
+            <CheckCircle2 size={36} color="#16A34A" />
           </div>
 
           <h1 style={{
             fontSize: '24px',
-            fontWeight: 700,
+            fontWeight: 800,
             color: 'var(--ep-text-primary)',
             marginBottom: '8px',
-            letterSpacing: '-0.005em',
+            letterSpacing: '-0.01em',
           }}>
-            Payment Initiated Successfully!
+            Payment Submitted
           </h1>
+
+          <p style={{
+            fontSize: '15px',
+            fontWeight: 600,
+            color: '#15803D',
+            marginBottom: '16px',
+          }}>
+            Your booking is being confirmed!
+          </p>
 
           <p style={{
             fontSize: '14px',
             color: 'var(--ep-text-secondary)',
             marginBottom: '24px',
-            lineHeight: 1.5,
+            lineHeight: 1.6,
           }}>
-            Your payment session has been confirmed. Your ticket reservations are being finalized.
+            We have received your payment request. Your tickets and QR codes will be generated and delivered as soon as the transaction verification is completed.
           </p>
 
           {sessionId && (
             <div style={{
               backgroundColor: 'var(--ep-canvas)',
               borderRadius: '8px',
-              padding: '12px 16px',
+              padding: '12px',
               marginBottom: '28px',
               fontSize: '12px',
               color: 'var(--ep-text-secondary)',
               wordBreak: 'break-all',
-              textAlign: 'left',
-              border: '1px solid var(--ep-border)',
+              fontFamily: 'monospace',
             }}>
-              <span style={{ fontWeight: 600, color: 'var(--ep-text-primary)', display: 'block', marginBottom: '4px' }}>
-                Stripe Session Reference:
-              </span>
-              <code>{sessionId}</code>
+              <span style={{ fontWeight: 600, color: 'var(--ep-text-primary)' }}>Session ID: </span>
+              {sessionId}
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}>
             <Link
               to="/"
               className="ep-btn-primary"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
                 padding: '12px 24px',
                 fontSize: '14px',
@@ -99,7 +111,7 @@ export function PaymentSuccess() {
                 borderRadius: 'var(--ep-radius-btn)',
               }}
             >
-              <span>Explore More Events</span>
+              <span>Browse More Events</span>
               <ArrowRight size={16} />
             </Link>
           </div>
@@ -108,3 +120,5 @@ export function PaymentSuccess() {
     </div>
   );
 }
+
+export default PaymentSuccess;

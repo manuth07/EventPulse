@@ -1,35 +1,23 @@
-import { getApiBaseUrl } from './apiConfig';
+import { apiClient, getStoredToken } from './apiClient';
 
 /**
- * Initiate a Stripe checkout session for a given booking.
- * @param {string} bookingId - The GUID of the pending booking.
- * @param {string} token - The user's JWT access token.
- * @returns {Promise<{ sessionId: string, checkoutUrl: string }>}
+ * Creates a Stripe Checkout Session for a pending booking.
+ * 
+ * @param {string} bookingId - The GUID of the booking awaiting payment.
+ * @param {string} [token] - Optional JWT authentication token.
+ * @returns {Promise<{ paymentId: string, bookingId: string, bookingReference: string, sessionId: string, checkoutUrl: string }>}
  */
 export async function createCheckoutSession(bookingId, token) {
-  const response = await fetch(`${getApiBaseUrl()}/api/payments/checkout-session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ bookingId }),
-  });
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
-  if (!response.ok) {
-    let errorMsg = `Failed to initiate checkout (${response.status})`;
-    try {
-      const data = await response.json();
-      if (data.message) errorMsg = data.message;
-    } catch (e) {
-      /* non-json response */
-    }
-
-    const error = new Error(errorMsg);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
+  return apiClient.post(
+    '/api/payments/checkout-session',
+    { bookingId },
+    { headers }
+  );
 }
+
+export default {
+  createCheckoutSession,
+};
