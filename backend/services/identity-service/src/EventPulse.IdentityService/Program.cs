@@ -7,6 +7,7 @@ using EventPulse.IdentityService.Data;
 using EventPulse.IdentityService.Models;
 using EventPulse.IdentityService.Security;
 using EventPulse.IdentityService.Services;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -145,6 +146,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 // ---------------------------------------------------------------------------
+// API, Observability & Infrastructure
 // Authorization Policies
 // ---------------------------------------------------------------------------
 builder.Services.AddAuthorization(options =>
@@ -165,7 +167,14 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// Application Insights Telemetry (EP-200 / TECH-11)
+builder.Services.AddApplicationInsightsTelemetry();
+
 var app = builder.Build();
+
+// Prometheus HTTP Request Metrics (TECH-12)
+app.UseRouting();
+app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
 {
@@ -178,6 +187,9 @@ app.UseAuthorization();
 
 // Health endpoint consumed by YARP gateway health-check and load balancer
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint (TECH-12)
+app.MapMetrics();
 
 app.MapControllers();
 

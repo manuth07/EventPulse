@@ -1,0 +1,31 @@
+groups:
+  - name: eventpulse_alerts
+    rules:
+      - alert: HighHttp5xxRate
+        # Alert if the 5xx rate exceeds 5% over a 2-minute window, OR if there is a spike of more than 5 5xx requests in a 1-minute window
+        expr: |
+          (
+            sum(rate(http_requests_received_total{code=~"5.."}[2m])) 
+            / 
+            sum(rate(http_requests_received_total[2m])) 
+            > 0.05
+          )
+          or 
+          (
+            sum(increase(http_requests_received_total{code=~"5.."}[1m])) > 5
+          )
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx Error Rate detected"
+          description: "Over 5% of HTTP requests are failing with 5xx errors or more than 5 errors occurred in the last minute."
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.instance }} is down"
+          description: "Service {{ $labels.instance }} (job {{ $labels.job }}) has been down for more than 1 minute."

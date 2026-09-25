@@ -5,6 +5,7 @@ using EventPulse.BookingService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,9 +41,10 @@ builder.Services.AddCors(options =>
 // ---------------------------------------------------------------------------
 // JWT Bearer — validates tokens issued by Identity Service
 // ---------------------------------------------------------------------------
+var jwtSection = builder.Configuration.GetSection("Jwt");
 var keyStr = builder.Configuration["Jwt:Key"] 
     ?? builder.Configuration["Jwt__Key"] 
-    ?? builder.Configuration.GetSection("Jwt")["Key"]
+    ?? jwtSection["Key"]
     ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
 
 using (var sha256 = System.Security.Cryptography.SHA256.Create())
@@ -51,27 +53,45 @@ using (var sha256 = System.Security.Cryptography.SHA256.Create())
     Console.WriteLine($"[KEY-VERIFY] {builder.Environment.ApplicationName} Key Hash: {hash}");
 }
 
-var keyBytes = Encoding.UTF8.GetBytes(keyStr);
-var securityKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
+var jwtKeyBytes = Encoding.UTF8.GetBytes(keyStr);
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+var keyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes)
+{
+    KeyId = "EventPulseKey_2026"
+};
+var unkeyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes);
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
 .AddJwtBearer(options =>
 {
     options.RequireHttpsMetadata = false;
-    options.SaveToken = true;
+    options.SaveToken = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = securityKey,
-        ValidateIssuer = false,
-        ValidateAudience = false,
-        ValidateLifetime = false // Temporarily disable lifetime check to isolate signature
+        IssuerSigningKey = keyedSigningKey,
+        IssuerSigningKeys = new SecurityKey[] { keyedSigningKey, unkeyedSigningKey },
+        IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
+        {
+            return new SecurityKey[] { keyedSigningKey, unkeyedSigningKey };
+        },
+        ValidateIssuer = true,
+        ValidIssuer = jwtSection["Issuer"] ?? builder.Configuration["Jwt:Issuer"] ?? "EventPulse.IdentityService",
+        ValidateAudience = true,
+        ValidAudience = jwtSection["Audience"] ?? builder.Configuration["Jwt:Audience"] ?? "EventPulse.Clients",
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.FromMinutes(2),
+        RoleClaimType = ClaimTypes.Role,
+        NameClaimType = ClaimTypes.NameIdentifier
     };
     options.Events = new JwtBearerEvents
     {
         OnAuthenticationFailed = context =>
         {
-            Console.WriteLine($"[AUTH-FAIL] Exception: {context.Exception.Message}");
             var logger = context.HttpContext.RequestServices
                 .GetRequiredService<ILoggerFactory>()
                 .CreateLogger("BookingService.JwtAuthentication");
@@ -121,11 +141,17 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowAll");
 
+// Prometheus HTTP metrics middleware
+app.UseHttpMetrics();
+
 // Middleware Ordering: CORS -> Authentication -> Authorization -> Endpoints
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint
+app.MapMetrics();
 
 app.MapControllers();
 

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -103,7 +104,14 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// Application Insights Telemetry (EP-200 / TECH-11)
+builder.Services.AddApplicationInsightsTelemetry();
+
 var app = builder.Build();
+
+// Prometheus HTTP Request Metrics (TECH-12)
+app.UseRouting();
+app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
 {
@@ -116,7 +124,11 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Health endpoint for YARP / Kubernetes / Azure probes
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint (TECH-12)
+app.MapMetrics();
 
 app.MapControllers();
 
