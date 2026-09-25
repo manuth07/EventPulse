@@ -17,41 +17,41 @@ public class PaymentDbContext : DbContext
 
         modelBuilder.Entity<Payment>(entity =>
         {
-            entity.HasKey(payment => payment.Id);
+            entity.HasKey(p => p.Id);
 
-            entity.Property(payment => payment.BookingId)
+            entity.Property(p => p.BookingId)
                 .IsRequired();
 
-            entity.HasIndex(payment => payment.BookingId);
+            entity.HasIndex(p => p.BookingId);
 
-            entity.Property(payment => payment.BookingReference)
+            entity.Property(p => p.BookingReference)
                 .IsRequired()
                 .HasMaxLength(50);
 
-            entity.Property(payment => payment.CustomerId)
+            entity.Property(p => p.CustomerId)
                 .IsRequired();
 
-            entity.Property(payment => payment.StripeSessionId)
+            entity.Property(p => p.StripeSessionId)
                 .HasMaxLength(255);
 
-            entity.HasIndex(payment => payment.StripeSessionId);
+            entity.HasIndex(p => p.StripeSessionId);
 
-            entity.Property(payment => payment.StripePaymentIntentId)
+            entity.Property(p => p.StripePaymentIntentId)
                 .HasMaxLength(255);
 
-            entity.Property(payment => payment.Amount)
+            entity.Property(p => p.Amount)
                 .HasColumnType("decimal(18,2)")
                 .IsRequired();
 
-            entity.Property(payment => payment.Currency)
+            entity.Property(p => p.Currency)
                 .IsRequired()
                 .HasMaxLength(10);
 
-            entity.Property(payment => payment.Status)
+            entity.Property(p => p.Status)
                 .IsRequired()
                 .HasConversion<string>();
 
-            entity.Property(payment => payment.CreatedAt)
+            entity.Property(p => p.CreatedAt)
                 .IsRequired();
         });
     }

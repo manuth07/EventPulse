@@ -10,16 +10,24 @@ using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ---------------------------------------------------------------------------
+// Payment Service
+// ---------------------------------------------------------------------------
 builder.Services.AddDbContext<PaymentDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("PaymentDatabase")));
-
-StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"];
 
 builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["BookingService:BaseUrl"] ?? "http://localhost:7103");
 });
+
 builder.Services.AddScoped<IStripeCheckoutService, StripeCheckoutService>();
+
+var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
+if (!string.IsNullOrWhiteSpace(stripeSecretKey))
+{
+    StripeConfiguration.ApiKey = stripeSecretKey;
+}
 
 builder.Services.AddCors(options =>
 {
@@ -65,27 +73,39 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
-builder.Services.AddApplicationInsightsTelemetry();
+
+// Application Insights Telemetry (EP-200 / TECH-11)
+var appInsightsConn = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+                   ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+
+if (!string.IsNullOrWhiteSpace(appInsightsConn))
+{
+    builder.Services.AddApplicationInsightsTelemetry(options =>
+    {
+        options.ConnectionString = appInsightsConn;
+    });
+}
+else
+{
+    builder.Services.AddApplicationInsightsTelemetry();
+}
 
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
-    try
-    {
-        await dbContext.Database.MigrateAsync();
-    }
-    catch (Exception exception)
-    {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogWarning(exception, "Could not apply database migrations on startup.");
-    }
+    await dbContext.Database.MigrateAsync();
 }
 
+// Prometheus HTTP Request Metrics (TECH-12)
 app.UseRouting();
 app.UseHttpMetrics();
 
@@ -97,8 +117,13 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Health endpoint for YARP / Kubernetes / Azure probes
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint (TECH-12)
 app.MapMetrics();
+
 app.MapControllers();
 
 await app.RunAsync();

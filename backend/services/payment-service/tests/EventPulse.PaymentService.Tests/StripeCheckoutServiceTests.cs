@@ -17,7 +17,8 @@ public class StripeCheckoutServiceTests
         {
             {"Stripe:Currency", "usd"},
             {"Stripe:SuccessUrl", "http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}"},
-            {"Stripe:CancelUrl", "http://localhost:5173/payment-cancel"}
+            {"Stripe:CancelUrl", "http://localhost:5173/payment-cancel"},
+            {"Stripe:SecretKey", "sk_test_placeholder"}
         };
 
         _configuration = new ConfigurationBuilder()

@@ -22,57 +22,57 @@ namespace EventPulse.PaymentService.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("EventPulse.PaymentService.Models.Payment", entity =>
-            {
-                entity.Property<Guid>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("uuid");
+            modelBuilder.Entity("EventPulse.PaymentService.Models.Payment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
 
-                entity.Property<decimal>("Amount")
-                    .HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
 
-                entity.Property<Guid>("BookingId")
-                    .HasColumnType("uuid");
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
 
-                entity.Property<string>("BookingReference")
-                    .IsRequired()
-                    .HasMaxLength(50)
-                    .HasColumnType("character varying(50)");
+                    b.Property<string>("BookingReference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
-                entity.Property<DateTimeOffset?>("CompletedAt")
-                    .HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                entity.Property<DateTimeOffset>("CreatedAt")
-                    .HasColumnType("timestamp with time zone");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                entity.Property<string>("Currency")
-                    .IsRequired()
-                    .HasMaxLength(10)
-                    .HasColumnType("character varying(10)");
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
-                entity.Property<Guid>("CustomerId")
-                    .HasColumnType("uuid");
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
 
-                entity.Property<string>("Status")
-                    .IsRequired()
-                    .HasColumnType("text");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
-                entity.Property<string>("StripePaymentIntentId")
-                    .HasMaxLength(255)
-                    .HasColumnType("character varying(255)");
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
-                entity.Property<string>("StripeSessionId")
-                    .HasMaxLength(255)
-                    .HasColumnType("character varying(255)");
+                    b.Property<string>("StripeSessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
-                entity.HasKey("Id");
+                    b.HasKey("Id");
 
-                entity.HasIndex("BookingId");
+                    b.HasIndex("BookingId");
 
-                entity.HasIndex("StripeSessionId");
+                    b.HasIndex("StripeSessionId");
 
-                entity.ToTable("Payments");
-            });
+                    b.ToTable("Payments");
+                });
 #pragma warning restore 612, 618
         }
     }

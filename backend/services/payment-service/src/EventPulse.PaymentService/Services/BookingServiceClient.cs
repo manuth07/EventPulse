@@ -24,7 +24,10 @@ public class BookingServiceClient : IBookingServiceClient
             using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/bookings/{bookingId}/summary");
             if (!string.IsNullOrWhiteSpace(bearerToken))
             {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+                var cleanToken = bearerToken.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? bearerToken["Bearer ".Length..].Trim()
+                    : bearerToken.Trim();
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", cleanToken);
             }
 
             using var response = await _httpClient.SendAsync(request, cancellationToken);

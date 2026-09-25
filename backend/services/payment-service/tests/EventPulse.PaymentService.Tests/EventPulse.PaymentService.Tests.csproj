@@ -24,4 +24,4 @@
     <ProjectReference Include="..\..\src\EventPulse.PaymentService\EventPulse.PaymentService.csproj" />
   </ItemGroup>
 
-</Project>
+</Project>

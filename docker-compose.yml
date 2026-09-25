@@ -52,6 +52,8 @@ services:
       - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
     depends_on:
       - prometheus
+
+
 volumes:
   eventpulse_postgres_data:
     name: eventpulse_postgres_data

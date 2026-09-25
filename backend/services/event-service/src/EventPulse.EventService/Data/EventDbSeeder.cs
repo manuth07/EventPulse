@@ -12,138 +12,360 @@ public static class EventDbSeeder
         var organizer3 = Guid.Parse("33333333-3333-3333-3333-333333333333");
         var organizer4 = Guid.Parse("44444444-4444-4444-4444-444444444444");
         var adminId = Guid.Parse("99999999-9999-9999-9999-999999999999");
-        var now = DateTime.UtcNow;
 
-        var eventDetails = new (string Id, string Title, string Description, string Venue, int Days, decimal Price, string Category, string VenueType, Guid OrganizerId)[]
+        var seedEvents = new List<Event>
         {
-            ("a1111111-1111-1111-1111-111111111111", "Tech Conference 2026", "Annual flagship technology and software engineering conference in Sri Lanka featuring global keynotes, architecture tracks, and developer panels.", "BMICH, Colombo", 45, 7500m, "Conference", "Indoor", organizer1),
-            ("b2222222-2222-2222-2222-222222222222", "Colombo Music Festival", "Outdoor live music performance featuring top national and international artists, live bands, food stalls, and sunset vibes.", "Galle Face Green, Colombo", 60, 5000m, "Music", "Outdoor", organizer2),
-            ("c3333333-3333-3333-3333-333333333333", "Startup Meetup 2026", "Networking and pitch event for early stage Sri Lankan tech startups, founders, venture capitalists, and angel investors.", "Trace Expert City, Colombo 10", 30, 0m, "Conference", "Indoor", organizer1),
-            ("d4444444-4444-4444-4444-444444444444", "AI Workshop Sri Lanka", "Hands-on workshop covering LLMs, Agentic AI systems, fine-tuning, and modern machine learning production deployment.", "SLIIT Auditorium, Malabe", 75, 2500m, "Workshop", "Indoor", organizer2),
-            ("e5555555-5555-5555-5555-555555555555", "Rejected Test Event", "Sample event that failed verification standards and was rejected by admin.", "Virtual / Online", 20, 1000m, "Other", "Indoor", organizer1),
-            ("f6666666-6666-6666-6666-666666666666", "Cyber Security Summit Colombo", "Sri Lanka's premier cyber security summit gathering global security leaders, ethical hackers, and CISOs.", "Cinnamon Grand, Colombo", 50, 7500m, "Conference", "Indoor", organizer1),
-            ("77777777-7777-7777-7777-777777777777", "Wellness & Beach Yoga Festival", "A weekend of mindfulness, beach yoga sessions, meditation, and holistic health workshops.", "Mount Lavinia Beach Hotel", 70, 4000m, "Festival", "Outdoor", organizer2),
-            ("01010101-0101-0101-0101-010101010101", "Sri Lanka National Hackathon 2026", "36-hour non-stop hackathon challenging university and industry builders to create groundbreaking FinTech, HealthTech, and AI solutions.", "Trace Expert City, Bay 7, Colombo 10", 20, 0m, "Technology", "Indoor", organizer1),
-            ("a7777777-7777-7777-7777-777777777777", "Cyber Security Summit Colombo", "Premier cybersecurity summit exploring zero trust architectures, cloud security posture management, and cyber resilience in enterprise.", "Hilton Colombo, Grand Ballroom", 35, 7500m, "Conference", "Indoor", organizer1),
-            ("b8888888-8888-8888-8888-888888888888", "Kandy Cultural Rhythms & Drum Fest", "An immersive evening of traditional Kandyan drumming, contemporary fusion percussion, and vibrant cultural dance performances.", "Bogambara Cultural Grounds, Kandy", 25, 2000m, "Festival", "Outdoor", organizer3),
-            ("c9999999-9999-9999-9999-999999999999", "Galle Literary & Heritage Showcase", "Celebration of literature, storytelling, architectural heritage, and historical discussions within the iconic ramparts of Galle Fort.", "Galle Fort Ramparts, Galle", 50, 3000m, "Literature", "Outdoor", organizer3),
-            ("d1010101-1010-1010-1010-101010101010", "Esports Championship Sri Lanka 2026", "National competitive gaming arena with thrilling tournaments in Valorant, Dota 2, and EA FC 26 with major cash prize pools.", "SLECC (Sri Lanka Exhibition Centre), Colombo", 40, 1500m, "Esports", "Indoor", organizer4),
-            ("e2020202-2020-2020-2020-202020202020", "Ceylon Food & Street Feast 2026", "A weekend culinary adventure featuring authentic Sri Lankan street food, artisan desserts, live cooking demos, and acoustic music.", "Viharamahadevi Park, Colombo 07", 18, 0m, "Food", "Outdoor", organizer2),
-            ("f3030303-3030-3030-3030-303030303030", "Cloud Native & DevOps Summit", "Deep-dive technical sessions on Kubernetes, GitOps, distributed tracing, and infrastructure as code by industry experts.", "Cinnamon Lakeside Ballroom, Colombo", 55, 4500m, "Technology", "Indoor", organizer1),
-            ("a4040404-4040-4040-4040-404040404040", "UX/UI Design & Product Sprint", "Interactive workshop on design systems, Figma component architectures, accessibility standards, and usability testing.", "Dialog Axiata Auditorium, Colombo 02", 28, 2200m, "Workshop", "Indoor", organizer2),
-            ("b5050505-5050-5050-5050-505050505050", "Photography Masterclass & Photowalk", "Learn professional framing, lighting techniques, and color grading followed by an afternoon street photowalk through Colombo.", "National Museum Grounds, Colombo 07", 22, 3200m, "Workshop", "Outdoor", organizer3),
-            ("c6060606-6060-6060-6060-606060606060", "Jazz & Blues Under the Stars", "An intimate open-air evening featuring soulful live jazz, blues ensembles, fine dining, and cocktails beside the lake.", "Water's Edge Garden Pavilion, Battaramulla", 38, 6000m, "Music", "Outdoor", organizer2),
-            ("d7070707-7070-7070-7070-707070707070", "Inter-University Robotics Showcase", "Showcase of autonomous robotics, drone agility trials, and IoT innovations created by undergraduate engineering teams.", "University of Moratuwa Campus Grounds", 42, 0m, "Technology", "Outdoor", organizer1),
-            ("e8080808-8080-8080-8080-808080808080", "Wellness & Beach Yoga Festival", "Rejuvenating sunrise yoga sessions, guided mindfulness meditation, breathwork, and clean nutrition seminars by the ocean.", "Mount Lavinia Beach Terrace", 12, 1800m, "Festival", "Outdoor", organizer4)
+            new Event
+            {
+                Id = Guid.Parse("a1111111-1111-1111-1111-111111111111"),
+                Title = "Tech Conference 2026",
+                Description = "Annual flagship technology and software engineering conference in Sri Lanka featuring global keynotes, architecture tracks, and developer panels.",
+                Venue = "BMICH, Colombo",
+                EventDate = DateTime.UtcNow.AddDays(45),
+                Price = 7500.00m,
+                Category = "Conference",
+                VenueType = "Indoor",
+                Status = EventStatus.Published,
+                OrganizerId = organizer1,
+                CreatedAt = DateTime.UtcNow.AddDays(-10),
+                ReviewedAt = DateTime.UtcNow.AddDays(-5),
+                ReviewedBy = adminId,
+                TicketTypes = new List<TicketType>
+                {
+                    new TicketType
+                    {
+                        Id = Guid.Parse("a1111111-0000-0000-0000-000000000001"),
+                        EventId = Guid.Parse("a1111111-1111-1111-1111-111111111111"),
+                        Name = "General Admission",
+                        Price = 7500.00m,
+                        Capacity = 100,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-10)
+                    },
+                    new TicketType
+                    {
+                        Id = Guid.Parse("a1111111-0000-0000-0000-000000000002"),
+                        EventId = Guid.Parse("a1111111-1111-1111-1111-111111111111"),
+                        Name = "VIP Pass",
+                        Price = 15000.00m,
+                        Capacity = 50,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-10)
+                    }
+                }
+            },
+            new Event
+            {
+                Id = Guid.Parse("b2222222-2222-2222-2222-222222222222"),
+                Title = "Colombo Music Festival",
+                Description = "Outdoor live music performance featuring top national and international artists, live bands, food stalls, and sunset vibes.",
+                Venue = "Galle Face Green, Colombo",
+                EventDate = DateTime.UtcNow.AddDays(60),
+                Price = 5000.00m,
+                Category = "Music",
+                VenueType = "Outdoor",
+                Status = EventStatus.Published,
+                OrganizerId = organizer2,
+                CreatedAt = DateTime.UtcNow.AddDays(-8),
+                ReviewedAt = DateTime.UtcNow.AddDays(-4),
+                ReviewedBy = adminId,
+                TicketTypes = new List<TicketType>
+                {
+                    new TicketType
+                    {
+                        Id = Guid.Parse("b2222222-0000-0000-0000-000000000001"),
+                        EventId = Guid.Parse("b2222222-2222-2222-2222-222222222222"),
+                        Name = "General Admission",
+                        Price = 5000.00m,
+                        Capacity = 200,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-8)
+                    },
+                    new TicketType
+                    {
+                        Id = Guid.Parse("b2222222-0000-0000-0000-000000000002"),
+                        EventId = Guid.Parse("b2222222-2222-2222-2222-222222222222"),
+                        Name = "VIP Pass",
+                        Price = 12000.00m,
+                        Capacity = 50,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-8)
+                    }
+                }
+            },
+            new Event
+            {
+                Id = Guid.Parse("c3333333-3333-3333-3333-333333333333"),
+                Title = "Startup Meetup 2026",
+                Description = "Networking and pitch event for early stage Sri Lankan tech startups, founders, venture capitalists, and angel investors.",
+                Venue = "Trace Expert City, Colombo 10",
+                EventDate = DateTime.UtcNow.AddDays(30),
+                Price = 0.00m,
+                Category = "Conference",
+                VenueType = "Indoor",
+                Status = EventStatus.Pending,
+                OrganizerId = organizer1,
+                CreatedAt = DateTime.UtcNow.AddDays(-2),
+                ReviewedAt = null,
+                ReviewedBy = null,
+                TicketTypes = new List<TicketType>
+                {
+                    new TicketType
+                    {
+                        Id = Guid.Parse("c3333333-0000-0000-0000-000000000001"),
+                        EventId = Guid.Parse("c3333333-3333-3333-3333-333333333333"),
+                        Name = "General Admission",
+                        Price = 0.00m,
+                        Capacity = 50,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-2)
+                    },
+                    new TicketType
+                    {
+                        Id = Guid.Parse("c3333333-0000-0000-0000-000000000002"),
+                        EventId = Guid.Parse("c3333333-3333-3333-3333-333333333333"),
+                        Name = "VIP Pass",
+                        Price = 0.00m,
+                        Capacity = 20,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-2)
+                    }
+                }
+            },
+            new Event
+            {
+                Id = Guid.Parse("d4444444-4444-4444-4444-444444444444"),
+                Title = "AI Workshop Sri Lanka",
+                Description = "Hands-on workshop covering LLMs, Agentic AI systems, fine-tuning, and modern machine learning production deployment.",
+                Venue = "SLIIT Auditorium, Malabe",
+                EventDate = DateTime.UtcNow.AddDays(75),
+                Price = 2500.00m,
+                Category = "Workshop",
+                VenueType = "Indoor",
+                Status = EventStatus.Published,
+                OrganizerId = organizer2,
+                CreatedAt = DateTime.UtcNow.AddDays(-6),
+                ReviewedAt = DateTime.UtcNow.AddDays(-1),
+                ReviewedBy = adminId,
+                TicketTypes = new List<TicketType>
+                {
+                    new TicketType
+                    {
+                        Id = Guid.Parse("d4444444-0000-0000-0000-000000000001"),
+                        EventId = Guid.Parse("d4444444-4444-4444-4444-444444444444"),
+                        Name = "General Admission",
+                        Price = 2500.00m,
+                        Capacity = 80,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-6)
+                    },
+                    new TicketType
+                    {
+                        Id = Guid.Parse("d4444444-0000-0000-0000-000000000002"),
+                        EventId = Guid.Parse("d4444444-4444-4444-4444-444444444444"),
+                        Name = "VIP Pass",
+                        Price = 6000.00m,
+                        Capacity = 30,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-6)
+                    }
+                }
+            },
+            new Event
+            {
+                Id = Guid.Parse("e5555555-5555-5555-5555-555555555555"),
+                Title = "Rejected Test Event",
+                Description = "Sample event that failed verification standards and was rejected by admin.",
+                Venue = "Virtual / Online",
+                EventDate = DateTime.UtcNow.AddDays(20),
+                Price = 1000.00m,
+                Category = "Other",
+                VenueType = "Indoor",
+                Status = EventStatus.Rejected,
+                OrganizerId = organizer1,
+                CreatedAt = DateTime.UtcNow.AddDays(-12),
+                ReviewedAt = DateTime.UtcNow.AddDays(-11),
+                ReviewedBy = adminId,
+                ReviewComment = "The venue address is incomplete. Please provide the full physical venue address and detailed event schedule."
+            },
+            new Event
+            {
+                Id = Guid.Parse("f6666666-6666-6666-6666-666666666666"),
+                Title = "Cyber Security Summit Colombo",
+                Description = "Sri Lanka's premier cyber security summit gathering global security leaders, ethical hackers, and CISOs.",
+                Venue = "Cinnamon Grand, Colombo",
+                EventDate = DateTime.UtcNow.AddDays(50),
+                Price = 7500.00m,
+                Category = "Conference",
+                VenueType = "Indoor",
+                Status = EventStatus.Published,
+                OrganizerId = organizer1,
+                CreatedAt = DateTime.UtcNow.AddDays(-15),
+                ReviewedAt = DateTime.UtcNow.AddDays(-10),
+                ReviewedBy = adminId,
+                TicketTypes = new List<TicketType>
+                {
+                    new TicketType
+                    {
+                        Id = Guid.Parse("f6666666-0000-0000-0000-000000000001"),
+                        EventId = Guid.Parse("f6666666-6666-6666-6666-666666666666"),
+                        Name = "General Admission",
+                        Price = 7500.00m,
+                        Capacity = 100,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-15)
+                    },
+                    new TicketType
+                    {
+                        Id = Guid.Parse("f6666666-0000-0000-0000-000000000002"),
+                        EventId = Guid.Parse("f6666666-6666-6666-6666-666666666666"),
+                        Name = "VIP Pass",
+                        Price = 15000.00m,
+                        Capacity = 50,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-15)
+                    }
+                }
+            },
+            new Event
+            {
+                Id = Guid.Parse("77777777-7777-7777-7777-777777777777"),
+                Title = "Wellness & Beach Yoga Festival",
+                Description = "A weekend of mindfulness, beach yoga sessions, meditation, and holistic health workshops.",
+                Venue = "Mount Lavinia Beach Hotel",
+                EventDate = DateTime.UtcNow.AddDays(70),
+                Price = 4000.00m,
+                Category = "Festival",
+                VenueType = "Outdoor",
+                Status = EventStatus.Published,
+                OrganizerId = organizer2,
+                CreatedAt = DateTime.UtcNow.AddDays(-14),
+                ReviewedAt = DateTime.UtcNow.AddDays(-8),
+                ReviewedBy = adminId,
+                TicketTypes = new List<TicketType>
+                {
+                    new TicketType
+                    {
+                        Id = Guid.Parse("77777777-0000-0000-0000-000000000001"),
+                        EventId = Guid.Parse("77777777-7777-7777-7777-777777777777"),
+                        Name = "General Admission",
+                        Price = 4000.00m,
+                        Capacity = 150,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-14)
+                    },
+                    new TicketType
+                    {
+                        Id = Guid.Parse("77777777-0000-0000-0000-000000000002"),
+                        EventId = Guid.Parse("77777777-7777-7777-7777-777777777777"),
+                        Name = "VIP Pass",
+                        Price = 9000.00m,
+                        Capacity = 40,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow.AddDays(-14)
+                    }
+                }
+            }
         };
 
-        var seedEvents = eventDetails.Select(details => new Event
+        // 1. If database has no events, insert full seed data including ticket types
+        if (!await context.Events.AnyAsync())
         {
-            Id = Guid.Parse(details.Id),
-            Title = details.Title,
-            Description = details.Description,
-            Venue = details.Venue,
-            EventDate = now.AddDays(details.Days),
-            Price = details.Price,
-            Category = details.Category,
-            VenueType = details.VenueType,
-            Status = EventStatus.Published,
-            OrganizerId = details.OrganizerId,
-            CreatedAt = now.AddDays(-5),
-            ReviewedAt = now,
-            ReviewedBy = adminId
-        }).ToList();
-
-        foreach (var seedEvent in seedEvents)
-        {
-            seedEvent.TicketTypes = new List<TicketType>
-            {
-                CreateTicket(seedEvent, "General Admission", now),
-                CreateTicket(seedEvent, "VIP Pass", now)
-            };
+            await context.Events.AddRangeAsync(seedEvents);
+            await context.SaveChangesAsync();
+            return;
         }
 
+        // 2. Idempotent check: Ensure each canonical seed event exists
         foreach (var seedEvent in seedEvents)
         {
             var existingEvent = await context.Events
-                .Include(eventItem => eventItem.TicketTypes)
-                .FirstOrDefaultAsync(eventItem => eventItem.Id == seedEvent.Id);
+                .Include(e => e.TicketTypes)
+                .FirstOrDefaultAsync(e => e.Id == seedEvent.Id);
 
-            if (existingEvent is null)
+            if (existingEvent == null)
             {
                 await context.Events.AddAsync(seedEvent);
-                continue;
             }
-
-            existingEvent.Status = EventStatus.Published;
-            if (existingEvent.EventDate <= now)
+            else
             {
-                existingEvent.EventDate = seedEvent.EventDate;
-            }
+                // Ensure event date is in the future for local dev / booking testing
+                if (existingEvent.EventDate <= DateTime.UtcNow)
+                {
+                    existingEvent.EventDate = seedEvent.EventDate;
+                }
 
-            if (string.IsNullOrEmpty(existingEvent.Category))
-            {
-                existingEvent.Category = seedEvent.Category;
-            }
+                // Backfill category & venue type normalization
+                if (existingEvent.Category == null || existingEvent.Category == "Musical Concert" || existingEvent.Category == "Theatre / Performance")
+                {
+                    existingEvent.Category = seedEvent.Category;
+                }
+                if (string.IsNullOrEmpty(existingEvent.VenueType))
+                {
+                    existingEvent.VenueType = seedEvent.VenueType;
+                }
 
-            if (string.IsNullOrEmpty(existingEvent.VenueType))
-            {
-                existingEvent.VenueType = seedEvent.VenueType;
-            }
-
-            if (!existingEvent.TicketTypes.Any(ticket => ticket.Name == "General Admission"))
-            {
-                await context.TicketTypes.AddAsync(CreateTicket(existingEvent, "General Admission", now));
-            }
-
-            if (!existingEvent.TicketTypes.Any(ticket => ticket.Name == "VIP Pass"))
-            {
-                await context.TicketTypes.AddAsync(CreateTicket(existingEvent, "VIP Pass", now));
+                // Ensure tickets exist for this event
+                if (!existingEvent.TicketTypes.Any() && seedEvent.TicketTypes.Any())
+                {
+                    foreach (var ticket in seedEvent.TicketTypes)
+                    {
+                        context.TicketTypes.Add(new TicketType
+                        {
+                            Id = ticket.Id,
+                            EventId = existingEvent.Id,
+                            Name = ticket.Name,
+                            Price = ticket.Price,
+                            Capacity = ticket.Capacity,
+                            BookedQuantity = 0,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                }
             }
         }
 
+        // 3. Ensure any custom/other existing published or approved events in the DB also have valid ticket types
         var allEvents = await context.Events
-            .Include(eventItem => eventItem.TicketTypes)
+            .Include(e => e.TicketTypes)
             .ToListAsync();
 
-        foreach (var eventItem in allEvents)
+        foreach (var ev in allEvents)
         {
-            if (eventItem.EventDate <= now)
+            // If date is in the past, update to future for local dev
+            if (ev.EventDate <= DateTime.UtcNow)
             {
-                eventItem.EventDate = now.AddDays(45);
+                ev.EventDate = DateTime.UtcNow.AddDays(45);
             }
 
-            if (eventItem.Status != EventStatus.Rejected)
+            if (!ev.TicketTypes.Any() && ev.Status != EventStatus.Rejected)
             {
-                if (!eventItem.TicketTypes.Any(ticket => ticket.Name == "General Admission"))
-                {
-                    await context.TicketTypes.AddAsync(CreateTicket(eventItem, "General Admission", now));
-                }
-
-                if (!eventItem.TicketTypes.Any(ticket => ticket.Name == "VIP Pass"))
-                {
-                    await context.TicketTypes.AddAsync(CreateTicket(eventItem, "VIP Pass", now));
-                }
+                var basePrice = ev.Price > 0 ? ev.Price : 7500.00m;
+                context.TicketTypes.AddRange(
+                    new TicketType
+                    {
+                        Id = Guid.NewGuid(),
+                        EventId = ev.Id,
+                        Name = "General Admission",
+                        Price = basePrice,
+                        Capacity = 100,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow
+                    },
+                    new TicketType
+                    {
+                        Id = Guid.NewGuid(),
+                        EventId = ev.Id,
+                        Name = "VIP Pass",
+                        Price = basePrice * 2 > 0 ? basePrice * 2 : 15000.00m,
+                        Capacity = 50,
+                        BookedQuantity = 0,
+                        CreatedAt = DateTime.UtcNow
+                    }
+                );
             }
         }
 
         await context.SaveChangesAsync();
-    }
-
-    private static TicketType CreateTicket(Event eventItem, string name, DateTime createdAt)
-    {
-        var isVip = name == "VIP Pass";
-        var basePrice = eventItem.Price > 0 ? eventItem.Price : 0m;
-
-        return new TicketType
-        {
-            Id = Guid.NewGuid(),
-            EventId = eventItem.Id,
-            Name = name,
-            Price = isVip ? basePrice * 2 : basePrice,
-            Capacity = isVip ? 50 : 100,
-            BookedQuantity = 0,
-            CreatedAt = createdAt
-        };
     }
 }

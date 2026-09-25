@@ -43,6 +43,7 @@ public class PaymentsControllerTests
         if (customerId.HasValue)
         {
             claims.Add(new Claim(ClaimTypes.NameIdentifier, customerId.Value.ToString()));
+            claims.Add(new Claim("sub", customerId.Value.ToString()));
         }
 
         var identity = new ClaimsIdentity(claims, "TestAuth");

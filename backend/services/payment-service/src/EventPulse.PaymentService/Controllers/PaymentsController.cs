@@ -1,10 +1,11 @@
 using System.Security.Claims;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using EventPulse.PaymentService.Data;
 using EventPulse.PaymentService.DTOs;
 using EventPulse.PaymentService.Models;
 using EventPulse.PaymentService.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace EventPulse.PaymentService.Controllers;
 
@@ -41,17 +42,17 @@ public class PaymentsController : ControllerBase
         var authHeader = Request.Headers.Authorization.ToString();
         if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
-            return authHeader.Substring("Bearer ".Length).Trim();
+            return authHeader["Bearer ".Length..].Trim();
         }
-        return null;
+        return string.IsNullOrWhiteSpace(authHeader) ? null : authHeader.Trim();
     }
 
     [HttpPost("checkout-session")]
     public async Task<IActionResult> CreateCheckoutSession([FromBody] CreateCheckoutSessionRequest request, CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
+        if (request == null || request.BookingId == Guid.Empty)
         {
-            return BadRequest(new { code = "INVALID_REQUEST", message = "Invalid checkout session request." });
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Invalid booking ID." });
         }
 
         if (!TryGetCustomerId(out var customerId))
@@ -69,6 +70,8 @@ public class PaymentsController : ControllerBase
 
         if (bookingSummary.CustomerId != customerId)
         {
+            _logger.LogWarning("Customer {CustomerId} attempted to pay for booking {BookingId} owned by {OwnerId}",
+                customerId, bookingSummary.Id, bookingSummary.CustomerId);
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
                 code = "FORBIDDEN",
@@ -85,30 +88,48 @@ public class PaymentsController : ControllerBase
             });
         }
 
-        // Create Payment record in DB (Zero-Trust amount from BookingService)
-        var payment = new Payment
-        {
-            BookingId = bookingSummary.Id,
-            BookingReference = bookingSummary.BookingReference,
-            CustomerId = customerId,
-            Amount = bookingSummary.TotalAmount,
-            Currency = "usd",
-            Status = PaymentStatus.Pending,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
+        var payment = await _dbContext.Payments
+            .FirstOrDefaultAsync(p => p.BookingId == bookingSummary.Id && p.Status == PaymentStatus.Pending, cancellationToken);
 
-        _dbContext.Payments.Add(payment);
+        if (payment == null)
+        {
+            payment = new Payment
+            {
+                Id = Guid.NewGuid(),
+                BookingId = bookingSummary.Id,
+                BookingReference = bookingSummary.BookingReference,
+                CustomerId = customerId,
+                Amount = bookingSummary.TotalAmount,
+                Currency = "usd",
+                Status = PaymentStatus.Pending,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _dbContext.Payments.Add(payment);
+        }
+        else
+        {
+            payment.Amount = bookingSummary.TotalAmount;
+            payment.BookingReference = bookingSummary.BookingReference;
+            payment.CustomerId = customerId;
+        }
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         try
         {
-            // Create Stripe Checkout Session
             var sessionResult = await _stripeService.CreateSessionAsync(payment, cancellationToken);
 
             payment.StripeSessionId = sessionResult.SessionId;
             await _dbContext.SaveChangesAsync(cancellationToken);
 
-            return Ok(new CheckoutSessionResponse(sessionResult.SessionId, sessionResult.CheckoutUrl));
+            return Ok(new CheckoutSessionResponse
+            {
+                PaymentId = payment.Id,
+                BookingId = payment.BookingId,
+                BookingReference = payment.BookingReference,
+                SessionId = sessionResult.SessionId,
+                CheckoutUrl = sessionResult.CheckoutUrl
+            });
         }
         catch (Exception ex)
         {
