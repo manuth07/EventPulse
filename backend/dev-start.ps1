@@ -12,6 +12,24 @@
 
 $ErrorActionPreference = "Stop"
 
+# ── Load Environment Variables from .env ──────────────────────────────────────
+$EnvFile = Join-Path $PSScriptRoot ".env"
+if (-not (Test-Path $EnvFile)) {
+    $EnvFile = Join-Path (Split-Path $PSScriptRoot -Parent) ".env"
+}
+if (Test-Path $EnvFile) {
+    Write-Host "Loading environment variables from $EnvFile..." -ForegroundColor Green
+    foreach ($line in Get-Content $EnvFile) {
+        if (![string]::IsNullOrWhiteSpace($line) -and !$line.TrimStart().StartsWith("#")) {
+            $parts = $line.Split('=', 2)
+            if ($parts.Length -eq 2) {
+                [Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim())
+                Set-Item -Path "env:$($parts[0].Trim())" -Value $parts[1].Trim()
+            }
+        }
+    }
+}
+
 # ── Resolve paths relative to THIS script's directory ─────────────────────────
 $BackendRoot = $PSScriptRoot
 
@@ -39,6 +57,12 @@ $Services = @(
         Color   = "Magenta"
         Path    = "$BackendRoot\services\booking-service\src\EventPulse.BookingService"
         Port    = 7103
+    },
+    @{
+        Name    = "PaymentService"
+        Color   = "Blue"
+        Path    = "$BackendRoot\services\payment-service\src\EventPulse.PaymentService"
+        Port    = 7104
     }
 )
 

@@ -50,7 +50,25 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 // Application & Security Services
 // ---------------------------------------------------------------------------
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("Email"));
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
+var keyStr = builder.Configuration["Jwt:Key"] 
+    ?? builder.Configuration["Jwt__Key"] 
+    ?? builder.Configuration.GetSection("Jwt")["Key"]
+    ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
+
+using (var sha256 = System.Security.Cryptography.SHA256.Create())
+{
+    var hash = Convert.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(keyStr)));
+    Console.WriteLine($"[KEY-VERIFY] {builder.Environment.ApplicationName} Key Hash: {hash}");
+}
+
+builder.Services.Configure<JwtSettings>(options =>
+{
+    builder.Configuration.GetSection("Jwt").Bind(options);
+    if (string.IsNullOrWhiteSpace(options.Key))
+    {
+        options.Key = keyStr;
+    }
+});
 builder.Services.Configure<GoogleSettings>(builder.Configuration.GetSection("Google"));
 builder.Services.Configure<AdminBootstrapSettings>(builder.Configuration.GetSection("AdminBootstrap"));
 builder.Services.Configure<DevOrganizerSettings>(builder.Configuration.GetSection("DevOrganizer"));
@@ -67,11 +85,23 @@ builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationSer
 builder.Services.AddScoped<IdentityDataSeeder>();
 
 // ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// ---------------------------------------------------------------------------
 // JWT Bearer Authentication Infrastructure
 // ---------------------------------------------------------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var keyStr = jwtSection["Key"];
-var keyBytes = !string.IsNullOrEmpty(keyStr) ? Encoding.UTF8.GetBytes(keyStr) : new byte[32];
+var keyBytes = Encoding.UTF8.GetBytes(keyStr);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -85,13 +115,33 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
+        IssuerSigningKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" },
         ValidateIssuer = true,
         ValidIssuer = jwtSection["Issuer"] ?? "EventPulse.IdentityService",
         ValidateAudience = true,
         ValidAudience = jwtSection["Audience"] ?? "EventPulse.Clients",
         ValidateLifetime = true,
         ClockSkew = TimeSpan.FromMinutes(1)
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("IdentityService.JwtAuthentication");
+            logger.LogWarning("JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("IdentityService.JwtAuthentication");
+            logger.LogWarning("JWT challenge triggered: Error={Error}, Description={Description}",
+                context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -131,6 +181,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -143,10 +194,13 @@ app.MapMetrics();
 app.MapControllers();
 
 // ---------------------------------------------------------------------------
-// Startup: Seed roles and optional bootstrap admin
+// Startup: Migrate database, seed roles and optional bootstrap admin
 // ---------------------------------------------------------------------------
 using (var scope = app.Services.CreateScope())
 {
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await dbContext.Database.MigrateAsync();
+
     var seeder = scope.ServiceProvider.GetRequiredService<IdentityDataSeeder>();
     await seeder.SeedAsync();
 }

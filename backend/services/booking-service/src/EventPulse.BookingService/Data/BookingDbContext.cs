@@ -12,6 +12,9 @@ public class BookingDbContext : DbContext
     public DbSet<Cart> Carts => Set<Cart>();
     public DbSet<CartItem> CartItems => Set<CartItem>();
 
+    public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<BookingItem> BookingItems => Set<BookingItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -66,6 +69,43 @@ public class BookingDbContext : DbContext
                 .IsUnique();
 
             entity.HasIndex(c => c.CustomerId);
+        });
+
+        modelBuilder.Entity<Booking>(entity =>
+        {
+            entity.HasKey(b => b.Id);
+
+            entity.Property(b => b.BookingReference)
+                .IsRequired()
+                .HasMaxLength(50);
+            
+            entity.HasIndex(b => b.BookingReference).IsUnique();
+
+            entity.Property(b => b.TotalAmount)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.HasMany(b => b.Items)
+                .WithOne(i => i.Booking)
+                .HasForeignKey(i => i.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BookingItem>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+
+            entity.Property(i => i.TicketName)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(i => i.UnitPrice)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+            
+            entity.Property(i => i.Subtotal)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
         });
     }
 }
