@@ -23,7 +23,7 @@ public class JwtTokenService : IJwtTokenService
         ValidateJwtSettings(_settings);
 
         var keyBytes = Encoding.UTF8.GetBytes(_settings.Key);
-        var securityKey = new SymmetricSecurityKey(keyBytes);
+        var securityKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>

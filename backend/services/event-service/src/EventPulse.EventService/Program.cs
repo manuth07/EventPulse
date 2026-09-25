@@ -23,18 +23,24 @@ builder.Services.AddDbContext<EventDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("EventDatabase")));
 
 // ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// ---------------------------------------------------------------------------
 // JWT Bearer — validates tokens issued by Identity Service
 // ---------------------------------------------------------------------------
-// The signing key MUST match the key in IdentityService.
-// Supply via:
-//   Local dev: dotnet user-secrets set "Jwt:Key" "<same-key>"
-//   Azure:     App Service environment variable Jwt__Key
-// ---------------------------------------------------------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var jwtKeyStr = jwtSection["Key"];
-var jwtKeyBytes = !string.IsNullOrEmpty(jwtKeyStr)
-    ? Encoding.UTF8.GetBytes(jwtKeyStr)
-    : new byte[32]; // fallback — token validation will fail at runtime without a real key
+var jwtKeyStr = jwtSection["Key"] ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
+var jwtKeyBytes = Encoding.UTF8.GetBytes(jwtKeyStr);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -48,7 +54,7 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(jwtKeyBytes),
+        IssuerSigningKey = new SymmetricSecurityKey(jwtKeyBytes) { KeyId = "EventPulseKey_2026" },
         ValidateIssuer = true,
         ValidIssuer = jwtSection["Issuer"] ?? "EventPulse.IdentityService",
         ValidateAudience = true,
@@ -58,6 +64,26 @@ builder.Services.AddAuthentication(options =>
         // Map role claims correctly so [Authorize(Policy = ...)] works
         RoleClaimType = ClaimTypes.Role,
         NameClaimType = ClaimTypes.NameIdentifier,
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("EventService.JwtAuthentication");
+            logger.LogWarning("JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("EventService.JwtAuthentication");
+            logger.LogWarning("JWT challenge triggered: Error={Error}, Description={Description}",
+                context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -119,25 +145,27 @@ var dbSettings = app.Configuration
     .GetSection(DatabaseSettings.SectionName)
     .Get<DatabaseSettings>() ?? new DatabaseSettings();
 
-if (dbSettings.MigrateOnStartup || dbSettings.SeedOnStartup)
+if (app.Environment.IsDevelopment() || dbSettings.MigrateOnStartup || dbSettings.SeedOnStartup)
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<EventDbContext>();
 
-    if (dbSettings.MigrateOnStartup)
+    if (app.Environment.IsDevelopment() || dbSettings.MigrateOnStartup)
     {
-        app.Logger.LogInformation("Executing EF Core database migrations (Database:MigrateOnStartup = true)...");
+        app.Logger.LogInformation("Executing EF Core database migrations...");
         await dbContext.Database.MigrateAsync();
         app.Logger.LogInformation("Database migrations applied successfully.");
     }
 
-    if (dbSettings.SeedOnStartup)
+    if (app.Environment.IsDevelopment() || dbSettings.SeedOnStartup)
     {
-        app.Logger.LogInformation("Executing database seeding (Database:SeedOnStartup = true)...");
+        app.Logger.LogInformation("Executing database seeding...");
         await EventDbSeeder.SeedAsync(dbContext);
         app.Logger.LogInformation("Database seeding completed successfully.");
     }
 }
+
+app.UseCors("AllowAll");
 
 // Authentication must precede Authorization in the middleware pipeline
 app.UseAuthentication();
