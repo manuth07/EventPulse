@@ -1,24 +1,12 @@
-import { getApiBaseUrl } from './apiConfig';
+import { apiClient, getStoredToken } from './apiClient';
 
 /**
  * Fetch the customer's current active cart.
  */
 export async function getCart(token) {
-  const response = await fetch(`${getApiBaseUrl()}/api/cart`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = new Error(`Failed to load cart (${response.status})`);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  return apiClient.get('/api/cart', { headers });
 }
 
 /**
@@ -26,35 +14,9 @@ export async function getCart(token) {
  * By default, quantity sets the desired absolute quantity.
  */
 export async function addToCart(eventId, ticketTypeId, quantity, token, clearExisting = false, isDelta = false) {
-  const response = await fetch(`${getApiBaseUrl()}/api/cart/items`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ eventId, ticketTypeId, quantity, clearExisting, isDelta }),
-  });
-
-  if (!response.ok) {
-    let errorMsg = `Failed to add to cart (${response.status})`;
-    let conflictData = null;
-
-    try {
-      const data = await response.json();
-      if (data.message) errorMsg = data.message;
-      if (response.status === 409) conflictData = data;
-    } catch (e) {
-      /* not JSON */
-    }
-
-    const error = new Error(errorMsg);
-    error.status = response.status;
-    error.conflictData = conflictData;
-    throw error;
-  }
-
-  return response.json();
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  return apiClient.post('/api/cart/items', { eventId, ticketTypeId, quantity, clearExisting, isDelta }, { headers });
 }
 
 /**
@@ -62,108 +24,44 @@ export async function addToCart(eventId, ticketTypeId, quantity, token, clearExi
  * If quantity <= 0, the item is removed.
  */
 export async function updateCartItemQuantity(ticketTypeId, quantity, token) {
-  const response = await fetch(`${getApiBaseUrl()}/api/cart/items/${ticketTypeId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ quantity }),
-  });
-
-  if (!response.ok) {
-    let errorMsg = `Failed to update quantity (${response.status})`;
-    try {
-      const data = await response.json();
-      if (data.message) errorMsg = data.message;
-    } catch (e) {
-      /* not JSON */
-    }
-
-    const error = new Error(errorMsg);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  return apiClient.put(`/api/cart/items/${ticketTypeId}`, { quantity }, { headers });
 }
 
 /**
  * Remove an item from the customer's active cart.
  */
 export async function removeCartItem(ticketTypeId, token) {
-  const response = await fetch(`${getApiBaseUrl()}/api/cart/items/${ticketTypeId}`, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    let errorMsg = `Failed to remove item (${response.status})`;
-    try {
-      const data = await response.json();
-      if (data.message) errorMsg = data.message;
-    } catch (e) {
-      /* not JSON */
-    }
-
-    const error = new Error(errorMsg);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  return apiClient.delete(`/api/cart/items/${ticketTypeId}`, { headers });
 }
 
 /**
  * Clear the customer's active cart.
  */
 export async function clearCart(token) {
-  const response = await fetch(`${getApiBaseUrl()}/api/cart`, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = new Error(`Failed to clear cart (${response.status})`);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  return apiClient.delete('/api/cart', { headers });
 }
 
 /**
  * Mark the customer's active cart as completed (called post-checkout).
  */
 export async function completeCart(token) {
-  const response = await fetch(`${getApiBaseUrl()}/api/cart/complete`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const error = new Error(`Failed to complete cart (${response.status})`);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  return apiClient.post('/api/cart/complete', {}, { headers });
 }
 
 /**
  * Create a new booking from the cart items.
  */
 export async function createBooking(eventId, items, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
   const payload = {
     eventId,
     items: items.map(item => ({
@@ -172,29 +70,5 @@ export async function createBooking(eventId, items, token) {
     }))
   };
 
-  const response = await fetch(`${getApiBaseUrl()}/api/bookings`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    let errorMsg = `Failed to create booking (${response.status})`;
-    try {
-      const data = await response.json();
-      if (data.message) errorMsg = data.message;
-    } catch (e) {
-      /* not JSON */
-    }
-
-    const error = new Error(errorMsg);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response.json();
+  return apiClient.post('/api/bookings', payload, { headers });
 }

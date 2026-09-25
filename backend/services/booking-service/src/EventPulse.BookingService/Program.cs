@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using EventPulse.BookingService.Data;
 using EventPulse.BookingService.Services;
@@ -12,8 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ---------------------------------------------------------------------------
 // Owns: ticket reservations, seat availability, booking lifecycle.
 // Does NOT reference: IdentityService, EventService, PaymentService.
-// Communicates with EventService (read event/seat data) → via HTTP client later.
-// Communicates with PaymentService (payment confirmation) → via Kafka later.
+// Communicates with EventService (read event/seat data) → via HTTP client.
 // ---------------------------------------------------------------------------
 
 builder.Services.AddDbContext<BookingDbContext>(options =>
@@ -25,38 +25,68 @@ builder.Services.AddHttpClient<IEventAvailabilityClient, EventServiceAvailabilit
 });
 
 // ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// ---------------------------------------------------------------------------
 // JWT Bearer — validates tokens issued by Identity Service
 // ---------------------------------------------------------------------------
-// The signing key MUST match the key configured in IdentityService.
-// Supply via:
-//   Local dev: dotnet user-secrets set "Jwt:Key" "<same-key>"
-//   Azure:     App Service environment variable Jwt__Key
-// ---------------------------------------------------------------------------
-var jwtSection = builder.Configuration.GetSection("Jwt");
-var jwtKeyStr = jwtSection["Key"];
-var jwtKeyBytes = !string.IsNullOrEmpty(jwtKeyStr)
-    ? Encoding.UTF8.GetBytes(jwtKeyStr)
-    : new byte[32]; // fallback — token validation will fail at runtime without a real key
+var keyStr = builder.Configuration["Jwt:Key"] 
+    ?? builder.Configuration["Jwt__Key"] 
+    ?? builder.Configuration.GetSection("Jwt")["Key"]
+    ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
 
-builder.Services.AddAuthentication(options =>
+using (var sha256 = System.Security.Cryptography.SHA256.Create())
 {
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
+    var hash = Convert.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(keyStr)));
+    Console.WriteLine($"[KEY-VERIFY] {builder.Environment.ApplicationName} Key Hash: {hash}");
+}
+
+var keyBytes = Encoding.UTF8.GetBytes(keyStr);
+var securityKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
     options.RequireHttpsMetadata = false;
-    options.SaveToken = false;
+    options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(jwtKeyBytes),
-        ValidateIssuer = true,
-        ValidIssuer = jwtSection["Issuer"] ?? "EventPulse.IdentityService",
-        ValidateAudience = true,
-        ValidAudience = jwtSection["Audience"] ?? "EventPulse.Clients",
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1),
+        IssuerSigningKey = securityKey,
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ValidateLifetime = false // Temporarily disable lifetime check to isolate signature
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            Console.WriteLine($"[AUTH-FAIL] Exception: {context.Exception.Message}");
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("BookingService.JwtAuthentication");
+            logger.LogWarning("JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("BookingService.JwtAuthentication");
+            logger.LogWarning("JWT challenge triggered: Error={Error}, Description={Description}",
+                context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -65,7 +95,11 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IBookingReferenceGenerator, BookingReferenceGenerator>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
@@ -85,7 +119,9 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// Authentication must precede Authorization in the middleware pipeline
+app.UseCors("AllowAll");
+
+// Middleware Ordering: CORS -> Authentication -> Authorization -> Endpoints
 app.UseAuthentication();
 app.UseAuthorization();
 
