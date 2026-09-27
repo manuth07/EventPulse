@@ -14,6 +14,7 @@ public class BookingDbContext : DbContext
 
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingItem> BookingItems => Set<BookingItem>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -106,6 +107,55 @@ public class BookingDbContext : DbContext
             entity.Property(i => i.Subtotal)
                 .HasColumnType("decimal(18,2)")
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<Ticket>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+
+            entity.Property(t => t.TicketCode)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.HasIndex(t => t.TicketCode)
+                .IsUnique();
+
+            entity.Property(t => t.ValidationToken)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.HasIndex(t => t.ValidationToken)
+                .IsUnique();
+
+            entity.Property(t => t.TicketName)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(t => t.TicketSequence)
+                .IsRequired();
+
+            entity.Property(t => t.Status)
+                .IsRequired();
+
+            entity.Property(t => t.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            // Deterministic per-unit unique constraint for bulletproof idempotency
+            entity.HasIndex(t => new { t.BookingItemId, t.TicketSequence })
+                .IsUnique();
+
+            entity.HasIndex(t => t.BookingId);
+            entity.HasIndex(t => t.EventId);
+
+            entity.HasOne(t => t.Booking)
+                .WithMany(b => b.Tickets)
+                .HasForeignKey(t => t.BookingId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(t => t.BookingItem)
+                .WithMany(i => i.Tickets)
+                .HasForeignKey(t => t.BookingItemId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

@@ -11,4 +11,5 @@ public class BookingItem
     public decimal Subtotal { get; set; }
 
     public Booking? Booking { get; set; }
+    public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
 }

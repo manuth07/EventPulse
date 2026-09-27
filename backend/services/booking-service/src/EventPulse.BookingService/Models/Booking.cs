@@ -12,4 +12,5 @@ public class Booking
     public DateTimeOffset? ConfirmedAt { get; set; }
 
     public ICollection<BookingItem> Items { get; set; } = new List<BookingItem>();
+    public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
 }
