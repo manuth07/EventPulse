@@ -116,6 +116,10 @@ using (var scope = app.Services.CreateScope())
         // Relation already exists in local dev environment
         app.Logger.LogWarning("Payments table already exists. Skipping creation.");
     }
+    catch (Exception ex) when (ex.Message.Contains("42P07") || ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+    {
+        app.Logger.LogWarning("Payments table already exists. Skipping creation: {Message}", ex.Message);
+    }
 }
 
 // Prometheus HTTP Request Metrics (TECH-12)

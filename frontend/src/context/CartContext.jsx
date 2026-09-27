@@ -56,7 +56,7 @@ export function CartProvider({ children }) {
       try {
         await apiClearCart(token);
       } catch (e) {
-        // Ignored if already empty or error handled by backend
+        // Ignored if already empty or handled by backend
       }
     }
 
@@ -85,9 +85,24 @@ export function CartProvider({ children }) {
 
   const clearCurrentCart = async () => {
     const token = getToken();
-    if (!token) throw new Error('Authentication required.');
+    if (!token) {
+      setCart({
+        cartId: null,
+        eventId: null,
+        eventTitle: null,
+        items: [],
+        totalAmount: 0,
+        totalTicketCount: 0,
+      });
+      return;
+    }
 
-    await apiClearCart(token);
+    try {
+      await apiClearCart(token);
+    } catch (e) {
+      console.warn('Error clearing cart on backend:', e);
+    }
+
     setCart({
       cartId: null,
       eventId: null,
