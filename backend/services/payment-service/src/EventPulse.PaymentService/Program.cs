@@ -34,11 +34,14 @@ var stripeSecretKey = builder.Configuration["STRIPE_SECRET_KEY"]
 
 StripeConfiguration.ApiKey = stripeSecretKey;
 
-// Diagnostic startup print
-var keyPreview = string.IsNullOrEmpty(stripeSecretKey) 
-    ? "NULL/EMPTY" 
-    : (stripeSecretKey.Length > 14 ? stripeSecretKey[..12] + "..." : stripeSecretKey);
-Console.WriteLine($"[STRIPE-INIT] Secret Key loaded: {keyPreview} (Length: {stripeSecretKey?.Length ?? 0})");
+if (!string.IsNullOrWhiteSpace(stripeSecretKey))
+{
+    Console.WriteLine("[STRIPE-INIT] Stripe API configuration detected.");
+}
+else
+{
+    Console.WriteLine("[STRIPE-INIT] Stripe API key is not configured.");
+}
 
 // ---------------------------------------------------------------------------
 // CORS Policy
