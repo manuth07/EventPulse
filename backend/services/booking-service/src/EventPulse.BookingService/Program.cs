@@ -111,6 +111,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IBookingReferenceGenerator, BookingReferenceGenerator>();
+builder.Services.AddScoped<IBookingConfirmationService, BookingConfirmationService>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
