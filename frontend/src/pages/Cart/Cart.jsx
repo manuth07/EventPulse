@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import { createCheckoutSession } from '../../services/paymentService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import {
   ShoppingCart,
@@ -13,6 +15,7 @@ import {
   AlertCircle,
   ArrowRight,
   ArrowLeft,
+  Loader2,
 } from 'lucide-react';
 
 function formatDate(dateString) {
@@ -30,7 +33,8 @@ function formatDate(dateString) {
 
 export function Cart() {
   const navigate = useNavigate();
-  const { cart, loading, error, setItemQuantity, removeItem, clearCurrentCart, checkout } = useCart();
+  const { accessToken } = useAuth();
+  const { cart, loading, error, setItemQuantity, removeItem, clearCurrentCart, checkout, refreshCart } = useCart();
 
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
@@ -66,6 +70,9 @@ export function Cart() {
     setActionLoading(true);
     try {
       await clearCurrentCart();
+      if (refreshCart) {
+        await refreshCart();
+      }
     } catch (err) {
       setActionError(err.message || 'Failed to clear cart.');
     } finally {
@@ -341,13 +348,20 @@ export function Cart() {
                     setActionError(null);
                     setActionLoading(true);
                     try {
-                      const response = await checkout();
-                      // Next phase will integrate Stripe. For now, alert success and redirect
-                      alert(`Booking successful! Reference: ${response.bookingReference}`);
-                      navigate(`/events/${cart.eventId}`);
+                      const bookingResponse = await checkout();
+                      const bookingId = bookingResponse?.bookingId || bookingResponse?.id;
+                      if (!bookingId) {
+                        throw new Error('Booking could not be created. Please try again.');
+                      }
+
+                      const paymentSession = await createCheckoutSession(bookingId, accessToken);
+                      if (paymentSession?.checkoutUrl) {
+                        window.location.href = paymentSession.checkoutUrl;
+                      } else {
+                        throw new Error('Unable to redirect to Stripe checkout. Please try again.');
+                      }
                     } catch (err) {
                       setActionError(err.message || 'Checkout failed.');
-                    } finally {
                       setActionLoading(false);
                     }
                   }}
@@ -363,11 +377,23 @@ export function Cart() {
                     justifyContent: 'center',
                     gap: '8px',
                     borderRadius: 'var(--ep-radius-btn)',
+                    cursor: actionLoading ? 'not-allowed' : 'pointer',
+                    opacity: actionLoading ? 0.8 : 1,
                   }}
                 >
-                  <span>Continue to Checkout</span>
-                  <ArrowRight size={16} />
+                  {actionLoading ? (
+                    <>
+                      <Loader2 size={16} className="ep-spin" />
+                      <span>Redirecting to Checkout…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Continue to Checkout</span>
+                      <ArrowRight size={16} />
+                    </>
+                  )}
                 </button>
+
               </div>
             </div>
           </div>

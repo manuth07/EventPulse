@@ -1,43 +1,29 @@
+using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using EventPulse.IdentityService.Data;
 using EventPulse.IdentityService.Models;
 using EventPulse.IdentityService.Security;
 using EventPulse.IdentityService.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---------------------------------------------------------------------------
-// Database
-// ---------------------------------------------------------------------------
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("IdentityDatabase")));
-
-// ---------------------------------------------------------------------------
-// Data Protection (required by Identity token providers)
-// ---------------------------------------------------------------------------
 builder.Services.AddDataProtection();
 
-// ---------------------------------------------------------------------------
-// ASP.NET Core Identity
-// ---------------------------------------------------------------------------
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        // Password policy
         options.Password.RequireDigit = true;
         options.Password.RequiredLength = 8;
         options.Password.RequireLowercase = true;
         options.Password.RequireUppercase = true;
         options.Password.RequireNonAlphanumeric = false;
-
-        // Email is the EventPulse login identifier
         options.User.RequireUniqueEmail = true;
-
-        // Lockout
         options.Lockout.AllowedForNewUsers = true;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
@@ -46,9 +32,6 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
-// ---------------------------------------------------------------------------
-// Application & Security Services
-// ---------------------------------------------------------------------------
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("Email"));
 var keyStr = builder.Configuration["Jwt:Key"] 
     ?? builder.Configuration["Jwt__Key"] 
@@ -70,9 +53,6 @@ builder.Services.Configure<JwtSettings>(options =>
     }
 });
 builder.Services.Configure<GoogleSettings>(builder.Configuration.GetSection("Google"));
-builder.Services.Configure<AdminBootstrapSettings>(builder.Configuration.GetSection("AdminBootstrap"));
-builder.Services.Configure<DevOrganizerSettings>(builder.Configuration.GetSection("DevOrganizer"));
-
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
@@ -81,8 +61,7 @@ builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
-builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationService>();
-builder.Services.AddScoped<IdentityDataSeeder>();
+builder.Services.AddScoped<EventPulse.IdentityService.Services.IdentityDataSeeder>();
 
 // ---------------------------------------------------------------------------
 // CORS Policy
@@ -102,6 +81,8 @@ builder.Services.AddCors(options =>
 // ---------------------------------------------------------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var keyBytes = Encoding.UTF8.GetBytes(keyStr);
+var signingKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
+var unkeyedSigningKey = new SymmetricSecurityKey(keyBytes);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -115,13 +96,18 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" },
+        IssuerSigningKey = signingKey,
+        IssuerSigningKeys = new SecurityKey[] { signingKey, unkeyedSigningKey },
+        IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
+            new SecurityKey[] { signingKey, unkeyedSigningKey },
         ValidateIssuer = true,
         ValidIssuer = jwtSection["Issuer"] ?? "EventPulse.IdentityService",
         ValidateAudience = true,
         ValidAudience = jwtSection["Audience"] ?? "EventPulse.Clients",
         ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1)
+        ClockSkew = TimeSpan.FromMinutes(1),
+        RoleClaimType = ClaimTypes.Role,
+        NameClaimType = ClaimTypes.NameIdentifier
     };
     options.Events = new JwtBearerEvents
     {
@@ -167,8 +153,19 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
-// Application Insights Telemetry (EP-200 / TECH-11)
-builder.Services.AddApplicationInsightsTelemetry();
+var applicationInsightsConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+    ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+if (!string.IsNullOrWhiteSpace(applicationInsightsConnectionString))
+{
+    builder.Services.AddApplicationInsightsTelemetry(options =>
+    {
+        options.ConnectionString = applicationInsightsConnectionString;
+    });
+}
+else
+{
+    builder.Services.AddApplicationInsightsTelemetry();
+}
 
 var app = builder.Build();
 
@@ -184,13 +181,10 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
-
-// Health endpoint consumed by YARP gateway health-check and load balancer
 app.MapHealthChecks("/health");
 
 // Prometheus Scrape Endpoint (TECH-12)
 app.MapMetrics();
-
 app.MapControllers();
 
 // ---------------------------------------------------------------------------
@@ -205,4 +199,4 @@ using (var scope = app.Services.CreateScope())
     await seeder.SeedAsync();
 }
 
-app.Run();
+await app.RunAsync();

@@ -1,6 +1,6 @@
 # =============================================================================
 # EventPulse Backend — Dev Runner
-# Starts: Gateway (:7000)  |  IdentityService (:7101)  |  EventService (:7102)  |  BookingService (:7103)
+# Starts: Gateway (:7000)  |  IdentityService (:7101)  |  EventService (:7102)  |  BookingService (:7103)  |  PaymentService (:7104)
 #
 # Usage:
 #   From repo root or backend/:
@@ -65,6 +65,7 @@ $Services = @(
         Port    = 7104
     }
 )
+
 
 # ── Validate project directories exist ────────────────────────────────────────
 foreach ($svc in $Services) {

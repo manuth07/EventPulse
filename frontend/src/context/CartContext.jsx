@@ -52,6 +52,14 @@ export function CartProvider({ children }) {
     const token = getToken();
     if (!token) throw new Error('Authentication required.');
 
+    if (clearExisting) {
+      try {
+        await apiClearCart(token);
+      } catch (e) {
+        // Ignored if already empty or handled by backend
+      }
+    }
+
     const updatedCart = await apiAddToCart(eventId, ticketTypeId, quantity, token, clearExisting, isDelta);
     setCart(updatedCart);
     return updatedCart;
@@ -77,9 +85,24 @@ export function CartProvider({ children }) {
 
   const clearCurrentCart = async () => {
     const token = getToken();
-    if (!token) throw new Error('Authentication required.');
+    if (!token) {
+      setCart({
+        cartId: null,
+        eventId: null,
+        eventTitle: null,
+        items: [],
+        totalAmount: 0,
+        totalTicketCount: 0,
+      });
+      return;
+    }
 
-    await apiClearCart(token);
+    try {
+      await apiClearCart(token);
+    } catch (e) {
+      console.warn('Error clearing cart on backend:', e);
+    }
+
     setCart({
       cartId: null,
       eventId: null,
@@ -101,6 +124,7 @@ export function CartProvider({ children }) {
     addOrUpdateItem,
     setItemQuantity,
     removeItem,
+    clearCart: clearCurrentCart,
     clearCurrentCart,
     checkout: async () => {
       const token = getToken();

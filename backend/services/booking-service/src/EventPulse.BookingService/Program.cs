@@ -76,15 +76,13 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = keyedSigningKey,
         IssuerSigningKeys = new SecurityKey[] { keyedSigningKey, unkeyedSigningKey },
         IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
-        {
-            return new SecurityKey[] { keyedSigningKey, unkeyedSigningKey };
-        },
+            new SecurityKey[] { keyedSigningKey, unkeyedSigningKey },
         ValidateIssuer = true,
         ValidIssuer = jwtSection["Issuer"] ?? builder.Configuration["Jwt:Issuer"] ?? "EventPulse.IdentityService",
         ValidateAudience = true,
         ValidAudience = jwtSection["Audience"] ?? builder.Configuration["Jwt:Audience"] ?? "EventPulse.Clients",
         ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(2),
+        ClockSkew = TimeSpan.FromMinutes(1),
         RoleClaimType = ClaimTypes.Role,
         NameClaimType = ClaimTypes.NameIdentifier
     };
@@ -111,7 +109,6 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
-
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IBookingReferenceGenerator, BookingReferenceGenerator>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
@@ -122,17 +119,20 @@ builder.Services.AddControllers()
     });
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+builder.Services.AddApplicationInsightsTelemetry();
 
 var app = builder.Build();
 
-// ---------------------------------------------------------------------------
-// Database Migration on Startup
-// ---------------------------------------------------------------------------
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
     await dbContext.Database.MigrateAsync();
 }
+
+app.UseRouting();
+
+// Prometheus HTTP metrics middleware
+app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
 {
@@ -141,13 +141,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowAll");
 
-// Prometheus HTTP metrics middleware
-app.UseHttpMetrics();
-
 // Middleware Ordering: CORS -> Authentication -> Authorization -> Endpoints
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapHealthChecks("/health");
 
 // Prometheus Scrape Endpoint
@@ -155,4 +151,4 @@ app.MapMetrics();
 
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();
