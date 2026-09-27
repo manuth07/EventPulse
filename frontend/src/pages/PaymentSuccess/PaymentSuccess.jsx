@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { CheckCircle2, ArrowRight } from 'lucide-react';
@@ -6,6 +6,14 @@ import { CheckCircle2, ArrowRight } from 'lucide-react';
 export function PaymentSuccess() {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
+
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('ep_pending_booking');
+    } catch (e) {
+      console.warn('Failed to clear pending booking from sessionStorage:', e);
+    }
+  }, []);
 
   return (
     <div style={{
