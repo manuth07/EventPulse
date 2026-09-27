@@ -211,7 +211,7 @@ export function PaymentSuccess() {
                   marginBottom: '20px',
                 }}
               >
-                <Loader2 size={32} className="ep-spin" style={{ color: 'var(--ep-primary)' }} />
+                <Loader2 size={32} className="ep-spin" style={{ color: 'var(--ep-primary)', flexShrink: 0 }} />
               </div>
 
               <h1
@@ -333,7 +333,7 @@ export function PaymentSuccess() {
                     marginBottom: '24px',
                   }}
                 >
-                  <Loader2 size={13} className="ep-spin" />
+                  <Loader2 size={13} className="ep-spin" style={{ flexShrink: 0 }} />
                   <span>Checking for confirmation…</span>
                 </div>
               )}
