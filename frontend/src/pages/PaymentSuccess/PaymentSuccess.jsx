@@ -573,13 +573,10 @@ export function PaymentSuccess() {
 
               {/* Action Buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <button
-                  type="button"
-                  disabled
-                  className="ep-btn-secondary"
+                <Link
+                  to={`/bookings/${targetBookingId}/tickets`}
+                  className="ep-btn-primary"
                   style={{
-                    opacity: 0.65,
-                    cursor: 'not-allowed',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -587,17 +584,17 @@ export function PaymentSuccess() {
                     padding: '12px 24px',
                     fontSize: '14px',
                     fontWeight: 600,
+                    textDecoration: 'none',
                     borderRadius: 'var(--ep-radius-btn)',
                   }}
-                  title="Ticket generation will be available in EP-53"
                 >
                   <Ticket size={16} />
-                  <span>View Tickets (Available Soon)</span>
-                </button>
+                  <span>View Tickets</span>
+                </Link>
 
                 <Link
                   to="/"
-                  className="ep-btn-primary"
+                  className="ep-btn-secondary"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',

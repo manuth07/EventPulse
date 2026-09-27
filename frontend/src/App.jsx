@@ -22,6 +22,7 @@ import { Cart } from './pages/Cart/Cart';
 import { SelectTickets } from './pages/SelectTickets/SelectTickets';
 import { PaymentSuccess } from './pages/PaymentSuccess/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel/PaymentCancel';
+import { Tickets } from './pages/Tickets/Tickets';
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
             <Route path="/events/:id/tickets" element={<SelectTickets />} />
             <Route path="/payment-success" element={<PaymentSuccess />} />
             <Route path="/payment-cancel" element={<PaymentCancel />} />
+            <Route path="/bookings/:bookingId/tickets" element={<RequireAuth><Tickets /></RequireAuth>} />
 
             {/* Organizer Protected Routes */}
             <Route element={<RequireRole allowedRoles="Organizer" />}>
