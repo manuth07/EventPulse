@@ -12,6 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
 // Payment Service
+// Owns: payment transactions, refunds, payment status.
+// Does NOT reference: IdentityService, EventService, BookingService.
 // ---------------------------------------------------------------------------
 builder.Services.AddDbContext<PaymentDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("PaymentDatabase")));
@@ -36,6 +38,9 @@ var keyPreview = string.IsNullOrEmpty(stripeSecretKey)
     : (stripeSecretKey.Length > 14 ? stripeSecretKey[..12] + "..." : stripeSecretKey);
 Console.WriteLine($"[STRIPE-INIT] Secret Key loaded: {keyPreview} (Length: {stripeSecretKey?.Length ?? 0})");
 
+// ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -46,11 +51,28 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ---------------------------------------------------------------------------
+// JWT Bearer — validates tokens issued by Identity Service
+// ---------------------------------------------------------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var keyString = jwtSection["Key"] ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
-var keyBytes = Encoding.UTF8.GetBytes(keyString);
-var signingKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
-var unkeyedSigningKey = new SymmetricSecurityKey(keyBytes);
+var keyStr = builder.Configuration["Jwt:Key"] 
+    ?? builder.Configuration["Jwt__Key"] 
+    ?? jwtSection["Key"]
+    ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
+
+using (var sha256 = System.Security.Cryptography.SHA256.Create())
+{
+    var hash = Convert.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(keyStr)));
+    Console.WriteLine($"[KEY-VERIFY] {builder.Environment.ApplicationName} Key Hash: {hash}");
+}
+
+var jwtKeyBytes = Encoding.UTF8.GetBytes(keyStr);
+
+var signingKey = new SymmetricSecurityKey(jwtKeyBytes)
+{
+    KeyId = "EventPulseKey_2026"
+};
+var unkeyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -69,13 +91,33 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
             new SecurityKey[] { signingKey, unkeyedSigningKey },
         ValidateIssuer = true,
-        ValidIssuer = jwtSection["Issuer"] ?? "EventPulse.IdentityService",
+        ValidIssuer = jwtSection["Issuer"] ?? builder.Configuration["Jwt:Issuer"] ?? "EventPulse.IdentityService",
         ValidateAudience = true,
-        ValidAudience = jwtSection["Audience"] ?? "EventPulse.Clients",
+        ValidAudience = jwtSection["Audience"] ?? builder.Configuration["Jwt:Audience"] ?? "EventPulse.Clients",
         ValidateLifetime = true,
         ClockSkew = TimeSpan.FromMinutes(1),
         RoleClaimType = ClaimTypes.Role,
         NameClaimType = ClaimTypes.NameIdentifier
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("PaymentService.JwtAuthentication");
+            logger.LogWarning("JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("PaymentService.JwtAuthentication");
+            logger.LogWarning("JWT challenge triggered: Error={Error}, Description={Description}",
+                context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -139,6 +181,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAll");
+
+// Middleware Ordering: CORS -> Authentication -> Authorization -> Endpoints
 app.UseAuthentication();
 app.UseAuthorization();
 

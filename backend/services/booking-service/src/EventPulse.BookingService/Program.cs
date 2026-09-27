@@ -9,6 +9,14 @@ using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ---------------------------------------------------------------------------
+// Booking Service
+// ---------------------------------------------------------------------------
+// Owns: ticket reservations, seat availability, booking lifecycle.
+// Does NOT reference: IdentityService, EventService, PaymentService.
+// Communicates with EventService (read event/seat data) → via HTTP client.
+// ---------------------------------------------------------------------------
+
 builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDatabase")));
 
@@ -17,6 +25,9 @@ builder.Services.AddHttpClient<IEventAvailabilityClient, EventServiceAvailabilit
     client.BaseAddress = new Uri(builder.Configuration["EventService:BaseUrl"] ?? "http://localhost:7102");
 });
 
+// ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -27,11 +38,28 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ---------------------------------------------------------------------------
+// JWT Bearer — validates tokens issued by Identity Service
+// ---------------------------------------------------------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var keyString = jwtSection["Key"] ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
-var keyBytes = Encoding.UTF8.GetBytes(keyString);
-var signingKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
-var unkeyedSigningKey = new SymmetricSecurityKey(keyBytes);
+var keyStr = builder.Configuration["Jwt:Key"] 
+    ?? builder.Configuration["Jwt__Key"] 
+    ?? jwtSection["Key"]
+    ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
+
+using (var sha256 = System.Security.Cryptography.SHA256.Create())
+{
+    var hash = Convert.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(keyStr)));
+    Console.WriteLine($"[KEY-VERIFY] {builder.Environment.ApplicationName} Key Hash: {hash}");
+}
+
+var jwtKeyBytes = Encoding.UTF8.GetBytes(keyStr);
+
+var keyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes)
+{
+    KeyId = "EventPulseKey_2026"
+};
+var unkeyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -45,18 +73,38 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = signingKey,
-        IssuerSigningKeys = new SecurityKey[] { signingKey, unkeyedSigningKey },
+        IssuerSigningKey = keyedSigningKey,
+        IssuerSigningKeys = new SecurityKey[] { keyedSigningKey, unkeyedSigningKey },
         IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
-            new SecurityKey[] { signingKey, unkeyedSigningKey },
+            new SecurityKey[] { keyedSigningKey, unkeyedSigningKey },
         ValidateIssuer = true,
-        ValidIssuer = jwtSection["Issuer"] ?? "EventPulse.IdentityService",
+        ValidIssuer = jwtSection["Issuer"] ?? builder.Configuration["Jwt:Issuer"] ?? "EventPulse.IdentityService",
         ValidateAudience = true,
-        ValidAudience = jwtSection["Audience"] ?? "EventPulse.Clients",
+        ValidAudience = jwtSection["Audience"] ?? builder.Configuration["Jwt:Audience"] ?? "EventPulse.Clients",
         ValidateLifetime = true,
         ClockSkew = TimeSpan.FromMinutes(1),
         RoleClaimType = ClaimTypes.Role,
         NameClaimType = ClaimTypes.NameIdentifier
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("BookingService.JwtAuthentication");
+            logger.LogWarning("JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("BookingService.JwtAuthentication");
+            logger.LogWarning("JWT challenge triggered: Error={Error}, Description={Description}",
+                context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -82,6 +130,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseRouting();
+
+// Prometheus HTTP metrics middleware
 app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
@@ -90,10 +140,15 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAll");
+
+// Middleware Ordering: CORS -> Authentication -> Authorization -> Endpoints
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint
 app.MapMetrics();
+
 app.MapControllers();
 
 await app.RunAsync();

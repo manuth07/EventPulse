@@ -15,6 +15,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<EventDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("EventDatabase")));
 
+// ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -25,11 +28,14 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ---------------------------------------------------------------------------
+// JWT Bearer — validates tokens issued by Identity Service
+// ---------------------------------------------------------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var keyString = jwtSection["Key"] ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
-var keyBytes = Encoding.UTF8.GetBytes(keyString);
-var signingKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
-var unkeyedSigningKey = new SymmetricSecurityKey(keyBytes);
+var jwtKeyStr = jwtSection["Key"] ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
+var jwtKeyBytes = Encoding.UTF8.GetBytes(jwtKeyStr);
+var signingKey = new SymmetricSecurityKey(jwtKeyBytes) { KeyId = "EventPulseKey_2026" };
+var unkeyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -56,6 +62,26 @@ builder.Services.AddAuthentication(options =>
         RoleClaimType = ClaimTypes.Role,
         NameClaimType = ClaimTypes.NameIdentifier
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("EventService.JwtAuthentication");
+            logger.LogWarning("JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("EventService.JwtAuthentication");
+            logger.LogWarning("JWT challenge triggered: Error={Error}, Description={Description}",
+                context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddAuthorization(options =>
@@ -79,19 +105,27 @@ builder.Services.AddControllers()
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
-var appInsightsConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
-    ?? builder.Configuration["ApplicationInsights:ConnectionString"];
-if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+// Application Insights Telemetry (EP-200 / TECH-11)
+var appInsightsConn = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+                   ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+
+if (!string.IsNullOrWhiteSpace(appInsightsConn))
 {
     builder.Services.AddApplicationInsightsTelemetry(options =>
     {
-        options.ConnectionString = appInsightsConnectionString;
+        options.ConnectionString = appInsightsConn;
     });
+}
+else
+{
+    builder.Services.AddApplicationInsightsTelemetry();
 }
 
 var app = builder.Build();
 
 app.UseRouting();
+
+// Prometheus HTTP Request Metrics (TECH-12)
 app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
@@ -110,21 +144,29 @@ if (app.Environment.IsDevelopment() || databaseSettings.MigrateOnStartup || data
 
     if (app.Environment.IsDevelopment() || databaseSettings.MigrateOnStartup)
     {
+        app.Logger.LogInformation("Executing EF Core database migrations...");
         await dbContext.Database.MigrateAsync();
     }
 
     if (app.Environment.IsDevelopment() || databaseSettings.SeedOnStartup)
     {
+        app.Logger.LogInformation("Executing database seeding...");
         await EventDbSeeder.SeedAsync(dbContext);
     }
 }
 
 app.UseCors("AllowAll");
+
+// Authentication must precede Authorization in the middleware pipeline
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Health endpoint
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint (TECH-12)
 app.MapMetrics();
+
 app.MapControllers();
 
 await app.RunAsync();
