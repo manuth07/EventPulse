@@ -16,6 +16,10 @@ import {
   ArrowRight,
   ArrowLeft,
   Loader2,
+  ShieldCheck,
+  CreditCard,
+  RotateCcw,
+  Clock,
 } from 'lucide-react';
 
 function formatDate(dateString) {
@@ -39,6 +43,15 @@ export function Cart() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [showClearModal, setShowClearModal] = useState(false);
+  const [isRedirectingToPayment, setIsRedirectingToPayment] = useState(false);
+  const [pendingBooking, setPendingBooking] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('ep_pending_booking');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   const handleUpdateQuantity = async (ticketTypeId, nextQuantity) => {
     setActionError(null);
@@ -80,6 +93,85 @@ export function Cart() {
     }
   };
 
+  const handleProceedToCheckout = async () => {
+    if (actionLoading || isRedirectingToPayment) return;
+    setActionError(null);
+    setActionLoading(true);
+    setIsRedirectingToPayment(true);
+
+    const orderSnapshot = {
+      eventId: cart.eventId,
+      eventTitle: cart.eventTitle,
+      eventVenue: cart.eventVenue,
+      eventDate: cart.eventDate,
+      eventImageUrl: cart.eventImageUrl,
+      items: cart?.items ? [...cart.items] : [],
+      totalAmount: cart?.totalAmount || 0,
+      totalTicketCount: cart?.totalTicketCount || 0,
+    };
+
+    try {
+      const bookingResponse = await checkout();
+      const bookingId = bookingResponse?.bookingId || bookingResponse?.id;
+      if (!bookingId) {
+        throw new Error('Booking could not be created. Please try again.');
+      }
+
+      const pendingOrder = {
+        ...orderSnapshot,
+        bookingId,
+        bookingReference: bookingResponse.bookingReference || null,
+      };
+      setPendingBooking(pendingOrder);
+      try {
+        sessionStorage.setItem('ep_pending_booking', JSON.stringify(pendingOrder));
+      } catch (storageErr) {
+        console.warn('Failed to save pending booking to sessionStorage:', storageErr);
+      }
+
+      const paymentSession = await createCheckoutSession(bookingId, accessToken);
+      if (paymentSession?.checkoutUrl) {
+        window.location.href = paymentSession.checkoutUrl;
+      } else {
+        throw new Error('Unable to redirect to Stripe checkout. Please try again.');
+      }
+    } catch (err) {
+      setActionError(err.message || 'Checkout failed. Please try again.');
+      setIsRedirectingToPayment(false);
+      setActionLoading(false);
+    }
+  };
+
+  const handleRetryPayment = async () => {
+    if (!pendingBooking?.bookingId || actionLoading || isRedirectingToPayment) return;
+    setActionError(null);
+    setActionLoading(true);
+    setIsRedirectingToPayment(true);
+
+    try {
+      const paymentSession = await createCheckoutSession(pendingBooking.bookingId, accessToken);
+      if (paymentSession?.checkoutUrl) {
+        window.location.href = paymentSession.checkoutUrl;
+      } else {
+        throw new Error('Unable to redirect to Stripe checkout. Please try again.');
+      }
+    } catch (err) {
+      setActionError(err.message || 'Payment initiation failed. Please try again.');
+      setIsRedirectingToPayment(false);
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelPendingBooking = () => {
+    try {
+      sessionStorage.removeItem('ep_pending_booking');
+    } catch (e) {
+      console.warn('Failed to remove pending booking from sessionStorage:', e);
+    }
+    setPendingBooking(null);
+    setActionError(null);
+  };
+
   const hasItems = cart && Array.isArray(cart.items) && cart.items.length > 0;
 
   return (
@@ -88,7 +180,7 @@ export function Cart() {
       <main className="container" style={{ flex: 1, padding: '32px 16px 64px', maxWidth: '720px' }}>
         
         {/* Navigation Breadcrumb */}
-        {hasItems && cart.eventId && (
+        {hasItems && cart.eventId && !isRedirectingToPayment && (
           <Link
             to={`/events/${cart.eventId}/tickets`}
             style={{
@@ -108,8 +200,10 @@ export function Cart() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-          <h1 className="ep-h2" style={{ margin: 0 }}>Your Cart</h1>
-          {hasItems && (
+          <h1 className="ep-h2" style={{ margin: 0 }}>
+            {isRedirectingToPayment ? 'Checking Out' : (pendingBooking && !hasItems ? 'Pending Order' : 'Your Cart')}
+          </h1>
+          {hasItems && !isRedirectingToPayment && (
             <button
               type="button"
               onClick={() => setShowClearModal(true)}
@@ -150,7 +244,36 @@ export function Cart() {
           </div>
         )}
 
-        {!loading && !hasItems && (
+        {/* Dedicated Checkout Redirect Transition View */}
+        {isRedirectingToPayment && (
+          <div className="ep-card" style={{ padding: '56px 24px', textAlign: 'center' }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(255, 91, 0, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+            }}>
+              <Loader2 size={32} className="ep-spin" style={{ color: 'var(--ep-primary)' }} />
+            </div>
+            <h2 style={{ fontSize: '20px', fontWeight: 800, margin: '0 0 8px 0', color: 'var(--ep-text-primary)' }}>
+              Preparing secure checkout…
+            </h2>
+            <p style={{ fontSize: '14px', color: 'var(--ep-text-secondary)', margin: '0 0 24px 0', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.5 }}>
+              Please wait while we set up your payment session. You will be redirected to Stripe shortly to complete your order.
+            </p>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--ep-text-secondary)', padding: '6px 14px', backgroundColor: 'var(--ep-canvas)', borderRadius: '20px' }}>
+              <ShieldCheck size={14} color="var(--ep-primary)" />
+              <span>Secure checkout powered by Stripe</span>
+            </div>
+          </div>
+        )}
+
+        {/* Empty Cart View */}
+        {!loading && !isRedirectingToPayment && !hasItems && !pendingBooking && (
           <div className="ep-card" style={{ padding: '48px 24px', textAlign: 'center' }}>
             <div style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: 'var(--ep-canvas)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               <ShoppingCart size={24} color="var(--ep-text-secondary)" />
@@ -169,6 +292,178 @@ export function Cart() {
               <span>Browse Events</span>
               <ArrowRight size={15} />
             </Link>
+          </div>
+        )}
+
+        {/* Pending Order / Payment Retry View */}
+        {!loading && !isRedirectingToPayment && !hasItems && pendingBooking && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Status Notice */}
+            <div style={{
+              padding: '16px 20px',
+              backgroundColor: '#FFF8F2',
+              border: '1px solid #FFE4CC',
+              borderRadius: 'var(--ep-radius-card)',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '12px',
+            }}>
+              <Clock size={20} color="var(--ep-primary)" style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ep-text-primary)', marginBottom: '2px' }}>
+                  Booking Created — Awaiting Payment
+                </div>
+                <div style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', lineHeight: 1.4 }}>
+                  {pendingBooking.bookingReference
+                    ? `Booking reference #${pendingBooking.bookingReference} is held pending payment. Complete payment to secure your tickets.`
+                    : 'Your booking has been created and is awaiting payment. Complete payment to secure your tickets.'}
+                </div>
+              </div>
+            </div>
+
+            {/* Event Summary */}
+            <div className="ep-card" style={{ padding: '20px', display: 'flex', gap: '16px', alignItems: 'center' }}>
+              {pendingBooking.eventImageUrl && (
+                <div style={{ width: '64px', height: '64px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, backgroundColor: 'var(--ep-canvas)' }}>
+                  <img src={pendingBooking.eventImageUrl} alt={pendingBooking.eventTitle} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ep-primary)', marginBottom: '4px' }}>
+                  Reserved Event
+                </div>
+                <h3 style={{ fontSize: '17px', fontWeight: 700, color: 'var(--ep-text-primary)', margin: '0 0 6px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {pendingBooking.eventTitle || 'Selected Event'}
+                </h3>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                  {pendingBooking.eventVenue && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <MapPin size={13} />
+                      <span>{pendingBooking.eventVenue}</span>
+                    </span>
+                  )}
+                  {pendingBooking.eventDate && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Calendar size={13} />
+                      <span>{formatDate(pendingBooking.eventDate)}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Tickets Summary Card */}
+            <div className="ep-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--ep-border)', fontSize: '13px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                Reserved Tickets ({pendingBooking.totalTicketCount || (pendingBooking.items || []).reduce((acc, it) => acc + (it.quantity || 0), 0)})
+              </div>
+              <div>
+                {(pendingBooking.items || []).map((item, idx) => (
+                  <div
+                    key={item.id || item.ticketTypeId || idx}
+                    style={{
+                      padding: '16px 20px',
+                      borderBottom: idx < pendingBooking.items.length - 1 ? '1px solid var(--ep-border)' : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '16px',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--ep-text-primary)', marginBottom: '2px' }}>
+                        {item.ticketTypeName || item.ticketName || 'Ticket'}
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                        Qty: {item.quantity} × {formatPrice(item.unitPrice)}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--ep-primary)' }}>
+                      {formatPrice(item.lineTotal || (item.unitPrice * item.quantity))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Total & Action Buttons */}
+              <div style={{
+                padding: '24px 20px',
+                backgroundColor: 'var(--ep-canvas)',
+                borderTop: '1px solid var(--ep-border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ep-text-primary)' }}>
+                      Total Amount Due
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                      Includes all applicable taxes and fees
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--ep-primary)' }}>
+                    {formatPrice(pendingBooking.totalAmount)}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={handleRetryPayment}
+                    disabled={actionLoading || isRedirectingToPayment}
+                    className="ep-btn-primary"
+                    style={{
+                      width: '100%',
+                      padding: '14px',
+                      fontSize: '15px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      cursor: (actionLoading || isRedirectingToPayment) ? 'not-allowed' : 'pointer',
+                      opacity: (actionLoading || isRedirectingToPayment) ? 0.8 : 1,
+                    }}
+                  >
+                    {actionLoading ? (
+                      <>
+                        <Loader2 size={16} className="ep-spin" />
+                        <span>Connecting to Stripe…</span>
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard size={16} />
+                        <span>Retry Payment</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelPendingBooking}
+                    disabled={actionLoading || isRedirectingToPayment}
+                    className="ep-btn-secondary"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      borderRadius: 'var(--ep-radius-btn)',
+                    }}
+                  >
+                    <RotateCcw size={15} />
+                    <span>Cancel & Start New Order</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -344,28 +639,8 @@ export function Cart() {
 
                 <button
                   type="button"
-                  onClick={async () => {
-                    setActionError(null);
-                    setActionLoading(true);
-                    try {
-                      const bookingResponse = await checkout();
-                      const bookingId = bookingResponse?.bookingId || bookingResponse?.id;
-                      if (!bookingId) {
-                        throw new Error('Booking could not be created. Please try again.');
-                      }
-
-                      const paymentSession = await createCheckoutSession(bookingId, accessToken);
-                      if (paymentSession?.checkoutUrl) {
-                        window.location.href = paymentSession.checkoutUrl;
-                      } else {
-                        throw new Error('Unable to redirect to Stripe checkout. Please try again.');
-                      }
-                    } catch (err) {
-                      setActionError(err.message || 'Checkout failed.');
-                      setActionLoading(false);
-                    }
-                  }}
-                  disabled={actionLoading}
+                  onClick={handleProceedToCheckout}
+                  disabled={actionLoading || isRedirectingToPayment}
                   className="ep-btn-primary"
                   style={{
                     width: '100%',
@@ -377,14 +652,14 @@ export function Cart() {
                     justifyContent: 'center',
                     gap: '8px',
                     borderRadius: 'var(--ep-radius-btn)',
-                    cursor: actionLoading ? 'not-allowed' : 'pointer',
-                    opacity: actionLoading ? 0.8 : 1,
+                    cursor: (actionLoading || isRedirectingToPayment) ? 'not-allowed' : 'pointer',
+                    opacity: (actionLoading || isRedirectingToPayment) ? 0.8 : 1,
                   }}
                 >
-                  {actionLoading ? (
+                  {actionLoading || isRedirectingToPayment ? (
                     <>
                       <Loader2 size={16} className="ep-spin" />
-                      <span>Redirecting to Checkout…</span>
+                      <span>Connecting to Checkout…</span>
                     </>
                   ) : (
                     <>
