@@ -48,26 +48,34 @@ public class BookingsController : ControllerBase
     /// Authoritative booking summary lookup for PaymentService and internal microservices.
     /// </summary>
     [HttpGet("{id:guid}/summary")]
-    [Authorize]
-    public async Task<IActionResult> GetBookingSummary(Guid id, CancellationToken ct)
+    public async Task<IActionResult> GetBookingSummary([FromRoute] Guid id, CancellationToken cancellationToken)
     {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
         var booking = await _dbContext.Bookings
             .AsNoTracking()
-            .FirstOrDefaultAsync(b => b.Id == id, ct);
+            .FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
 
         if (booking == null)
         {
-            return NotFound(new { message = $"Booking {id} not found." });
+            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
         }
 
-        return Ok(new
+        if (booking.CustomerId != customerId && !User.IsInRole("Administrator"))
         {
-            Id = booking.Id,
-            BookingReference = booking.BookingReference,
-            CustomerId = booking.CustomerId,
-            TotalAmount = booking.TotalAmount,
-            Status = booking.Status.ToString()
-        });
+            return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view this booking." });
+        }
+
+        return Ok(new BookingSummaryDto(
+            booking.Id,
+            booking.BookingReference,
+            booking.CustomerId,
+            booking.TotalAmount,
+            booking.Status.ToString()
+        ));
     }
 
     [HttpPost]
@@ -206,36 +214,4 @@ public class BookingsController : ControllerBase
 
         return CreatedAtAction(nameof(CreateBooking), new { id = booking.Id }, responseDto);
     }
-
-    [HttpGet("{id:guid}/summary")]
-    public async Task<IActionResult> GetBookingSummary([FromRoute] Guid id, CancellationToken cancellationToken)
-    {
-        if (!TryGetCustomerId(out var customerId))
-        {
-            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
-        }
-
-        var booking = await _dbContext.Bookings
-            .AsNoTracking()
-            .FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
-
-        if (booking == null)
-        {
-            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
-        }
-
-        if (booking.CustomerId != customerId && !User.IsInRole("Administrator"))
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view this booking." });
-        }
-
-        return Ok(new BookingSummaryDto(
-            booking.Id,
-            booking.BookingReference,
-            booking.CustomerId,
-            booking.TotalAmount,
-            booking.Status.ToString()
-        ));
-    }
 }
-
