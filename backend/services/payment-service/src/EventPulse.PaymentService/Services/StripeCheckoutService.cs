@@ -22,9 +22,8 @@ public class StripeCheckoutService : IStripeCheckoutService
 
         var unitAmount = Convert.ToInt64(payment.Amount * 100);
 
-        return new SessionCreateOptions
+        var options = new SessionCreateOptions
         {
-            PaymentMethodTypes = new List<string> { "card" },
             Mode = "payment",
             SuccessUrl = successUrl,
             CancelUrl = cancelUrl,
@@ -51,6 +50,10 @@ public class StripeCheckoutService : IStripeCheckoutService
                 { "PaymentId", payment.Id.ToString() }
             }
         };
+
+        options.AddExtraParam("managed_payments[enabled]", "false");
+
+        return options;
     }
 
     public async Task<StripeSessionResult> CreateSessionAsync(Payment payment, CancellationToken cancellationToken = default)
