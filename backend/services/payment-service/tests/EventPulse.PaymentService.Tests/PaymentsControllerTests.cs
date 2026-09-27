@@ -1,12 +1,15 @@
 using System.Security.Claims;
+using System.Text;
 using EventPulse.PaymentService.Controllers;
 using EventPulse.PaymentService.Data;
 using EventPulse.PaymentService.DTOs;
+using EventPulse.PaymentService.Events;
 using EventPulse.PaymentService.Models;
 using EventPulse.PaymentService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -17,7 +20,10 @@ public class PaymentsControllerTests
     private readonly DbContextOptions<PaymentDbContext> _dbOptions;
     private readonly Mock<IBookingServiceClient> _bookingClientMock;
     private readonly Mock<IStripeCheckoutService> _stripeServiceMock;
+    private readonly Mock<IPaymentEventPublisher> _eventPublisherMock;
     private readonly Mock<ILogger<PaymentsController>> _loggerMock;
+    private readonly IConfiguration _configuration;
+    private const string WebhookSecret = "whsec_test_secret_key_1234567890";
 
     public PaymentsControllerTests()
     {
@@ -27,15 +33,26 @@ public class PaymentsControllerTests
 
         _bookingClientMock = new Mock<IBookingServiceClient>();
         _stripeServiceMock = new Mock<IStripeCheckoutService>();
+        _eventPublisherMock = new Mock<IPaymentEventPublisher>();
         _loggerMock = new Mock<ILogger<PaymentsController>>();
+
+        var inMemorySettings = new Dictionary<string, string?>
+        {
+            {"Stripe:WebhookSecret", WebhookSecret}
+        };
+        _configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(inMemorySettings)
+            .Build();
     }
 
-    private PaymentsController CreateController(PaymentDbContext dbContext, Guid? customerId = null, string? token = null)
+    private PaymentsController CreateController(PaymentDbContext dbContext, Guid? customerId = null, string? token = null, string? requestBody = null, string? signatureHeader = null)
     {
         var controller = new PaymentsController(
             dbContext,
             _bookingClientMock.Object,
             _stripeServiceMock.Object,
+            _eventPublisherMock.Object,
+            _configuration,
             _loggerMock.Object
         );
 
@@ -59,12 +76,34 @@ public class PaymentsControllerTests
             httpContext.Request.Headers["Authorization"] = $"Bearer {token}";
         }
 
+        if (signatureHeader != null)
+        {
+            httpContext.Request.Headers["Stripe-Signature"] = signatureHeader;
+        }
+
+        if (requestBody != null)
+        {
+            var stream = new MemoryStream(Encoding.UTF8.GetBytes(requestBody));
+            httpContext.Request.Body = stream;
+        }
+
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = httpContext
         };
 
         return controller;
+    }
+
+    private static string GenerateStripeSignature(string json, string secret)
+    {
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var secretBytes = Encoding.UTF8.GetBytes(secret);
+        var payloadBytes = Encoding.UTF8.GetBytes($"{timestamp}.{json}");
+        using var hmac = new System.Security.Cryptography.HMACSHA256(secretBytes);
+        var hashBytes = hmac.ComputeHash(payloadBytes);
+        var hashHex = Convert.ToHexString(hashBytes).ToLowerInvariant();
+        return $"t={timestamp},v1={hashHex}";
     }
 
     [Fact]
@@ -136,67 +175,228 @@ public class PaymentsControllerTests
     }
 
     [Fact]
-    public async Task CreateCheckoutSession_WhenBookingStatusIsNotPendingPayment_ReturnsBadRequest()
+    public async Task StripeWebhook_WithInvalidSignature_ReturnsBadRequest()
     {
         // Arrange
         using var db = new PaymentDbContext(_dbOptions);
-        var customerId = Guid.NewGuid();
-        var bookingId = Guid.NewGuid();
-        var token = "jwt_user";
-
-        _bookingClientMock
-            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BookingSummaryDto(bookingId, "EP-2026-CONFIRMED", customerId, 100.00m, "Confirmed"));
-
-        var controller = CreateController(db, customerId, token);
-        var request = new CreateCheckoutSessionRequest { BookingId = bookingId };
+        var body = "{\"id\":\"evt_test\"}";
+        var controller = CreateController(db, requestBody: body, signatureHeader: "invalid_sig");
 
         // Act
-        var result = await controller.CreateCheckoutSession(request, CancellationToken.None);
+        var result = await controller.StripeWebhook(CancellationToken.None);
 
         // Assert
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequestResult.Value);
-
-        var paymentsInDb = await db.Payments.ToListAsync();
-        Assert.Empty(paymentsInDb);
     }
 
     [Fact]
-    public async Task CreateCheckoutSession_WhenBookingNotFound_ReturnsNotFound()
+    public async Task StripeWebhook_WithValidCheckoutSessionCompleted_UpdatesPaymentToSucceededAndPublishesEvent()
     {
         // Arrange
         using var db = new PaymentDbContext(_dbOptions);
-        var customerId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
-        var token = "jwt_user";
+        var sessionId = "cs_test_session_success_123";
 
-        _bookingClientMock
-            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((BookingSummaryDto?)null);
+        var payment = new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "EP-2026-SUCCESS",
+            CustomerId = Guid.NewGuid(),
+            Amount = 1500.00m,
+            Currency = "lkr",
+            StripeSessionId = sessionId,
+            Status = PaymentStatus.Pending
+        };
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
 
-        var controller = CreateController(db, customerId, token);
-        var request = new CreateCheckoutSessionRequest { BookingId = bookingId };
+        var jsonPayload = $$"""
+        {
+          "id": "evt_test_123",
+          "object": "event",
+          "api_version": "2023-10-16",
+          "created": 1700000000,
+          "data": {
+            "object": {
+              "id": "{{sessionId}}",
+              "object": "checkout.session",
+              "payment_intent": "pi_test_intent_success",
+              "metadata": {
+                "PaymentId": "{{paymentId}}",
+                "BookingId": "{{bookingId}}"
+              }
+            }
+          },
+          "livemode": false,
+          "pending_webhooks": 1,
+          "request": {
+            "id": "req_123",
+            "idempotency_key": null
+          },
+          "type": "checkout.session.completed"
+        }
+        """;
+
+        var signature = GenerateStripeSignature(jsonPayload, WebhookSecret);
+        var controller = CreateController(db, requestBody: jsonPayload, signatureHeader: signature);
 
         // Act
-        var result = await controller.CreateCheckoutSession(request, CancellationToken.None);
+        var result = await controller.StripeWebhook(CancellationToken.None);
 
         // Assert
-        Assert.IsType<NotFoundObjectResult>(result);
+        Assert.IsType<OkResult>(result);
+
+        var updatedPayment = await db.Payments.FindAsync(paymentId);
+        Assert.NotNull(updatedPayment);
+        Assert.Equal(PaymentStatus.Succeeded, updatedPayment.Status);
+        Assert.Equal("pi_test_intent_success", updatedPayment.StripePaymentIntentId);
+        Assert.NotNull(updatedPayment.CompletedAt);
+
+        _eventPublisherMock.Verify(
+            p => p.PublishPaymentSucceededAsync(It.Is<PaymentSucceededEvent>(
+                e => e.PaymentId == paymentId && e.StripeSessionId == sessionId && e.StripePaymentIntentId == "pi_test_intent_success"
+            ), It.IsAny<CancellationToken>()),
+            Times.Once
+        );
     }
 
     [Fact]
-    public async Task CreateCheckoutSession_WhenUnauthenticated_ReturnsUnauthorized()
+    public async Task StripeWebhook_WhenAlreadySucceeded_IsIdempotentAndDoesNotPublishDuplicateEvent()
     {
         // Arrange
         using var db = new PaymentDbContext(_dbOptions);
-        var controller = CreateController(db, customerId: null);
-        var request = new CreateCheckoutSessionRequest { BookingId = Guid.NewGuid() };
+        var paymentId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var sessionId = "cs_test_session_idempotent_123";
+
+        var payment = new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "EP-2026-IDEM",
+            CustomerId = Guid.NewGuid(),
+            Amount = 2000.00m,
+            Currency = "lkr",
+            StripeSessionId = sessionId,
+            Status = PaymentStatus.Succeeded,
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-5)
+        };
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+
+        var jsonPayload = $$"""
+        {
+          "id": "evt_test_duplicate",
+          "object": "event",
+          "api_version": "2023-10-16",
+          "created": 1700000000,
+          "data": {
+            "object": {
+              "id": "{{sessionId}}",
+              "object": "checkout.session",
+              "payment_intent": "pi_test_intent_123",
+              "metadata": {
+                "PaymentId": "{{paymentId}}"
+              }
+            }
+          },
+          "livemode": false,
+          "pending_webhooks": 1,
+          "request": {
+            "id": "req_123",
+            "idempotency_key": null
+          },
+          "type": "checkout.session.completed"
+        }
+        """;
+
+        var signature = GenerateStripeSignature(jsonPayload, WebhookSecret);
+        var controller = CreateController(db, requestBody: jsonPayload, signatureHeader: signature);
 
         // Act
-        var result = await controller.CreateCheckoutSession(request, CancellationToken.None);
+        var result = await controller.StripeWebhook(CancellationToken.None);
 
         // Assert
-        Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.IsType<OkResult>(result);
+
+        _eventPublisherMock.Verify(
+            p => p.PublishPaymentSucceededAsync(It.IsAny<PaymentSucceededEvent>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task StripeWebhook_WithValidPaymentIntentFailed_UpdatesPaymentToFailedAndPublishesEvent()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var paymentId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var paymentIntentId = "pi_test_intent_fail_999";
+
+        var payment = new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "EP-2026-FAIL",
+            CustomerId = Guid.NewGuid(),
+            Amount = 1000.00m,
+            Currency = "lkr",
+            StripePaymentIntentId = paymentIntentId,
+            Status = PaymentStatus.Pending
+        };
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+
+        var jsonPayload = $$"""
+        {
+          "id": "evt_test_failed_123",
+          "object": "event",
+          "api_version": "2023-10-16",
+          "created": 1700000000,
+          "data": {
+            "object": {
+              "id": "{{paymentIntentId}}",
+              "object": "payment_intent",
+              "last_payment_error": {
+                "message": "Insufficient funds"
+              },
+              "metadata": {
+                "PaymentId": "{{paymentId}}"
+              }
+            }
+          },
+          "livemode": false,
+          "pending_webhooks": 1,
+          "request": {
+            "id": "req_123",
+            "idempotency_key": null
+          },
+          "type": "payment_intent.payment_failed"
+        }
+        """;
+
+        var signature = GenerateStripeSignature(jsonPayload, WebhookSecret);
+        var controller = CreateController(db, requestBody: jsonPayload, signatureHeader: signature);
+
+        // Act
+        var result = await controller.StripeWebhook(CancellationToken.None);
+
+        // Assert
+        Assert.IsType<OkResult>(result);
+
+        var updatedPayment = await db.Payments.FindAsync(paymentId);
+        Assert.NotNull(updatedPayment);
+        Assert.Equal(PaymentStatus.Failed, updatedPayment.Status);
+
+        _eventPublisherMock.Verify(
+            p => p.PublishPaymentFailedAsync(It.Is<PaymentFailedEvent>(
+                e => e.PaymentId == paymentId && e.FailureReason == "Insufficient funds"
+            ), It.IsAny<CancellationToken>()),
+            Times.Once
+        );
     }
 }
