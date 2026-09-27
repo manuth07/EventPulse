@@ -15,7 +15,7 @@ public class StripeCheckoutServiceTests
     {
         var inMemorySettings = new Dictionary<string, string?>
         {
-            {"Stripe:Currency", "usd"},
+            {"Stripe:Currency", "lkr"},
             {"Stripe:SuccessUrl", "http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}"},
             {"Stripe:CancelUrl", "http://localhost:5173/payment-cancel"},
             {"Stripe:SecretKey", "sk_test_placeholder"}
@@ -40,7 +40,7 @@ public class StripeCheckoutServiceTests
             BookingReference = "EP-2026-PAY-1234",
             CustomerId = Guid.NewGuid(),
             Amount = 49.99m,
-            Currency = "usd"
+            Currency = "lkr"
         };
 
         // Act
@@ -58,7 +58,7 @@ public class StripeCheckoutServiceTests
         var lineItem = options.LineItems[0];
         Assert.Equal(1, lineItem.Quantity);
         Assert.NotNull(lineItem.PriceData);
-        Assert.Equal("usd", lineItem.PriceData.Currency);
+        Assert.Equal("lkr", lineItem.PriceData.Currency);
         Assert.Equal(4999L, lineItem.PriceData.UnitAmount);
         Assert.Equal("Booking EP-2026-PAY-1234", lineItem.PriceData.ProductData.Name);
 

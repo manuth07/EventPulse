@@ -16,11 +16,11 @@ public class StripeCheckoutService : IStripeCheckoutService
 
     public SessionCreateOptions BuildSessionOptions(Payment payment)
     {
-        var currency = (!string.IsNullOrWhiteSpace(payment.Currency) ? payment.Currency : _configuration["Stripe:Currency"] ?? "usd").ToLowerInvariant();
+        var currency = payment.Currency.ToLowerInvariant();
         var successUrl = _configuration["Stripe:SuccessUrl"] ?? "http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}";
         var cancelUrl = _configuration["Stripe:CancelUrl"] ?? "http://localhost:5173/payment-cancel";
 
-        var unitAmount = (long)Math.Round(payment.Amount * 100, MidpointRounding.AwayFromZero);
+        var unitAmount = Convert.ToInt64(payment.Amount * 100);
 
         return new SessionCreateOptions
         {
@@ -56,9 +56,11 @@ public class StripeCheckoutService : IStripeCheckoutService
     public async Task<StripeSessionResult> CreateSessionAsync(Payment payment, CancellationToken cancellationToken = default)
     {
         var options = BuildSessionOptions(payment);
+        var unitAmount = options.LineItems[0].PriceData.UnitAmount;
         var service = new SessionService();
-        _logger.LogInformation("Creating Stripe checkout session for Payment {PaymentId}, BookingReference {BookingReference}, Amount {Amount} {Currency}",
-            payment.Id, payment.BookingReference, payment.Amount, options.LineItems[0].PriceData.Currency);
+        
+        _logger.LogInformation("Creating Stripe session for Booking {Ref}: Amount {Amount} {Currency} ({UnitAmount} minor units)",
+            payment.BookingReference, payment.Amount, payment.Currency, unitAmount);
 
         var session = await service.CreateAsync(options, cancellationToken: cancellationToken);
 

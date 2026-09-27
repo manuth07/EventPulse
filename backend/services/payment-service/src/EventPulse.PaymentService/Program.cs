@@ -23,11 +23,18 @@ builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(clie
 
 builder.Services.AddScoped<IStripeCheckoutService, StripeCheckoutService>();
 
-var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
-if (!string.IsNullOrWhiteSpace(stripeSecretKey))
-{
-    StripeConfiguration.ApiKey = stripeSecretKey;
-}
+var stripeSecretKey = builder.Configuration["STRIPE_SECRET_KEY"]
+    ?? builder.Configuration["Stripe__SecretKey"]
+    ?? builder.Configuration["Stripe:SecretKey"]
+    ?? builder.Configuration.GetSection("Stripe")["SecretKey"];
+
+StripeConfiguration.ApiKey = stripeSecretKey;
+
+// Diagnostic startup print
+var keyPreview = string.IsNullOrEmpty(stripeSecretKey) 
+    ? "NULL/EMPTY" 
+    : (stripeSecretKey.Length > 14 ? stripeSecretKey[..12] + "..." : stripeSecretKey);
+Console.WriteLine($"[STRIPE-INIT] Secret Key loaded: {keyPreview} (Length: {stripeSecretKey?.Length ?? 0})");
 
 builder.Services.AddCors(options =>
 {

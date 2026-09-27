@@ -100,7 +100,7 @@ public class PaymentsController : ControllerBase
                 BookingReference = bookingSummary.BookingReference,
                 CustomerId = customerId,
                 Amount = bookingSummary.TotalAmount,
-                Currency = "usd",
+                Currency = "lkr",
                 Status = PaymentStatus.Pending,
                 CreatedAt = DateTimeOffset.UtcNow
             };
