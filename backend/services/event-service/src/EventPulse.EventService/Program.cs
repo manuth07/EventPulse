@@ -134,22 +134,13 @@ var databaseSettings = app.Configuration
     .GetSection(DatabaseSettings.SectionName)
     .Get<DatabaseSettings>() ?? new DatabaseSettings();
 
-if (app.Environment.IsDevelopment() || databaseSettings.MigrateOnStartup || databaseSettings.SeedOnStartup)
+if (app.Environment.IsDevelopment() || databaseSettings.MigrateOnStartup)
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<EventDbContext>();
 
-    if (app.Environment.IsDevelopment() || databaseSettings.MigrateOnStartup)
-    {
-        app.Logger.LogInformation("Executing EF Core database migrations...");
-        await dbContext.Database.MigrateAsync();
-    }
-
-    if (app.Environment.IsDevelopment() || databaseSettings.SeedOnStartup)
-    {
-        app.Logger.LogInformation("Executing database seeding...");
-        await EventDbSeeder.SeedAsync(dbContext);
-    }
+    app.Logger.LogInformation("Executing EF Core database migrations...");
+    await dbContext.Database.MigrateAsync();
 }
 
 app.UseCors("AllowAll");
