@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using EventPulse.PaymentService.Data;
+using EventPulse.PaymentService.Events;
 using EventPulse.PaymentService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(clie
 });
 
 builder.Services.AddScoped<IStripeCheckoutService, StripeCheckoutService>();
+builder.Services.AddScoped<IPaymentEventPublisher, LoggingPaymentEventPublisher>();
 
 var stripeSecretKey = builder.Configuration["STRIPE_SECRET_KEY"]
     ?? builder.Configuration["Stripe__SecretKey"]

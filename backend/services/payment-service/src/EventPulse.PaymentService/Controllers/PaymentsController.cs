@@ -1,11 +1,13 @@
 using System.Security.Claims;
 using EventPulse.PaymentService.Data;
 using EventPulse.PaymentService.DTOs;
+using EventPulse.PaymentService.Events;
 using EventPulse.PaymentService.Models;
 using EventPulse.PaymentService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Stripe;
 
 namespace EventPulse.PaymentService.Controllers;
 
@@ -17,17 +19,23 @@ public class PaymentsController : ControllerBase
     private readonly PaymentDbContext _dbContext;
     private readonly IBookingServiceClient _bookingClient;
     private readonly IStripeCheckoutService _stripeService;
+    private readonly IPaymentEventPublisher _eventPublisher;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<PaymentsController> _logger;
 
     public PaymentsController(
         PaymentDbContext dbContext,
         IBookingServiceClient bookingClient,
         IStripeCheckoutService stripeService,
+        IPaymentEventPublisher eventPublisher,
+        IConfiguration configuration,
         ILogger<PaymentsController> logger)
     {
         _dbContext = dbContext;
         _bookingClient = bookingClient;
         _stripeService = stripeService;
+        _eventPublisher = eventPublisher;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -143,5 +151,117 @@ public class PaymentsController : ControllerBase
                 message = "Failed to initialize Stripe checkout session. Please try again later."
             });
         }
+    }
+
+    [HttpPost("webhook")]
+    [AllowAnonymous]
+    public async Task<IActionResult> StripeWebhook(CancellationToken cancellationToken)
+    {
+        string json;
+        using (var reader = new StreamReader(HttpContext.Request.Body))
+        {
+            json = await reader.ReadToEndAsync(cancellationToken);
+        }
+
+        var signatureHeader = Request.Headers["Stripe-Signature"].ToString();
+        var webhookSecret = _configuration["Stripe:WebhookSecret"]
+            ?? _configuration["STRIPE_WEBHOOK_SECRET"]
+            ?? _configuration["Stripe__WebhookSecret"];
+
+        Event stripeEvent;
+        try
+        {
+            stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret, throwOnApiVersionMismatch: false);
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogWarning(ex, "Stripe webhook signature validation failed.");
+            return BadRequest(new { message = "Invalid Stripe Signature" });
+        }
+
+        if (stripeEvent.Type == EventTypes.CheckoutSessionCompleted)
+        {
+            if (stripeEvent.Data.Object is Stripe.Checkout.Session session)
+            {
+                Guid.TryParse(session.Metadata?.GetValueOrDefault("PaymentId"), out var paymentIdFromMeta);
+
+                var payment = await _dbContext.Payments
+                    .FirstOrDefaultAsync(p => p.StripeSessionId == session.Id || (paymentIdFromMeta != Guid.Empty && p.Id == paymentIdFromMeta), cancellationToken);
+
+                if (payment == null)
+                {
+                    _logger.LogWarning("Payment record not found for Stripe checkout session {SessionId}", session.Id);
+                    return Ok();
+                }
+
+                if (payment.Status == PaymentStatus.Succeeded)
+                {
+                    _logger.LogInformation("Payment {PaymentId} already marked Succeeded. Skipping.", payment.Id);
+                    return Ok();
+                }
+
+                payment.Status = PaymentStatus.Succeeded;
+                payment.StripePaymentIntentId = session.PaymentIntentId ?? payment.StripePaymentIntentId;
+                payment.CompletedAt = DateTimeOffset.UtcNow;
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                var evt = new PaymentSucceededEvent
+                {
+                    PaymentId = payment.Id,
+                    BookingId = payment.BookingId,
+                    BookingReference = payment.BookingReference,
+                    CustomerId = payment.CustomerId,
+                    Amount = payment.Amount,
+                    Currency = payment.Currency,
+                    StripeSessionId = payment.StripeSessionId ?? session.Id,
+                    StripePaymentIntentId = payment.StripePaymentIntentId ?? string.Empty,
+                    CompletedAt = payment.CompletedAt.Value
+                };
+
+                await _eventPublisher.PublishPaymentSucceededAsync(evt, cancellationToken);
+            }
+        }
+        else if (stripeEvent.Type == EventTypes.PaymentIntentPaymentFailed)
+        {
+            if (stripeEvent.Data.Object is Stripe.PaymentIntent intent)
+            {
+                var failureReason = intent.LastPaymentError?.Message ?? "Payment declined";
+                Guid.TryParse(intent.Metadata?.GetValueOrDefault("PaymentId"), out var paymentIdFromMeta);
+
+                var payment = await _dbContext.Payments
+                    .FirstOrDefaultAsync(p => (p.StripePaymentIntentId != null && p.StripePaymentIntentId == intent.Id) || (paymentIdFromMeta != Guid.Empty && p.Id == paymentIdFromMeta), cancellationToken);
+
+                if (payment == null)
+                {
+                    _logger.LogWarning("Payment record not found for Stripe PaymentIntent {PaymentIntentId}", intent.Id);
+                    return Ok();
+                }
+
+                if (payment.Status == PaymentStatus.Failed)
+                {
+                    _logger.LogInformation("Payment {PaymentId} already marked Failed. Skipping.", payment.Id);
+                    return Ok();
+                }
+
+                payment.Status = PaymentStatus.Failed;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                var evt = new PaymentFailedEvent
+                {
+                    PaymentId = payment.Id,
+                    BookingId = payment.BookingId,
+                    BookingReference = payment.BookingReference,
+                    CustomerId = payment.CustomerId,
+                    Amount = payment.Amount,
+                    FailureReason = failureReason,
+                    FailedAt = DateTimeOffset.UtcNow
+                };
+
+                await _eventPublisher.PublishPaymentFailedAsync(evt, cancellationToken);
+            }
+        }
+
+        return Ok();
     }
 }

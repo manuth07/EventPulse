@@ -116,10 +116,7 @@ if (!string.IsNullOrWhiteSpace(appInsightsConn))
         options.ConnectionString = appInsightsConn;
     });
 }
-else
-{
-    builder.Services.AddApplicationInsightsTelemetry();
-}
+
 
 var app = builder.Build();
 
