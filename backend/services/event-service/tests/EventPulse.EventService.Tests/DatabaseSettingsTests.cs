@@ -7,24 +7,22 @@ namespace EventPulse.EventService.Tests;
 public class DatabaseSettingsTests
 {
     [Fact]
-    public void DefaultSettings_ShouldHaveMigrateAndSeedDisabled()
+    public void DefaultSettings_ShouldHaveMigrateDisabled()
     {
         // Arrange & Act
         var settings = new DatabaseSettings();
 
         // Assert
         Assert.False(settings.MigrateOnStartup);
-        Assert.False(settings.SeedOnStartup);
     }
 
     [Fact]
-    public void ConfigurationBinding_WhenBothTrue_ShouldBindCorrectly()
+    public void ConfigurationBinding_WhenMigrateIsTrue_ShouldBindCorrectly()
     {
         // Arrange
         var inMemorySettings = new Dictionary<string, string?>
         {
-            { "Database:MigrateOnStartup", "true" },
-            { "Database:SeedOnStartup", "true" }
+            { "Database:MigrateOnStartup", "true" }
         };
 
         var configuration = new ConfigurationBuilder()
@@ -37,17 +35,15 @@ public class DatabaseSettingsTests
         // Assert
         Assert.NotNull(settings);
         Assert.True(settings.MigrateOnStartup);
-        Assert.True(settings.SeedOnStartup);
     }
 
     [Fact]
-    public void ConfigurationBinding_WhenOnlyMigrateIsTrue_ShouldBindCorrectly()
+    public void ConfigurationBinding_WhenMigrateIsFalse_ShouldBindCorrectly()
     {
-        // Arrange (simulates Azure App Service: Database__MigrateOnStartup=true, Database__SeedOnStartup=false)
+        // Arrange (simulates Azure App Service: Database__MigrateOnStartup=false)
         var inMemorySettings = new Dictionary<string, string?>
         {
-            { "Database:MigrateOnStartup", "true" },
-            { "Database:SeedOnStartup", "false" }
+            { "Database:MigrateOnStartup", "false" }
         };
 
         var configuration = new ConfigurationBuilder()
@@ -59,8 +55,7 @@ public class DatabaseSettingsTests
 
         // Assert
         Assert.NotNull(settings);
-        Assert.True(settings.MigrateOnStartup);
-        Assert.False(settings.SeedOnStartup);
+        Assert.False(settings.MigrateOnStartup);
     }
 
     [Fact]
@@ -77,6 +72,5 @@ public class DatabaseSettingsTests
         // Assert
         Assert.NotNull(settings);
         Assert.False(settings.MigrateOnStartup);
-        Assert.False(settings.SeedOnStartup);
     }
 }
