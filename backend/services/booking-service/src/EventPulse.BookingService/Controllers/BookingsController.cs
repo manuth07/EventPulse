@@ -78,6 +78,64 @@ public class BookingsController : ControllerBase
         ));
     }
 
+    /// <summary>
+    /// Authoritative customer ticket retrieval for a booking.
+    /// </summary>
+    [HttpGet("{id:guid}/tickets")]
+    public async Task<IActionResult> GetBookingTickets([FromRoute] Guid id, CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        var booking = await _dbContext.Bookings
+            .AsNoTracking()
+            .Include(b => b.Tickets)
+            .FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
+
+        if (booking == null)
+        {
+            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
+        }
+
+        if (booking.CustomerId != customerId && !User.IsInRole("Administrator"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view tickets for this booking." });
+        }
+
+        var ticketDtos = booking.Tickets
+            .OrderBy(t => t.TicketSequence)
+            .Select(t => new CustomerTicketDto
+            {
+                TicketId = t.Id,
+                TicketCode = t.TicketCode,
+                BookingId = booking.Id,
+                BookingReference = booking.BookingReference,
+                EventId = booking.EventId,
+                TicketTypeId = t.TicketTypeId,
+                TicketName = t.TicketName,
+                TicketSequence = t.TicketSequence,
+                Status = t.Status.ToString(),
+                ValidationToken = t.ValidationToken,
+                QrPayload = $"eventpulse-ticket:{t.ValidationToken}",
+                CreatedAt = t.CreatedAt
+            })
+            .ToList();
+
+        return Ok(new CustomerBookingTicketsResponseDto
+        {
+            BookingId = booking.Id,
+            BookingReference = booking.BookingReference,
+            EventId = booking.EventId,
+            BookingStatus = booking.Status.ToString(),
+            TotalAmount = booking.TotalAmount,
+            CreatedAt = booking.CreatedAt,
+            ConfirmedAt = booking.ConfirmedAt,
+            Tickets = ticketDtos
+        });
+    }
+
     [HttpPost]
     public async Task<IActionResult> CreateBooking([FromBody] CreateBookingRequest request, CancellationToken cancellationToken)
     {
