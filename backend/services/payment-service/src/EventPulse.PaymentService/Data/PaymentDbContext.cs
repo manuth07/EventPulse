@@ -87,6 +87,10 @@ public class PaymentDbContext : DbContext
             entity.HasIndex(o => o.PublishedAtUtc);
 
             entity.HasIndex(o => new { o.PublishedAtUtc, o.CreatedAtUtc });
+
+            entity.HasIndex(o => o.CreatedAtUtc)
+                .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc_Unpublished")
+                .HasFilter("\"PublishedAtUtc\" IS NULL");
         });
     }
 }
