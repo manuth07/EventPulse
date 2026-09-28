@@ -13,6 +13,7 @@ namespace EventPulse.BookingService.Tests;
 
 public class PaymentSucceededEventHandlerTests
 {
+    private readonly BookingDbContext _dbContext;
     private readonly Mock<IBookingConfirmationService> _confirmationServiceMock;
     private readonly Mock<ITicketGenerationService> _ticketGenerationServiceMock;
     private readonly Mock<ILogger<PaymentSucceededEventHandler>> _loggerMock;
@@ -20,10 +21,17 @@ public class PaymentSucceededEventHandlerTests
 
     public PaymentSucceededEventHandlerTests()
     {
+        var dbOptions = new DbContextOptionsBuilder<BookingDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(x => x.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        _dbContext = new BookingDbContext(dbOptions);
+
         _confirmationServiceMock = new Mock<IBookingConfirmationService>();
         _ticketGenerationServiceMock = new Mock<ITicketGenerationService>();
         _loggerMock = new Mock<ILogger<PaymentSucceededEventHandler>>();
         _handler = new PaymentSucceededEventHandler(
+            _dbContext,
             _confirmationServiceMock.Object,
             _ticketGenerationServiceMock.Object,
             _loggerMock.Object);
@@ -254,6 +262,7 @@ public class PaymentSucceededEventHandlerTests
 
         var handlerLogger = new Mock<ILogger<PaymentSucceededEventHandler>>();
         var realHandler = new PaymentSucceededEventHandler(
+            dbContext,
             confirmationService,
             ticketGenerationService,
             handlerLogger.Object);
@@ -290,5 +299,51 @@ public class PaymentSucceededEventHandlerTests
         // Assert: Pass 2 - Still exactly 3 tickets, no duplicates!
         var ticketsSecondPass = await dbContext.Tickets.Where(t => t.BookingId == bookingId).ToListAsync();
         Assert.Equal(3, ticketsSecondPass.Count);
+
+        // Assert: ProcessedIntegrationEvent was stored
+        var processedEvent = await dbContext.ProcessedIntegrationEvents.FindAsync(paymentEvent.EventId);
+        Assert.NotNull(processedEvent);
+        Assert.Equal(paymentEvent.EventId, processedEvent.EventId);
+        Assert.Equal(nameof(PaymentSucceededEvent), processedEvent.EventType);
+        Assert.Equal(KafkaTopics.PaymentSucceeded, processedEvent.Topic);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WhenEventAlreadyInInbox_ImmediatelyReturnsWithoutCallingServices()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        _dbContext.ProcessedIntegrationEvents.Add(new ProcessedIntegrationEvent
+        {
+            EventId = eventId,
+            EventType = nameof(PaymentSucceededEvent),
+            Topic = KafkaTopics.PaymentSucceeded,
+            ProcessedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-10)
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var paymentEvent = new PaymentSucceededEvent
+        {
+            EventId = eventId,
+            BookingId = bookingId,
+            PaymentId = Guid.NewGuid(),
+            BookingReference = "EP-2026-INBOX",
+            CustomerId = Guid.NewGuid(),
+            Amount = 1000m,
+            Currency = "lkr"
+        };
+
+        // Act
+        await _handler.HandleAsync(paymentEvent);
+
+        // Assert: Neither confirmation nor ticket generation was invoked!
+        _confirmationServiceMock.Verify(
+            c => c.ConfirmBookingAfterPaymentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _ticketGenerationServiceMock.Verify(
+            t => t.GenerateTicketsForBookingAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }

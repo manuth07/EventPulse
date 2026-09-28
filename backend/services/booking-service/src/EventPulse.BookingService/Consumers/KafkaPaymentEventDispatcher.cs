@@ -30,12 +30,12 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
         _logger = logger;
     }
 
-    public async Task<bool> DispatchAsync(string topic, string? key, string? value, CancellationToken cancellationToken = default)
+    public async Task<EventDispatchResult> DispatchAsync(string topic, string? key, string? value, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
             _logger.LogWarning("Received empty or whitespace payload from topic {Topic} with key {Key}", topic, key);
-            return false;
+            return EventDispatchResult.NonRetryable("Empty or whitespace payload");
         }
 
         if (string.Equals(topic, _kafkaOptions.Topics.PaymentSucceeded, StringComparison.OrdinalIgnoreCase))
@@ -48,13 +48,13 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
             catch (JsonException ex)
             {
                 _logger.LogError(ex, "Failed to deserialize PaymentSucceededEvent from topic {Topic} with key {Key}", topic, key);
-                return false;
+                return EventDispatchResult.NonRetryable($"Malformed JSON payload: {ex.Message}", ex.GetType().Name);
             }
 
             if (succeededEvent == null)
             {
                 _logger.LogError("Deserialized PaymentSucceededEvent was null from topic {Topic} with key {Key}", topic, key);
-                return false;
+                return EventDispatchResult.NonRetryable("Deserialized PaymentSucceededEvent was null");
             }
 
             _logger.LogInformation("Received PaymentSucceededEvent {EventId} for Booking {BookingId} from {Topic} (Key: {Key})",
@@ -65,13 +65,13 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
                 await _succeededHandler.HandleAsync(succeededEvent, cancellationToken);
                 _logger.LogInformation("Successfully handled PaymentSucceededEvent {EventId} for Booking {BookingId}",
                     succeededEvent.EventId, succeededEvent.BookingId);
-                return true;
+                return EventDispatchResult.Success();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogError(ex, "Error handling PaymentSucceededEvent {EventId} for Booking {BookingId}",
                     succeededEvent.EventId, succeededEvent.BookingId);
-                return false;
+                return EventDispatchResult.Retryable(ex.Message, ex.GetType().Name);
             }
         }
         else if (string.Equals(topic, _kafkaOptions.Topics.PaymentFailed, StringComparison.OrdinalIgnoreCase))
@@ -84,13 +84,13 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
             catch (JsonException ex)
             {
                 _logger.LogError(ex, "Failed to deserialize PaymentFailedEvent from topic {Topic} with key {Key}", topic, key);
-                return false;
+                return EventDispatchResult.NonRetryable($"Malformed JSON payload: {ex.Message}", ex.GetType().Name);
             }
 
             if (failedEvent == null)
             {
                 _logger.LogError("Deserialized PaymentFailedEvent was null from topic {Topic} with key {Key}", topic, key);
-                return false;
+                return EventDispatchResult.NonRetryable("Deserialized PaymentFailedEvent was null");
             }
 
             _logger.LogInformation("Received PaymentFailedEvent {EventId} for Booking {BookingId} from {Topic} (Key: {Key})",
@@ -101,19 +101,19 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
                 await _failedHandler.HandleAsync(failedEvent, cancellationToken);
                 _logger.LogInformation("Successfully handled PaymentFailedEvent {EventId} for Booking {BookingId}",
                     failedEvent.EventId, failedEvent.BookingId);
-                return true;
+                return EventDispatchResult.Success();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogError(ex, "Error handling PaymentFailedEvent {EventId} for Booking {BookingId}",
                     failedEvent.EventId, failedEvent.BookingId);
-                return false;
+                return EventDispatchResult.Retryable(ex.Message, ex.GetType().Name);
             }
         }
         else
         {
             _logger.LogWarning("Unknown or unconfigured topic {Topic} received with key {Key}", topic, key);
-            return false;
+            return EventDispatchResult.NonRetryable($"Unknown or unconfigured topic {topic}");
         }
     }
 }
