@@ -15,6 +15,7 @@ public class BookingDbContext : DbContext
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingItem> BookingItems => Set<BookingItem>();
     public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<ProcessedIntegrationEvent> ProcessedIntegrationEvents => Set<ProcessedIntegrationEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -156,6 +157,22 @@ public class BookingDbContext : DbContext
                 .WithMany(i => i.Tickets)
                 .HasForeignKey(t => t.BookingItemId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ProcessedIntegrationEvent>(entity =>
+        {
+            entity.HasKey(e => e.EventId);
+
+            entity.Property(e => e.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.ProcessedAtUtc)
+                .IsRequired();
         });
     }
 }
