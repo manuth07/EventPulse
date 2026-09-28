@@ -56,7 +56,15 @@ export function PaymentSuccess() {
     return null;
   });
 
-  const [status, setStatus] = useState(() => bookingInfo?.status || 'PendingPayment');
+  const [status, setStatus] = useState(() => {
+    // If returning from Stripe Checkout (session_id present), this is an active payment
+    // attempt awaiting confirmation — initialize as 'PendingPayment' so that
+    // stale 'PaymentFailed' from a prior attempt does not flash or preempt polling.
+    if (sessionId) {
+      return 'PendingPayment';
+    }
+    return bookingInfo?.status || 'PendingPayment';
+  });
   const [isPolling, setIsPolling] = useState(true);
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const [manualChecking, setManualChecking] = useState(false);
@@ -80,6 +88,71 @@ export function PaymentSuccess() {
       }
     } catch (err) {
       console.error('Failed to retry payment:', err);
+
+      // Section 4 & 7: If backend responds that booking is already Confirmed,
+      // or if retry checkout returns an error, verify authoritative booking summary immediately.
+      try {
+        const latestSummary = await getBookingSummary(targetBookingId, accessToken);
+        if (latestSummary?.status === 'Confirmed') {
+          // Booking is ALREADY Confirmed! State synchronization case, NOT a payment failure.
+          setStatus('Confirmed');
+          setRetryError(null);
+          setPollError(null);
+          setPollTimedOut(false);
+          setIsPolling(false);
+          setIsRetrying(false);
+          setBookingInfo((prev) => {
+            const updated = {
+              ...prev,
+              bookingReference: latestSummary.bookingReference || prev?.bookingReference,
+              totalAmount: latestSummary.totalAmount ?? prev?.totalAmount,
+              status: 'Confirmed',
+            };
+            try {
+              sessionStorage.setItem('ep_last_booking', JSON.stringify(updated));
+            } catch (_) {}
+            return updated;
+          });
+          return;
+        }
+
+        if (latestSummary?.status === 'Cancelled') {
+          setStatus('Cancelled');
+          setRetryError(null);
+          setPollError(null);
+          setPollTimedOut(false);
+          setIsPolling(false);
+          setIsRetrying(false);
+          setBookingInfo((prev) => {
+            const updated = {
+              ...prev,
+              bookingReference: latestSummary.bookingReference || prev?.bookingReference,
+              totalAmount: latestSummary.totalAmount ?? prev?.totalAmount,
+              status: 'Cancelled',
+            };
+            try {
+              sessionStorage.setItem('ep_last_booking', JSON.stringify(updated));
+            } catch (_) {}
+            return updated;
+          });
+          return;
+        }
+      } catch (syncErr) {
+        console.warn('Failed to synchronize booking status after retry error:', syncErr);
+      }
+
+      // If the error message explicitly indicates the booking was confirmed
+      const msg = err?.message || '';
+      if (msg.includes("Booking status is 'Confirmed'")) {
+        setStatus('Confirmed');
+        setRetryError(null);
+        setPollError(null);
+        setPollTimedOut(false);
+        setIsPolling(false);
+        setIsRetrying(false);
+        return;
+      }
+
       setRetryError(err.message || 'Payment initiation failed. Please try again.');
       setIsRetrying(false);
     }
@@ -104,23 +177,80 @@ export function PaymentSuccess() {
 
         setPollError(null);
         if (summary.status) {
-          setStatus(summary.status);
+          // Terminal status: Confirmed
+          if (summary.status === 'Confirmed') {
+            setStatus('Confirmed');
+            setRetryError(null);
+            setIsRetrying(false);
+            setPollTimedOut(false);
+            setIsPolling(false);
+            setBookingInfo((prev) => {
+              const updated = {
+                ...prev,
+                bookingReference: summary.bookingReference || prev?.bookingReference,
+                totalAmount: summary.totalAmount ?? prev?.totalAmount,
+                status: 'Confirmed',
+              };
+              try {
+                sessionStorage.setItem('ep_last_booking', JSON.stringify(updated));
+              } catch (_) {}
+              return updated;
+            });
+            return false; // Stop polling
+          }
+
+          // Terminal status: Cancelled
+          if (summary.status === 'Cancelled') {
+            setStatus('Cancelled');
+            setRetryError(null);
+            setIsRetrying(false);
+            setIsPolling(false);
+            setBookingInfo((prev) => {
+              const updated = {
+                ...prev,
+                bookingReference: summary.bookingReference || prev?.bookingReference,
+                totalAmount: summary.totalAmount ?? prev?.totalAmount,
+                status: 'Cancelled',
+              };
+              try {
+                sessionStorage.setItem('ep_last_booking', JSON.stringify(updated));
+              } catch (_) {}
+              return updated;
+            });
+            return false; // Stop polling
+          }
+
+          // Handling PaymentFailed:
+          if (summary.status === 'PaymentFailed') {
+            // If the user just returned from Stripe checkout with a session_id,
+            // the database status might still reflect the PREVIOUS failed attempt while
+            // the Stripe webhook / Kafka event is in flight (usually 1-3 seconds).
+            // Do NOT immediately abort polling on the initial checks if session_id is present.
+            if (sessionId && pollCount < MAX_POLLS) {
+              setStatus('PendingPayment');
+              return true; // Continue polling
+            }
+
+            // Genuinely failed (no session_id, or polling timed out)
+            setStatus('PaymentFailed');
+            setIsPolling(false);
+            setBookingInfo((prev) => ({
+              ...prev,
+              bookingReference: summary.bookingReference || prev?.bookingReference,
+              totalAmount: summary.totalAmount ?? prev?.totalAmount,
+              status: 'PaymentFailed',
+            }));
+            return false; // Stop polling
+          }
+
+          // PendingPayment status
+          setStatus('PendingPayment');
           setBookingInfo((prev) => ({
             ...prev,
             bookingReference: summary.bookingReference || prev?.bookingReference,
             totalAmount: summary.totalAmount ?? prev?.totalAmount,
-            status: summary.status,
+            status: 'PendingPayment',
           }));
-
-          // Terminal statuses: stop polling
-          if (
-            summary.status === 'Confirmed' ||
-            summary.status === 'PaymentFailed' ||
-            summary.status === 'Cancelled'
-          ) {
-            setIsPolling(false);
-            return false;
-          }
         }
       } catch (err) {
         if (!isMounted) return false;
@@ -157,7 +287,7 @@ export function PaymentSuccess() {
         clearInterval(intervalId);
       }
     };
-  }, [targetBookingId, accessToken]);
+  }, [targetBookingId, accessToken, sessionId]);
 
   const handleManualCheck = useCallback(async () => {
     if (!targetBookingId || manualChecking) return;
@@ -167,12 +297,28 @@ export function PaymentSuccess() {
       const summary = await getBookingSummary(targetBookingId, accessToken);
       if (summary?.status) {
         setStatus(summary.status);
-        setBookingInfo((prev) => ({
-          ...prev,
-          bookingReference: summary.bookingReference || prev?.bookingReference,
-          totalAmount: summary.totalAmount ?? prev?.totalAmount,
-          status: summary.status,
-        }));
+        setBookingInfo((prev) => {
+          const updated = {
+            ...prev,
+            bookingReference: summary.bookingReference || prev?.bookingReference,
+            totalAmount: summary.totalAmount ?? prev?.totalAmount,
+            status: summary.status,
+          };
+          try {
+            sessionStorage.setItem('ep_last_booking', JSON.stringify(updated));
+          } catch (_) {}
+          return updated;
+        });
+
+        if (summary.status === 'Confirmed') {
+          setRetryError(null);
+          setPollError(null);
+          setPollTimedOut(false);
+          setIsPolling(false);
+        } else if (summary.status === 'Cancelled' || summary.status === 'PaymentFailed') {
+          setRetryError(null);
+          setIsPolling(false);
+        }
       }
     } catch (e) {
       setPollError('Unable to refresh status. Please try again.');
@@ -217,218 +363,7 @@ export function PaymentSuccess() {
             textAlign: 'center',
           }}
         >
-          {/* ==================== STATE 1: PENDING PAYMENT ==================== */}
-          {status === 'PendingPayment' && (
-            <>
-              {/* Subtle Loading Icon */}
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255, 91, 0, 0.08)',
-                  marginBottom: '20px',
-                }}
-              >
-                <Loader2 size={32} className="ep-spin" style={{ color: 'var(--ep-primary)', flexShrink: 0 }} />
-              </div>
-
-              <h1
-                style={{
-                  fontSize: '24px',
-                  fontWeight: 800,
-                  color: 'var(--ep-text-primary)',
-                  marginBottom: '8px',
-                  letterSpacing: '-0.01em',
-                }}
-              >
-                Payment Submitted
-              </h1>
-
-              <p
-                style={{
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  color: 'var(--ep-primary)',
-                  marginBottom: '12px',
-                }}
-              >
-                Your booking is being confirmed.
-              </p>
-
-              <p
-                style={{
-                  fontSize: '14px',
-                  color: 'var(--ep-text-secondary)',
-                  marginBottom: '24px',
-                  lineHeight: 1.5,
-                }}
-              >
-                Your payment has been received and we are confirming your booking.
-              </p>
-
-              {/* Booking Context Card (if available) */}
-              {bookingInfo && (
-                <div
-                  style={{
-                    backgroundColor: 'var(--ep-canvas)',
-                    border: '1px solid var(--ep-border)',
-                    borderRadius: '12px',
-                    padding: '16px 20px',
-                    marginBottom: '24px',
-                    textAlign: 'left',
-                  }}
-                >
-                  {bookingInfo.bookingReference && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
-                        Booking Reference
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          color: 'var(--ep-text-primary)',
-                          fontFamily: 'monospace',
-                        }}
-                      >
-                        #{bookingInfo.bookingReference}
-                      </span>
-                    </div>
-                  )}
-
-                  {bookingInfo.eventTitle && (
-                    <div
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: 700,
-                        color: 'var(--ep-text-primary)',
-                        marginBottom: '4px',
-                      }}
-                    >
-                      {bookingInfo.eventTitle}
-                    </div>
-                  )}
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      fontSize: '13px',
-                      color: 'var(--ep-text-secondary)',
-                      marginTop: '8px',
-                    }}
-                  >
-                    <span>
-                      {ticketCount
-                        ? `${ticketCount} ${ticketCount === 1 ? 'ticket' : 'tickets'}`
-                        : 'Tickets reserved'}
-                    </span>
-                    {bookingInfo.totalAmount > 0 && (
-                      <span style={{ fontWeight: 700, color: 'var(--ep-primary)' }}>
-                        {formatPrice(bookingInfo.totalAmount)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Status polling note or timeout */}
-              {isPolling && (
-                <div
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '12px',
-                    color: 'var(--ep-text-secondary)',
-                    marginBottom: '24px',
-                  }}
-                >
-                  <Loader2 size={13} className="ep-spin" style={{ flexShrink: 0 }} />
-                  <span>Checking for confirmation…</span>
-                </div>
-              )}
-
-              {pollTimedOut && (
-                <div
-                  style={{
-                    padding: '12px',
-                    backgroundColor: '#FFF8F2',
-                    border: '1px solid #FFE4CC',
-                    borderRadius: '8px',
-                    marginBottom: '20px',
-                    fontSize: '13px',
-                    color: 'var(--ep-text-secondary)',
-                    lineHeight: 1.4,
-                  }}
-                >
-                  <div>
-                    Confirmation is taking a little longer than usual. Your order is safely recorded.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleManualCheck}
-                    disabled={manualChecking}
-                    style={{
-                      marginTop: '8px',
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--ep-primary)',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: manualChecking ? 'not-allowed' : 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <RefreshCw size={12} className={manualChecking ? 'ep-spin' : ''} />
-                    <span>{manualChecking ? 'Checking…' : 'Check Status Again'}</span>
-                  </button>
-                </div>
-              )}
-
-              {pollError && (
-                <div style={{ fontSize: '12px', color: 'var(--ep-danger)', marginBottom: '16px' }}>
-                  {pollError}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <Link
-                  to="/"
-                  className="ep-btn-primary"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '12px 24px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    textDecoration: 'none',
-                    borderRadius: 'var(--ep-radius-btn)',
-                  }}
-                >
-                  <span>Browse More Events</span>
-                  <ArrowRight size={16} />
-                </Link>
-              </div>
-            </>
-          )}
-
-          {/* ==================== STATE 2: CONFIRMED ==================== */}
+          {/* ==================== STATE 1: CONFIRMED (Authoritative Precedence) ==================== */}
           {status === 'Confirmed' && (
             <>
               {/* Confirmed Success Icon */}
@@ -636,6 +571,84 @@ export function PaymentSuccess() {
             </>
           )}
 
+          {/* ==================== STATE 2: CANCELLED ==================== */}
+          {status === 'Cancelled' && (
+            <>
+              {/* Cancelled Icon */}
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  backgroundColor: '#F5F5F7',
+                  border: '2px solid var(--ep-border)',
+                  marginBottom: '20px',
+                }}
+              >
+                <XCircle size={36} color="var(--ep-text-secondary)" />
+              </div>
+
+              <h1
+                style={{
+                  fontSize: '24px',
+                  fontWeight: 800,
+                  color: 'var(--ep-text-primary)',
+                  marginBottom: '8px',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                Booking Cancelled
+              </h1>
+
+              <p
+                style={{
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: 'var(--ep-text-secondary)',
+                  marginBottom: '12px',
+                }}
+              >
+                This booking has been cancelled.
+              </p>
+
+              <p
+                style={{
+                  fontSize: '14px',
+                  color: 'var(--ep-text-secondary)',
+                  marginBottom: '24px',
+                  lineHeight: 1.5,
+                }}
+              >
+                The reservation was cancelled and no charges were completed. You can select tickets
+                again at any time.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <Link
+                  to="/"
+                  className="ep-btn-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '12px 24px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                    borderRadius: 'var(--ep-radius-btn)',
+                  }}
+                >
+                  <span>Browse Events</span>
+                  <ArrowRight size={16} />
+                </Link>
+              </div>
+            </>
+          )}
+
           {/* ==================== STATE 3: PAYMENT FAILED ==================== */}
           {status === 'PaymentFailed' && (
             <>
@@ -690,7 +703,7 @@ export function PaymentSuccess() {
                 The payment processor was unable to complete this transaction. Your reservation is safely held.
               </p>
 
-              {retryError && (
+              {retryError && !retryError.includes('Confirmed') && (
                 <div
                   style={{
                     backgroundColor: '#FEF2F2',
@@ -780,10 +793,10 @@ export function PaymentSuccess() {
             </>
           )}
 
-          {/* ==================== STATE 4: CANCELLED ==================== */}
-          {status === 'Cancelled' && (
+          {/* ==================== STATE 4: PENDING PAYMENT (Default / Polling) ==================== */}
+          {(status === 'PendingPayment' || (!['Confirmed', 'Cancelled', 'PaymentFailed'].includes(status))) && (
             <>
-              {/* Cancelled Icon */}
+              {/* Subtle Loading Icon */}
               <div
                 style={{
                   display: 'inline-flex',
@@ -792,12 +805,11 @@ export function PaymentSuccess() {
                   width: '64px',
                   height: '64px',
                   borderRadius: '50%',
-                  backgroundColor: '#F5F5F7',
-                  border: '2px solid var(--ep-border)',
+                  backgroundColor: 'rgba(255, 91, 0, 0.08)',
                   marginBottom: '20px',
                 }}
               >
-                <XCircle size={36} color="var(--ep-text-secondary)" />
+                <Loader2 size={32} className="ep-spin" style={{ color: 'var(--ep-primary)', flexShrink: 0 }} />
               </div>
 
               <h1
@@ -809,18 +821,18 @@ export function PaymentSuccess() {
                   letterSpacing: '-0.01em',
                 }}
               >
-                Booking Cancelled
+                Payment Submitted
               </h1>
 
               <p
                 style={{
                   fontSize: '15px',
                   fontWeight: 600,
-                  color: 'var(--ep-text-secondary)',
+                  color: 'var(--ep-primary)',
                   marginBottom: '12px',
                 }}
               >
-                This booking has been cancelled.
+                Your booking is being confirmed.
               </p>
 
               <p
@@ -831,9 +843,143 @@ export function PaymentSuccess() {
                   lineHeight: 1.5,
                 }}
               >
-                The reservation was cancelled and no charges were completed. You can select tickets
-                again at any time.
+                Your payment has been received and we are confirming your booking.
               </p>
+
+              {/* Booking Context Card (if available) */}
+              {bookingInfo && (
+                <div
+                  style={{
+                    backgroundColor: 'var(--ep-canvas)',
+                    border: '1px solid var(--ep-border)',
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    marginBottom: '24px',
+                    textAlign: 'left',
+                  }}
+                >
+                  {bookingInfo.bookingReference && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                        Booking Reference
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          color: 'var(--ep-text-primary)',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        #{bookingInfo.bookingReference}
+                      </span>
+                    </div>
+                  )}
+
+                  {bookingInfo.eventTitle && (
+                    <div
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 700,
+                        color: 'var(--ep-text-primary)',
+                        marginBottom: '4px',
+                      }}
+                    >
+                      {bookingInfo.eventTitle}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: '13px',
+                      color: 'var(--ep-text-secondary)',
+                      marginTop: '8px',
+                    }}
+                  >
+                    <span>
+                      {ticketCount
+                        ? `${ticketCount} ${ticketCount === 1 ? 'ticket' : 'tickets'}`
+                        : 'Tickets reserved'}
+                    </span>
+                    {bookingInfo.totalAmount > 0 && (
+                      <span style={{ fontWeight: 700, color: 'var(--ep-primary)' }}>
+                        {formatPrice(bookingInfo.totalAmount)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Status polling note or timeout */}
+              {isPolling && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    color: 'var(--ep-text-secondary)',
+                    marginBottom: '24px',
+                  }}
+                >
+                  <Loader2 size={13} className="ep-spin" style={{ flexShrink: 0 }} />
+                  <span>Checking for confirmation…</span>
+                </div>
+              )}
+
+              {pollTimedOut && (
+                <div
+                  style={{
+                    padding: '12px',
+                    backgroundColor: '#FFF8F2',
+                    border: '1px solid #FFE4CC',
+                    borderRadius: '8px',
+                    marginBottom: '20px',
+                    fontSize: '13px',
+                    color: 'var(--ep-text-secondary)',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <div>
+                    Confirmation is taking a little longer than usual. Your order is safely recorded.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleManualCheck}
+                    disabled={manualChecking}
+                    style={{
+                      marginTop: '8px',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--ep-primary)',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: manualChecking ? 'not-allowed' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <RefreshCw size={12} className={manualChecking ? 'ep-spin' : ''} />
+                    <span>{manualChecking ? 'Checking…' : 'Check Status Again'}</span>
+                  </button>
+                </div>
+              )}
+
+              {pollError && (
+                <div style={{ fontSize: '12px', color: 'var(--ep-danger)', marginBottom: '16px' }}>
+                  {pollError}
+                </div>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <Link
@@ -851,7 +997,7 @@ export function PaymentSuccess() {
                     borderRadius: 'var(--ep-radius-btn)',
                   }}
                 >
-                  <span>Browse Events</span>
+                  <span>Browse More Events</span>
                   <ArrowRight size={16} />
                 </Link>
               </div>
