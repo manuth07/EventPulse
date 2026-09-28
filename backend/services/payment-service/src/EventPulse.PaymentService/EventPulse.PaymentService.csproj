@@ -20,4 +20,8 @@
     <PackageReference Include="Stripe.net" Version="47.4.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\shared\contracts\kafka\EventPulse.Contracts.Kafka.csproj" />
+  </ItemGroup>
+
 </Project>

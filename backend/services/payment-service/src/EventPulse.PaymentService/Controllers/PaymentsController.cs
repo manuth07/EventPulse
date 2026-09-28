@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EventPulse.Contracts.Kafka;
 using EventPulse.PaymentService.Data;
 using EventPulse.PaymentService.DTOs;
 using EventPulse.PaymentService.Events;
@@ -208,15 +209,15 @@ public class PaymentsController : ControllerBase
 
                 var evt = new PaymentSucceededEvent
                 {
+                    EventId = Guid.NewGuid(),
+                    EventVersion = 1,
+                    OccurredAtUtc = payment.CompletedAt ?? DateTimeOffset.UtcNow,
                     PaymentId = payment.Id,
                     BookingId = payment.BookingId,
                     BookingReference = payment.BookingReference,
                     CustomerId = payment.CustomerId,
                     Amount = payment.Amount,
-                    Currency = payment.Currency,
-                    StripeSessionId = payment.StripeSessionId ?? session.Id,
-                    StripePaymentIntentId = payment.StripePaymentIntentId ?? string.Empty,
-                    CompletedAt = payment.CompletedAt.Value
+                    Currency = payment.Currency
                 };
 
                 await _eventPublisher.PublishPaymentSucceededAsync(evt, cancellationToken);
@@ -249,13 +250,17 @@ public class PaymentsController : ControllerBase
 
                 var evt = new PaymentFailedEvent
                 {
+                    EventId = Guid.NewGuid(),
+                    EventVersion = 1,
+                    OccurredAtUtc = DateTimeOffset.UtcNow,
                     PaymentId = payment.Id,
                     BookingId = payment.BookingId,
                     BookingReference = payment.BookingReference,
                     CustomerId = payment.CustomerId,
                     Amount = payment.Amount,
-                    FailureReason = failureReason,
-                    FailedAt = DateTimeOffset.UtcNow
+                    Currency = payment.Currency,
+                    FailureCode = intent.LastPaymentError?.Code,
+                    FailureReason = failureReason
                 };
 
                 await _eventPublisher.PublishPaymentFailedAsync(evt, cancellationToken);

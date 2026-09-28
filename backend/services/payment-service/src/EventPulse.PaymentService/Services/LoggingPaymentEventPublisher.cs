@@ -1,4 +1,5 @@
 using System.Text.Json;
+using EventPulse.Contracts.Kafka;
 using EventPulse.PaymentService.Events;
 
 namespace EventPulse.PaymentService.Services;
