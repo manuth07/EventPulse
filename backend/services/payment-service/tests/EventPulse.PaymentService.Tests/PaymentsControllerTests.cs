@@ -414,4 +414,80 @@ public class PaymentsControllerTests
         Assert.Equal(paymentId, payload.PaymentId);
         Assert.Equal("Insufficient funds", payload.FailureReason);
     }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WhenBookingStatusIsPaymentFailed_AllowsPaymentAndCreatesSession()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var token = "test_bearer_token";
+
+        var bookingSummary = new BookingSummaryDto
+        {
+            Id = bookingId,
+            BookingReference = "EP-FAIL-RETRY",
+            CustomerId = customerId,
+            TotalAmount = 75.0m,
+            Status = "PaymentFailed"
+        };
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bookingSummary);
+
+        _stripeServiceMock
+            .Setup(s => s.CreateSessionAsync(It.IsAny<Payment>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StripeSessionResult("cs_retry_123", "https://checkout.stripe.com/pay/cs_retry_123"));
+
+        var controller = CreateController(db, customerId: customerId, token: token);
+
+        // Act
+        var result = await controller.CreateCheckoutSession(
+            new CreateCheckoutSessionRequest { BookingId = bookingId },
+            CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<CheckoutSessionResponse>(okResult.Value);
+        Assert.Equal(bookingId, response.BookingId);
+        Assert.Equal("cs_retry_123", response.SessionId);
+    }
+
+    [Theory]
+    [InlineData("Confirmed")]
+    [InlineData("Cancelled")]
+    public async Task CreateCheckoutSession_WhenBookingStatusIsInvalid_ReturnsBadRequest(string invalidStatus)
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var token = "test_bearer_token";
+
+        var bookingSummary = new BookingSummaryDto
+        {
+            Id = bookingId,
+            BookingReference = "EP-INVALID-STATUS",
+            CustomerId = customerId,
+            TotalAmount = 75.0m,
+            Status = invalidStatus
+        };
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bookingSummary);
+
+        var controller = CreateController(db, customerId: customerId, token: token);
+
+        // Act
+        var result = await controller.CreateCheckoutSession(
+            new CreateCheckoutSessionRequest { BookingId = bookingId },
+            CancellationToken.None);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.NotNull(badRequestResult.Value);
+    }
 }

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getBookingSummary } from '../../services/bookingService';
+import { createCheckoutSession } from '../../services/paymentService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import {
   CheckCircle2,
@@ -60,8 +61,29 @@ export function PaymentSuccess() {
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const [manualChecking, setManualChecking] = useState(false);
   const [pollError, setPollError] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState(null);
 
   const targetBookingId = queryBookingId || bookingInfo?.bookingId;
+
+  const handleRetryPayment = useCallback(async () => {
+    if (!targetBookingId || isRetrying) return;
+    setIsRetrying(true);
+    setRetryError(null);
+
+    try {
+      const session = await createCheckoutSession(targetBookingId, accessToken);
+      if (session?.checkoutUrl) {
+        window.location.href = session.checkoutUrl;
+      } else {
+        throw new Error('Unable to redirect to checkout. Please try again.');
+      }
+    } catch (err) {
+      console.error('Failed to retry payment:', err);
+      setRetryError(err.message || 'Payment initiation failed. Please try again.');
+      setIsRetrying(false);
+    }
+  }, [targetBookingId, accessToken, isRetrying]);
 
   // Poll for booking confirmation while status is PendingPayment
   useEffect(() => {
@@ -643,7 +665,7 @@ export function PaymentSuccess() {
                   letterSpacing: '-0.01em',
                 }}
               >
-                Payment Failed
+                Payment Unsuccessful
               </h1>
 
               <p
@@ -651,23 +673,39 @@ export function PaymentSuccess() {
                   fontSize: '15px',
                   fontWeight: 600,
                   color: 'var(--ep-danger)',
-                  marginBottom: '12px',
+                  marginBottom: '8px',
                 }}
               >
-                We were unable to complete your payment.
+                Your booking is still available. You can retry the payment.
               </p>
 
               <p
                 style={{
                   fontSize: '14px',
                   color: 'var(--ep-text-secondary)',
-                  marginBottom: '24px',
+                  marginBottom: '20px',
                   lineHeight: 1.5,
                 }}
               >
-                The payment processor could not process the transaction. You can return to your cart
-                to retry payment for your booking.
+                The payment processor was unable to complete this transaction. Your reservation is safely held.
               </p>
+
+              {retryError && (
+                <div
+                  style={{
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    marginBottom: '16px',
+                    fontSize: '13px',
+                    color: 'var(--ep-danger)',
+                    textAlign: 'left',
+                  }}
+                >
+                  {retryError}
+                </div>
+              )}
 
               {bookingInfo?.bookingReference && (
                 <div
@@ -689,8 +727,10 @@ export function PaymentSuccess() {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <Link
-                  to="/cart"
+                <button
+                  type="button"
+                  onClick={handleRetryPayment}
+                  disabled={isRetrying}
                   className="ep-btn-primary"
                   style={{
                     display: 'inline-flex',
@@ -700,13 +740,24 @@ export function PaymentSuccess() {
                     padding: '12px 24px',
                     fontSize: '14px',
                     fontWeight: 600,
-                    textDecoration: 'none',
                     borderRadius: 'var(--ep-radius-btn)',
+                    cursor: isRetrying ? 'not-allowed' : 'pointer',
+                    opacity: isRetrying ? 0.8 : 1,
+                    border: 'none',
                   }}
                 >
-                  <RotateCcw size={16} />
-                  <span>Return to Cart & Retry Payment</span>
-                </Link>
+                  {isRetrying ? (
+                    <>
+                      <Loader2 size={16} className="ep-spin" />
+                      <span>Preparing secure checkout…</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw size={16} />
+                      <span>Retry Payment</span>
+                    </>
+                  )}
+                </button>
 
                 <Link
                   to="/"

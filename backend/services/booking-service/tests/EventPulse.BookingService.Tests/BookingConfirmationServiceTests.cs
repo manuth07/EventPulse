@@ -214,7 +214,7 @@ public class BookingConfirmationServiceTests
     }
 
     [Fact]
-    public async Task ConfirmBookingAfterPaymentAsync_WhenPaymentFailed_ShouldRejectConfirmationAndPreservePaymentFailedStatus()
+    public async Task ConfirmBookingAfterPaymentAsync_WhenPaymentFailed_ShouldTransitionToConfirmedSuccessfully()
     {
         // Arrange
         using var context = CreateInMemoryDbContext();
@@ -240,25 +240,25 @@ public class BookingConfirmationServiceTests
 
         // Assert - Return Result
         Assert.NotNull(result);
-        Assert.Equal(BookingConfirmationStatus.InvalidState, result.Status);
-        Assert.False(result.IsSuccess);
+        Assert.Equal(BookingConfirmationStatus.Confirmed, result.Status);
+        Assert.True(result.IsSuccess);
         Assert.Equal(bookingId, result.BookingId);
 
-        // Assert - Persisted Database State Unchanged
+        // Assert - Persisted Database State Transitions to Confirmed
         var persistedBooking = await context.Bookings.FindAsync(bookingId);
         Assert.NotNull(persistedBooking);
-        Assert.Equal(BookingStatus.PaymentFailed, persistedBooking.Status);
-        Assert.Null(persistedBooking.ConfirmedAt);
+        Assert.Equal(BookingStatus.Confirmed, persistedBooking.Status);
+        Assert.NotNull(persistedBooking.ConfirmedAt);
 
-        // Verify Warning Log
+        // Verify Info Log
         loggerMock.Verify(
             x => x.Log(
-                LogLevel.Warning,
+                LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Cannot confirm Booking") && v.ToString()!.Contains("PaymentFailed")),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("confirmed")),
                 null,
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+            Times.AtLeastOnce);
     }
 
     [Fact]

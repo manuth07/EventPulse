@@ -48,6 +48,15 @@ public class StripeCheckoutService : IStripeCheckoutService
                 { "BookingId", payment.BookingId.ToString() },
                 { "BookingReference", payment.BookingReference },
                 { "PaymentId", payment.Id.ToString() }
+            },
+            PaymentIntentData = new SessionPaymentIntentDataOptions
+            {
+                Metadata = new Dictionary<string, string>
+                {
+                    { "BookingId", payment.BookingId.ToString() },
+                    { "BookingReference", payment.BookingReference },
+                    { "PaymentId", payment.Id.ToString() }
+                }
             }
         };
 

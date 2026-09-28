@@ -346,4 +346,39 @@ public class PaymentSucceededEventHandlerTests
             t => t.GenerateTicketsForBookingAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task HandleAsync_WhenBookingWasPaymentFailed_RecoversToConfirmedAndGeneratesTicketsOnce()
+    {
+        // Arrange
+        var bookingId = Guid.NewGuid();
+        var booking = new Booking { Id = bookingId, Status = BookingStatus.Confirmed };
+        var paymentEvent = new PaymentSucceededEvent
+        {
+            BookingId = bookingId,
+            PaymentId = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            Amount = 150m,
+            Currency = "USD"
+        };
+
+        _confirmationServiceMock
+            .Setup(c => c.ConfirmBookingAfterPaymentAsync(bookingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(BookingConfirmationResult.Confirmed(booking));
+
+        _ticketGenerationServiceMock
+            .Setup(t => t.GenerateTicketsForBookingAsync(bookingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TicketGenerationResult.Success(bookingId, new List<Ticket> { new() { Id = Guid.NewGuid(), BookingId = bookingId } }, 1));
+
+        // Act
+        await _handler.HandleAsync(paymentEvent);
+
+        // Assert
+        _confirmationServiceMock.Verify(c => c.ConfirmBookingAfterPaymentAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
+        _ticketGenerationServiceMock.Verify(t => t.GenerateTicketsForBookingAsync(bookingId, It.IsAny<CancellationToken>()), Times.Once);
+
+        var inbox = await _dbContext.ProcessedIntegrationEvents.FindAsync(paymentEvent.EventId);
+        Assert.NotNull(inbox);
+        Assert.Equal(KafkaTopics.PaymentSucceeded, inbox.Topic);
+    }
 }

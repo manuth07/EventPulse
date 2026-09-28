@@ -88,12 +88,13 @@ public class PaymentsController : ControllerBase
             });
         }
 
-        if (!string.Equals(bookingSummary.Status, "PendingPayment", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(bookingSummary.Status, "PendingPayment", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(bookingSummary.Status, "PaymentFailed", StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new
             {
                 code = "INVALID_BOOKING_STATUS",
-                message = $"Booking status is '{bookingSummary.Status}'. Only 'PendingPayment' bookings can be paid."
+                message = $"Booking status is '{bookingSummary.Status}'. Only 'PendingPayment' or 'PaymentFailed' bookings can be paid."
             });
         }
 
@@ -246,6 +247,7 @@ public class PaymentsController : ControllerBase
                     return Ok();
                 }
 
+                payment.StripePaymentIntentId = intent.Id ?? payment.StripePaymentIntentId;
                 payment.Status = PaymentStatus.Failed;
 
                 var eventId = Guid.NewGuid();

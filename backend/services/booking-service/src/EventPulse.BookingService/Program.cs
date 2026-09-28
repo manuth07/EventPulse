@@ -115,6 +115,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IBookingReferenceGenerator, BookingReferenceGenerator>();
 builder.Services.AddScoped<IBookingConfirmationService, BookingConfirmationService>();
+builder.Services.AddScoped<IBookingPaymentFailureService, BookingPaymentFailureService>();
 builder.Services.AddScoped<ITicketCodeGenerator, TicketCodeGenerator>();
 builder.Services.AddScoped<IValidationTokenGenerator, ValidationTokenGenerator>();
 builder.Services.AddScoped<ITicketGenerationService, TicketGenerationService>();
@@ -126,7 +127,7 @@ builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublish
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
 builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
 builder.Services.AddScoped<IPaymentSucceededEventHandler, PaymentSucceededEventHandler>();
-builder.Services.AddScoped<IPaymentFailedEventHandler, LoggingPaymentFailedEventHandler>();
+builder.Services.AddScoped<IPaymentFailedEventHandler, PaymentFailedEventHandler>();
 builder.Services.AddScoped<IKafkaPaymentEventDispatcher, KafkaPaymentEventDispatcher>();
 builder.Services.AddHostedService<KafkaPaymentEventConsumer>();
 builder.Services.AddControllers()
