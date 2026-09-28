@@ -20,7 +20,7 @@ public class PaymentsController : ControllerBase
     private readonly PaymentDbContext _dbContext;
     private readonly IBookingServiceClient _bookingClient;
     private readonly IStripeCheckoutService _stripeService;
-    private readonly IPaymentEventPublisher _eventPublisher;
+    private readonly IOutboxWriter _outboxWriter;
     private readonly IConfiguration _configuration;
     private readonly ILogger<PaymentsController> _logger;
 
@@ -28,14 +28,14 @@ public class PaymentsController : ControllerBase
         PaymentDbContext dbContext,
         IBookingServiceClient bookingClient,
         IStripeCheckoutService stripeService,
-        IPaymentEventPublisher eventPublisher,
+        IOutboxWriter outboxWriter,
         IConfiguration configuration,
         ILogger<PaymentsController> logger)
     {
         _dbContext = dbContext;
         _bookingClient = bookingClient;
         _stripeService = stripeService;
-        _eventPublisher = eventPublisher;
+        _outboxWriter = outboxWriter;
         _configuration = configuration;
         _logger = logger;
     }
@@ -205,11 +205,10 @@ public class PaymentsController : ControllerBase
                 payment.StripePaymentIntentId = session.PaymentIntentId ?? payment.StripePaymentIntentId;
                 payment.CompletedAt = DateTimeOffset.UtcNow;
 
-                await _dbContext.SaveChangesAsync(cancellationToken);
-
+                var eventId = Guid.NewGuid();
                 var evt = new PaymentSucceededEvent
                 {
-                    EventId = Guid.NewGuid(),
+                    EventId = eventId,
                     EventVersion = 1,
                     OccurredAtUtc = payment.CompletedAt ?? DateTimeOffset.UtcNow,
                     PaymentId = payment.Id,
@@ -220,7 +219,9 @@ public class PaymentsController : ControllerBase
                     Currency = payment.Currency
                 };
 
-                await _eventPublisher.PublishPaymentSucceededAsync(evt, cancellationToken);
+                _outboxWriter.EnqueuePaymentSucceeded(evt);
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
             }
         }
         else if (stripeEvent.Type == EventTypes.PaymentIntentPaymentFailed)
@@ -246,11 +247,11 @@ public class PaymentsController : ControllerBase
                 }
 
                 payment.Status = PaymentStatus.Failed;
-                await _dbContext.SaveChangesAsync(cancellationToken);
 
+                var eventId = Guid.NewGuid();
                 var evt = new PaymentFailedEvent
                 {
-                    EventId = Guid.NewGuid(),
+                    EventId = eventId,
                     EventVersion = 1,
                     OccurredAtUtc = DateTimeOffset.UtcNow,
                     PaymentId = payment.Id,
@@ -263,7 +264,9 @@ public class PaymentsController : ControllerBase
                     FailureReason = failureReason
                 };
 
-                await _eventPublisher.PublishPaymentFailedAsync(evt, cancellationToken);
+                _outboxWriter.EnqueuePaymentFailed(evt);
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
             }
         }
 

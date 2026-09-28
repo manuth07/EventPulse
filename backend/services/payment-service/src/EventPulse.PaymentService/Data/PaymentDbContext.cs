@@ -10,6 +10,7 @@ public class PaymentDbContext : DbContext
     }
 
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +54,39 @@ public class PaymentDbContext : DbContext
 
             entity.Property(p => p.CreatedAt)
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+
+            entity.Property(o => o.EventId)
+                .IsRequired();
+
+            entity.HasIndex(o => o.EventId)
+                .IsUnique();
+
+            entity.Property(o => o.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.MessageKey)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Payload)
+                .IsRequired();
+
+            entity.Property(o => o.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(o => o.PublishedAtUtc);
+
+            entity.HasIndex(o => new { o.PublishedAtUtc, o.CreatedAtUtc });
         });
     }
 }
