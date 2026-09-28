@@ -26,8 +26,10 @@ builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(clie
 });
 
 builder.Services.AddScoped<IStripeCheckoutService, StripeCheckoutService>();
+builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
-builder.Services.AddSingleton<IPaymentEventPublisher, KafkaPaymentEventPublisher>();
+builder.Services.AddSingleton<IKafkaMessageProducer, KafkaMessageProducer>();
+builder.Services.AddHostedService<OutboxPublisherService>();
 
 var stripeSecretKey = builder.Configuration["STRIPE_SECRET_KEY"]
     ?? builder.Configuration["Stripe__SecretKey"]
