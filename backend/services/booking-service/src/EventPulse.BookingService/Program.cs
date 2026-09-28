@@ -1,7 +1,10 @@
 using System.Security.Claims;
 using System.Text;
+using EventPulse.BookingService.Consumers;
 using EventPulse.BookingService.Data;
+using EventPulse.BookingService.Events;
 using EventPulse.BookingService.Services;
+using EventPulse.Contracts.Kafka;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -116,6 +119,15 @@ builder.Services.AddScoped<ITicketCodeGenerator, TicketCodeGenerator>();
 builder.Services.AddScoped<IValidationTokenGenerator, ValidationTokenGenerator>();
 builder.Services.AddScoped<ITicketGenerationService, TicketGenerationService>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
+
+// ---------------------------------------------------------------------------
+// Kafka Event Consumers & Handlers
+// ---------------------------------------------------------------------------
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+builder.Services.AddScoped<IPaymentSucceededEventHandler, LoggingPaymentSucceededEventHandler>();
+builder.Services.AddScoped<IPaymentFailedEventHandler, LoggingPaymentFailedEventHandler>();
+builder.Services.AddScoped<IKafkaPaymentEventDispatcher, KafkaPaymentEventDispatcher>();
+builder.Services.AddHostedService<KafkaPaymentEventConsumer>();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
