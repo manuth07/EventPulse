@@ -8,6 +8,7 @@ public class KafkaOptions
     public string ConsumerGroupId { get; set; } = "eventpulse-booking-service";
     public KafkaTopicOptions Topics { get; set; } = new();
     public KafkaConsumerOptions Consumer { get; set; } = new();
+    public KafkaOutboxOptions Outbox { get; set; } = new();
 }
 
 public class KafkaTopicOptions
@@ -22,4 +23,10 @@ public class KafkaConsumerOptions
 {
     public int MaxProcessingAttempts { get; set; } = 3;
     public double RetryBaseDelaySeconds { get; set; } = 1.0;
+}
+
+public class KafkaOutboxOptions
+{
+    public int PollingIntervalSeconds { get; set; } = 2;
+    public int BatchSize { get; set; } = 20;
 }
