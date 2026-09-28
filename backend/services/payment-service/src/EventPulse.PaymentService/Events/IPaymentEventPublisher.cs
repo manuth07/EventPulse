@@ -1,3 +1,5 @@
+using EventPulse.Contracts.Kafka;
+
 namespace EventPulse.PaymentService.Events;
 
 public interface IPaymentEventPublisher

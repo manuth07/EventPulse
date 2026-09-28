@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using EventPulse.Contracts.Kafka;
 using EventPulse.PaymentService.Controllers;
 using EventPulse.PaymentService.Data;
 using EventPulse.PaymentService.DTOs;
@@ -257,7 +258,7 @@ public class PaymentsControllerTests
 
         _eventPublisherMock.Verify(
             p => p.PublishPaymentSucceededAsync(It.Is<PaymentSucceededEvent>(
-                e => e.PaymentId == paymentId && e.StripeSessionId == sessionId && e.StripePaymentIntentId == "pi_test_intent_success"
+                e => e.PaymentId == paymentId && e.EventId != Guid.Empty && e.EventVersion == 1 && e.BookingId == bookingId
             ), It.IsAny<CancellationToken>()),
             Times.Once
         );
