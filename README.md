@@ -42,6 +42,7 @@ EventPulse is a distributed, microservice-based event discovery and ticketing pl
 | **Event Service** | `7102` | ASP.NET Core (.NET 10), EF Core | Event catalog, lifecycle state machine, ticket tier definitions, cover storage |
 | **Booking Service** | `7103` | ASP.NET Core (.NET 10), EF Core | Cart management, ticket reservations, inventory verification |
 | **Payment Service** | `7104` | ASP.NET Core (.NET 10), EF Core | Stripe checkout processing, transaction logging, payment confirmations |
+| **Kafka** | `9092` | Apache Kafka 4.3.1 (KRaft) | Event broker for asynchronous inter-service domain messaging |
 | **Database** | `5433` | PostgreSQL 16 (Docker) | Isolated schemas for each microservice boundary |
 | **Azurite** | `10000` | Azure Storage Emulator | Local Blob storage for event posters and media |
 
@@ -84,17 +85,46 @@ cp frontend/.env.example frontend/.env.local
 
 ### 3. Start Infrastructure Services
 
-Launch the containerized PostgreSQL instance and Azurite blob emulator:
+Launch the containerized infrastructure (PostgreSQL, Azurite blob emulator, and Apache Kafka in KRaft mode):
 
-```bash
+```powershell
 docker compose up -d
+```
+
+Or start specific services:
+
+```powershell
+docker compose up -d postgres kafka
 ```
 
 Verify that the containers are healthy and running:
 
-```bash
+```powershell
 docker compose ps
 ```
+
+#### Kafka Management Commands (PowerShell)
+
+- **Start Kafka**:
+  ```powershell
+  docker compose up -d kafka
+  ```
+- **Stop Kafka**:
+  ```powershell
+  docker compose stop kafka
+  ```
+- **View Kafka Logs**:
+  ```powershell
+  docker logs -f eventpulse-kafka
+  ```
+- **Check Broker Health (KRaft Quorum Status)**:
+  ```powershell
+  docker exec eventpulse-kafka /opt/kafka/bin/kafka-metadata-quorum.sh --bootstrap-server localhost:9092 describe --status
+  ```
+- **List Topics**:
+  ```powershell
+  docker exec eventpulse-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+  ```
 
 ### 4. Configure Development Secrets (.NET User Secrets)
 
