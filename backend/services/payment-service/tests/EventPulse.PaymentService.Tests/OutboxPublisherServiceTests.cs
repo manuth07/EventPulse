@@ -313,4 +313,129 @@ public class OutboxPublisherServiceTests
         Assert.Equal(bookingId, deserialized.BookingId);
         Assert.Equal(3500m, deserialized.Amount);
     }
+
+    [Fact]
+    public async Task CleanupExpiredPublishedMessagesAsync_RemovesOldPublishedRows_KeepsRecentPublished_AndNeverRemovesUnpublished()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var retentionDays = 7;
+        _kafkaOptions.Outbox.RetentionDays = retentionDays;
+
+        var now = DateTimeOffset.UtcNow;
+
+        // 1. Old published message (older than 7 days) -> SHOULD BE REMOVED
+        var oldPublished = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            Topic = "payment-succeeded",
+            MessageKey = "old-pub",
+            Payload = "{}",
+            CreatedAtUtc = now.AddDays(-10),
+            PublishedAtUtc = now.AddDays(-8)
+        };
+
+        // 2. Recent published message (within 7 days) -> MUST BE PRESERVED
+        var recentPublished = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            Topic = "payment-succeeded",
+            MessageKey = "recent-pub",
+            Payload = "{}",
+            CreatedAtUtc = now.AddDays(-2),
+            PublishedAtUtc = now.AddDays(-1)
+        };
+
+        // 3. Very old UNPUBLISHED message (awaiting retry) -> MUST NEVER BE REMOVED
+        var oldUnpublished = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            Topic = "payment-succeeded",
+            MessageKey = "old-unpub",
+            Payload = "{}",
+            CreatedAtUtc = now.AddDays(-30),
+            PublishedAtUtc = null,
+            PublishAttempts = 5
+        };
+
+        // 4. Recent UNPUBLISHED message -> MUST NEVER BE REMOVED
+        var recentUnpublished = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            Topic = "payment-succeeded",
+            MessageKey = "recent-unpub",
+            Payload = "{}",
+            CreatedAtUtc = now.AddMinutes(-10),
+            PublishedAtUtc = null
+        };
+
+        db.OutboxMessages.AddRange(oldPublished, recentPublished, oldUnpublished, recentUnpublished);
+        await db.SaveChangesAsync();
+
+        var service = CreateService();
+
+        // Act
+        var deletedCount = await service.CleanupExpiredPublishedMessagesAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(1, deletedCount);
+
+        using var verifyDb = new PaymentDbContext(_dbOptions);
+        var remainingMessages = await verifyDb.OutboxMessages.ToListAsync();
+
+        Assert.Equal(3, remainingMessages.Count);
+        Assert.DoesNotContain(remainingMessages, m => m.Id == oldPublished.Id);
+        Assert.Contains(remainingMessages, m => m.Id == recentPublished.Id);
+        Assert.Contains(remainingMessages, m => m.Id == oldUnpublished.Id);
+        Assert.Contains(remainingMessages, m => m.Id == recentUnpublished.Id);
+    }
+
+    [Fact]
+    public async Task CleanupExpiredPublishedMessagesAsync_WhenNoExpiredMessages_ReturnsZero()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        _kafkaOptions.Outbox.RetentionDays = 7;
+
+        var recentPublished = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventId = Guid.NewGuid(),
+            Topic = "payment-succeeded",
+            MessageKey = "recent",
+            Payload = "{}",
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-1),
+            PublishedAtUtc = DateTimeOffset.UtcNow.AddHours(-12)
+        };
+        db.OutboxMessages.Add(recentPublished);
+        await db.SaveChangesAsync();
+
+        var service = CreateService();
+
+        // Act
+        var deletedCount = await service.CleanupExpiredPublishedMessagesAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(0, deletedCount);
+
+        using var verifyDb = new PaymentDbContext(_dbOptions);
+        Assert.Equal(1, await verifyDb.OutboxMessages.CountAsync());
+    }
+
+    [Fact]
+    public void KafkaOutboxOptions_DefaultValues_ReflectProductionHardeningSettings()
+    {
+        // Act
+        var options = new KafkaOutboxOptions();
+
+        // Assert
+        Assert.Equal(3, options.PollingIntervalSeconds);
+        Assert.Equal(50, options.BatchSize);
+        Assert.Equal(7, options.RetentionDays);
+        Assert.Equal(60, options.CleanupIntervalMinutes);
+    }
 }

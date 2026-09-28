@@ -13,6 +13,7 @@ public class OutboxPublisherService : BackgroundService
     private readonly IKafkaMessageProducer _producer;
     private readonly KafkaOptions _kafkaOptions;
     private readonly ILogger<OutboxPublisherService> _logger;
+    private DateTimeOffset _lastCleanupUtc = DateTimeOffset.MinValue;
 
     public OutboxPublisherService(
         IServiceScopeFactory scopeFactory,
@@ -32,15 +33,26 @@ public class OutboxPublisherService : BackgroundService
 
         var pollingInterval = TimeSpan.FromSeconds(Math.Max(0.5, _kafkaOptions.Outbox.PollingIntervalSeconds));
         var batchSize = Math.Max(1, _kafkaOptions.Outbox.BatchSize);
+        var cleanupInterval = TimeSpan.FromMinutes(Math.Max(1, _kafkaOptions.Outbox.CleanupIntervalMinutes));
+        var retentionDays = Math.Max(1, _kafkaOptions.Outbox.RetentionDays);
 
-        _logger.LogInformation("OutboxPublisherService started. Polling every {Interval}s with batch size {BatchSize}",
-            pollingInterval.TotalSeconds, batchSize);
+        _logger.LogInformation(
+            "OutboxPublisherService started. Polling every {Interval}s with batch size {BatchSize}. Retention: {RetentionDays} days (cleanup every {CleanupMinutes}m).",
+            pollingInterval.TotalSeconds, batchSize, retentionDays, cleanupInterval.TotalMinutes);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                // 1. Process unpublished outbox batch
                 var processedFullBatch = await ProcessOutboxBatchAsync(batchSize, stoppingToken);
+
+                // 2. Low-frequency retention cleanup for expired published rows
+                if (DateTimeOffset.UtcNow - _lastCleanupUtc >= cleanupInterval)
+                {
+                    await CleanupExpiredPublishedMessagesAsync(stoppingToken);
+                    _lastCleanupUtc = DateTimeOffset.UtcNow;
+                }
 
                 // If a full batch was processed, immediately poll next batch without waiting
                 if (!processedFullBatch)
@@ -75,18 +87,17 @@ public class OutboxPublisherService : BackgroundService
 
         if (messages.Count == 0)
         {
+            _logger.LogTrace("No unpublished outbox messages found.");
             return false;
         }
 
         _logger.LogInformation("Found {Count} unpublished outbox message(s) to process", messages.Count);
 
+        int publishedCount = 0;
         foreach (var message in messages)
         {
             try
             {
-                _logger.LogInformation("Publishing OutboxMessage {Id} (EventId: {EventId}) to topic {Topic}",
-                    message.Id, message.EventId, message.Topic);
-
                 var deliveryResult = await _producer.ProduceAsync(
                     message.Topic,
                     message.MessageKey,
@@ -95,10 +106,11 @@ public class OutboxPublisherService : BackgroundService
 
                 message.PublishedAtUtc = DateTimeOffset.UtcNow;
                 message.LastError = null;
+                publishedCount++;
 
                 _logger.LogInformation(
-                    "OutboxMessage {Id} (EventId: {EventId}) published to {Topic} partition {Partition} offset {Offset}",
-                    message.Id, message.EventId, message.Topic, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
+                    "Published outbox event {EventId} to {Topic} (Partition: {Partition}, Offset: {Offset})",
+                    message.EventId, message.Topic, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -117,6 +129,48 @@ public class OutboxPublisherService : BackgroundService
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Published {Count} outbox events in batch", publishedCount);
         return messages.Count >= batchSize;
+    }
+
+    internal async Task<int> CleanupExpiredPublishedMessagesAsync(CancellationToken cancellationToken = default)
+    {
+        var retentionDays = Math.Max(1, _kafkaOptions.Outbox.RetentionDays);
+        var cutoffUtc = DateTimeOffset.UtcNow.AddDays(-retentionDays);
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
+
+            var expiredMessages = await dbContext.OutboxMessages
+                .Where(m => m.PublishedAtUtc != null && m.PublishedAtUtc <= cutoffUtc)
+                .OrderBy(m => m.PublishedAtUtc)
+                .Take(500)
+                .ToListAsync(cancellationToken);
+
+            if (expiredMessages.Count == 0)
+            {
+                _logger.LogTrace("Outbox retention cleanup found no expired published messages older than {Days} days.", retentionDays);
+                return 0;
+            }
+
+            dbContext.OutboxMessages.RemoveRange(expiredMessages);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Removed {Count} published outbox message(s) older than {Days} days.",
+                expiredMessages.Count, retentionDays);
+
+            return expiredMessages.Count;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to clean up expired published outbox messages.");
+            return 0;
+        }
     }
 }

@@ -27,6 +27,8 @@ public class KafkaConsumerOptions
 
 public class KafkaOutboxOptions
 {
-    public int PollingIntervalSeconds { get; set; } = 2;
-    public int BatchSize { get; set; } = 20;
+    public int PollingIntervalSeconds { get; set; } = 3;
+    public int BatchSize { get; set; } = 50;
+    public int RetentionDays { get; set; } = 7;
+    public int CleanupIntervalMinutes { get; set; } = 60;
 }
