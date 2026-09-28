@@ -254,4 +254,60 @@ public class KafkaPaymentEventDispatcherTests
         await succHandler.HandleAsync(succEvent);
         await failHandler.HandleAsync(failEvent);
     }
+
+    [Fact]
+    public async Task DispatchAsync_MalformedJson_ReturnsNonRetryableResult()
+    {
+        // Arrange
+        var dispatcher = CreateDispatcher();
+        var malformedJson = "{ \"EventId\": 1234, bad json syntax";
+
+        // Act
+        var result = await dispatcher.DispatchAsync("payment-succeeded", "test-key", malformedJson, CancellationToken.None);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.False(result.IsRetryable);
+        Assert.Contains("Malformed JSON", result.FailureReason);
+        Assert.Equal("JsonException", result.ExceptionType);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_EmptyPayload_ReturnsNonRetryableResult()
+    {
+        // Arrange
+        var dispatcher = CreateDispatcher();
+
+        // Act
+        var result = await dispatcher.DispatchAsync("payment-succeeded", "test-key", "   ", CancellationToken.None);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.False(result.IsRetryable);
+        Assert.Equal("Empty or whitespace payload", result.FailureReason);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_HandlerException_ReturnsRetryableResult()
+    {
+        // Arrange
+        var dispatcher = CreateDispatcher();
+        var validJson = JsonSerializer.Serialize(new PaymentSucceededEvent
+        {
+            BookingId = Guid.NewGuid()
+        });
+
+        _succeededHandlerMock
+            .Setup(h => h.HandleAsync(It.IsAny<PaymentSucceededEvent>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException("Database connection timeout"));
+
+        // Act
+        var result = await dispatcher.DispatchAsync("payment-succeeded", "test-key", validJson, CancellationToken.None);
+
+        // Assert
+        Assert.False(result.IsSuccess);
+        Assert.True(result.IsRetryable);
+        Assert.Contains("Database connection timeout", result.FailureReason);
+        Assert.Equal("TimeoutException", result.ExceptionType);
+    }
 }
