@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using EventPulse.Contracts.Kafka;
 using EventPulse.PaymentService.Data;
 using EventPulse.PaymentService.Events;
 using EventPulse.PaymentService.Services;
@@ -25,7 +26,8 @@ builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(clie
 });
 
 builder.Services.AddScoped<IStripeCheckoutService, StripeCheckoutService>();
-builder.Services.AddScoped<IPaymentEventPublisher, LoggingPaymentEventPublisher>();
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+builder.Services.AddSingleton<IPaymentEventPublisher, KafkaPaymentEventPublisher>();
 
 var stripeSecretKey = builder.Configuration["STRIPE_SECRET_KEY"]
     ?? builder.Configuration["Stripe__SecretKey"]
