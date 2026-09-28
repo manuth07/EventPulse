@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\EventPulse.PaymentService\EventPulse.PaymentService.csproj" />
+    <ProjectReference Include="..\..\..\..\shared\contracts\kafka\EventPulse.Contracts.Kafka.csproj" />
   </ItemGroup>
 
 </Project>
