@@ -21,7 +21,6 @@ public class PaymentsControllerTests
     private readonly DbContextOptions<PaymentDbContext> _dbOptions;
     private readonly Mock<IBookingServiceClient> _bookingClientMock;
     private readonly Mock<IStripeCheckoutService> _stripeServiceMock;
-    private readonly Mock<IPaymentEventPublisher> _eventPublisherMock;
     private readonly Mock<ILogger<PaymentsController>> _loggerMock;
     private readonly IConfiguration _configuration;
     private const string WebhookSecret = "whsec_test_secret_key_1234567890";
@@ -34,7 +33,6 @@ public class PaymentsControllerTests
 
         _bookingClientMock = new Mock<IBookingServiceClient>();
         _stripeServiceMock = new Mock<IStripeCheckoutService>();
-        _eventPublisherMock = new Mock<IPaymentEventPublisher>();
         _loggerMock = new Mock<ILogger<PaymentsController>>();
 
         var inMemorySettings = new Dictionary<string, string?>
@@ -48,11 +46,15 @@ public class PaymentsControllerTests
 
     private PaymentsController CreateController(PaymentDbContext dbContext, Guid? customerId = null, string? token = null, string? requestBody = null, string? signatureHeader = null)
     {
+        var kafkaOptions = Microsoft.Extensions.Options.Options.Create(new KafkaOptions());
+        var writerLogger = new Mock<ILogger<OutboxWriter>>();
+        var outboxWriter = new OutboxWriter(dbContext, kafkaOptions, writerLogger.Object);
+
         var controller = new PaymentsController(
             dbContext,
             _bookingClientMock.Object,
             _stripeServiceMock.Object,
-            _eventPublisherMock.Object,
+            outboxWriter,
             _configuration,
             _loggerMock.Object
         );
@@ -256,12 +258,20 @@ public class PaymentsControllerTests
         Assert.Equal("pi_test_intent_success", updatedPayment.StripePaymentIntentId);
         Assert.NotNull(updatedPayment.CompletedAt);
 
-        _eventPublisherMock.Verify(
-            p => p.PublishPaymentSucceededAsync(It.Is<PaymentSucceededEvent>(
-                e => e.PaymentId == paymentId && e.EventId != Guid.Empty && e.EventVersion == 1 && e.BookingId == bookingId
-            ), It.IsAny<CancellationToken>()),
-            Times.Once
-        );
+        var outboxMessage = await db.OutboxMessages.FirstOrDefaultAsync(m => m.Topic == "payment-succeeded");
+        Assert.NotNull(outboxMessage);
+        Assert.Equal("PaymentSucceededEvent", outboxMessage.EventType);
+        Assert.Equal(bookingId.ToString(), outboxMessage.MessageKey);
+        Assert.NotEqual(Guid.Empty, outboxMessage.EventId);
+        Assert.Null(outboxMessage.PublishedAtUtc);
+        Assert.Equal(0, outboxMessage.PublishAttempts);
+
+        var payload = System.Text.Json.JsonSerializer.Deserialize<PaymentSucceededEvent>(outboxMessage.Payload);
+        Assert.NotNull(payload);
+        Assert.Equal(outboxMessage.EventId, payload.EventId);
+        Assert.Equal(paymentId, payload.PaymentId);
+        Assert.Equal(bookingId, payload.BookingId);
+        Assert.Equal("EP-2026-SUCCESS", payload.BookingReference);
     }
 
     [Fact]
@@ -323,10 +333,8 @@ public class PaymentsControllerTests
         // Assert
         Assert.IsType<OkResult>(result);
 
-        _eventPublisherMock.Verify(
-            p => p.PublishPaymentSucceededAsync(It.IsAny<PaymentSucceededEvent>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
+        var outboxMessages = await db.OutboxMessages.ToListAsync();
+        Assert.Empty(outboxMessages);
     }
 
     [Fact]
@@ -393,11 +401,17 @@ public class PaymentsControllerTests
         Assert.NotNull(updatedPayment);
         Assert.Equal(PaymentStatus.Failed, updatedPayment.Status);
 
-        _eventPublisherMock.Verify(
-            p => p.PublishPaymentFailedAsync(It.Is<PaymentFailedEvent>(
-                e => e.PaymentId == paymentId && e.FailureReason == "Insufficient funds"
-            ), It.IsAny<CancellationToken>()),
-            Times.Once
-        );
+        var outboxMessage = await db.OutboxMessages.FirstOrDefaultAsync(m => m.Topic == "payment-failed");
+        Assert.NotNull(outboxMessage);
+        Assert.Equal("PaymentFailedEvent", outboxMessage.EventType);
+        Assert.Equal(bookingId.ToString(), outboxMessage.MessageKey);
+        Assert.NotEqual(Guid.Empty, outboxMessage.EventId);
+        Assert.Null(outboxMessage.PublishedAtUtc);
+
+        var payload = System.Text.Json.JsonSerializer.Deserialize<PaymentFailedEvent>(outboxMessage.Payload);
+        Assert.NotNull(payload);
+        Assert.Equal(outboxMessage.EventId, payload.EventId);
+        Assert.Equal(paymentId, payload.PaymentId);
+        Assert.Equal("Insufficient funds", payload.FailureReason);
     }
 }
