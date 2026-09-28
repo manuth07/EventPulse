@@ -124,7 +124,7 @@ builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublish
 // Kafka Event Consumers & Handlers
 // ---------------------------------------------------------------------------
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
-builder.Services.AddScoped<IPaymentSucceededEventHandler, LoggingPaymentSucceededEventHandler>();
+builder.Services.AddScoped<IPaymentSucceededEventHandler, PaymentSucceededEventHandler>();
 builder.Services.AddScoped<IPaymentFailedEventHandler, LoggingPaymentFailedEventHandler>();
 builder.Services.AddScoped<IKafkaPaymentEventDispatcher, KafkaPaymentEventDispatcher>();
 builder.Services.AddHostedService<KafkaPaymentEventConsumer>();
