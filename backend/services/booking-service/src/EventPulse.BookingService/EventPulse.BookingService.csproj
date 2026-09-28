@@ -24,4 +24,8 @@
     <ProjectReference Include="..\..\..\..\shared\contracts\kafka\EventPulse.Contracts.Kafka.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="EventPulse.BookingService.Tests" />
+  </ItemGroup>
+
 </Project>
