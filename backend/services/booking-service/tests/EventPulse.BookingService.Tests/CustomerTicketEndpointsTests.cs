@@ -42,7 +42,8 @@ public class CustomerTicketEndpointsTests
             eventPublisherMock.Object,
             loggerMock.Object,
             cartServiceMock.Object,
-            bookingHistoryServiceMock.Object);
+            bookingHistoryServiceMock.Object,
+            new Mock<IBookingCancellationService>().Object);
 
         var claims = new List<Claim>();
         if (customerId.HasValue)

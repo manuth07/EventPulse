@@ -22,6 +22,7 @@ public class BookingsController : ControllerBase
     private readonly ILogger<BookingsController> _logger;
     private readonly ICartService _cartService;
     private readonly IBookingHistoryService _bookingHistoryService;
+    private readonly IBookingCancellationService _cancellationService;
 
     public BookingsController(
         BookingDbContext dbContext,
@@ -30,7 +31,8 @@ public class BookingsController : ControllerBase
         IBookingEventPublisher eventPublisher,
         ILogger<BookingsController> logger,
         ICartService cartService,
-        IBookingHistoryService bookingHistoryService)
+        IBookingHistoryService bookingHistoryService,
+        IBookingCancellationService cancellationService)
     {
         _dbContext = dbContext;
         _eventClient = eventClient;
@@ -39,6 +41,7 @@ public class BookingsController : ControllerBase
         _logger = logger;
         _cartService = cartService;
         _bookingHistoryService = bookingHistoryService;
+        _cancellationService = cancellationService;
     }
 
     private bool TryGetCustomerId(out Guid customerId)
@@ -296,5 +299,38 @@ public class BookingsController : ControllerBase
         };
 
         return CreatedAtAction(nameof(CreateBooking), new { id = booking.Id }, responseDto);
+    }
+
+    /// <summary>
+    /// Cancels a booking for the authenticated customer (US-28 / EP-308).
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    [ProducesResponseType(typeof(BookingCancellationResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(BookingCancellationResultDto), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(BookingCancellationResultDto), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> CancelBooking(
+        [FromRoute] Guid id,
+        [FromBody] CancelBookingRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await _cancellationService.CancelBookingAsync(id, customerId, request, cancellationToken);
+
+        if (!result.Success)
+        {
+            if (result.Message == "Booking not found or access denied")
+            {
+                return NotFound(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        return Ok(result);
     }
 }

@@ -32,10 +32,12 @@ public class BookingsControllerTests
         Mock<IBookingEventPublisher> eventPublisherMock,
         Mock<ICartService> cartServiceMock,
         Mock<IBookingHistoryService>? bookingHistoryServiceMock = null,
-        ClaimsPrincipal? user = null)
+        ClaimsPrincipal? user = null,
+        Mock<IBookingCancellationService>? cancellationServiceMock = null)
     {
         var loggerMock = new Mock<ILogger<BookingsController>>();
         var historyService = bookingHistoryServiceMock ?? new Mock<IBookingHistoryService>();
+        var cancellationService = cancellationServiceMock ?? new Mock<IBookingCancellationService>();
         var controller = new BookingsController(
             context,
             eventClientMock.Object,
@@ -43,7 +45,8 @@ public class BookingsControllerTests
             eventPublisherMock.Object,
             loggerMock.Object,
             cartServiceMock.Object,
-            historyService.Object);
+            historyService.Object,
+            cancellationService.Object);
 
         // Mock User Context
         var effectiveUser = user ?? new ClaimsPrincipal(new ClaimsIdentity(new Claim[]
@@ -259,5 +262,146 @@ public class BookingsControllerTests
         Assert.Single(pagedResult.Items);
         Assert.Equal("EP-2026-TEST1", pagedResult.Items[0].BookingReference);
         Assert.Equal(1, pagedResult.TotalCount);
+    }
+
+    [Fact]
+    public async Task CancelBooking_WhenUnauthorized_Returns401()
+    {
+        using var context = CreateInMemoryDbContext();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
+        var referenceGeneratorMock = new Mock<IBookingReferenceGenerator>();
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var cartServiceMock = new Mock<ICartService>();
+        var unauthenticatedUser = new ClaimsPrincipal(new ClaimsIdentity());
+
+        var controller = CreateController(
+            context,
+            eventClientMock,
+            referenceGeneratorMock,
+            eventPublisherMock,
+            cartServiceMock,
+            user: unauthenticatedUser);
+
+        var result = await controller.CancelBooking(Guid.NewGuid(), null, CancellationToken.None);
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task CancelBooking_WhenNotFound_Returns404()
+    {
+        using var context = CreateInMemoryDbContext();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
+        var referenceGeneratorMock = new Mock<IBookingReferenceGenerator>();
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var cartServiceMock = new Mock<ICartService>();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        var customerId = Guid.NewGuid();
+        var authenticatedUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, customerId.ToString())
+        }, "mock"));
+
+        var bookingId = Guid.NewGuid();
+        cancellationServiceMock
+            .Setup(s => s.CancelBookingAsync(bookingId, customerId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingCancellationResultDto(
+                bookingId, string.Empty, string.Empty, string.Empty, DateTimeOffset.UtcNow, false, "Booking not found or access denied"));
+
+        var controller = CreateController(
+            context,
+            eventClientMock,
+            referenceGeneratorMock,
+            eventPublisherMock,
+            cartServiceMock,
+            user: authenticatedUser,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var result = await controller.CancelBooking(bookingId, null, CancellationToken.None);
+
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var dto = Assert.IsType<BookingCancellationResultDto>(notFoundResult.Value);
+        Assert.False(dto.Success);
+        Assert.Equal("Booking not found or access denied", dto.Message);
+    }
+
+    [Fact]
+    public async Task CancelBooking_WhenAlreadyCancelled_Returns400()
+    {
+        using var context = CreateInMemoryDbContext();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
+        var referenceGeneratorMock = new Mock<IBookingReferenceGenerator>();
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var cartServiceMock = new Mock<ICartService>();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        var customerId = Guid.NewGuid();
+        var authenticatedUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, customerId.ToString())
+        }, "mock"));
+
+        var bookingId = Guid.NewGuid();
+        cancellationServiceMock
+            .Setup(s => s.CancelBookingAsync(bookingId, customerId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingCancellationResultDto(
+                bookingId, "REF-123", "Cancelled", "Cancelled", DateTimeOffset.UtcNow, false, "Booking is already cancelled"));
+
+        var controller = CreateController(
+            context,
+            eventClientMock,
+            referenceGeneratorMock,
+            eventPublisherMock,
+            cartServiceMock,
+            user: authenticatedUser,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var result = await controller.CancelBooking(bookingId, null, CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var dto = Assert.IsType<BookingCancellationResultDto>(badRequestResult.Value);
+        Assert.False(dto.Success);
+        Assert.Equal("Booking is already cancelled", dto.Message);
+    }
+
+    [Fact]
+    public async Task CancelBooking_WhenSuccess_Returns200Ok()
+    {
+        using var context = CreateInMemoryDbContext();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
+        var referenceGeneratorMock = new Mock<IBookingReferenceGenerator>();
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var cartServiceMock = new Mock<ICartService>();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        var customerId = Guid.NewGuid();
+        var authenticatedUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, customerId.ToString())
+        }, "mock"));
+
+        var bookingId = Guid.NewGuid();
+        cancellationServiceMock
+            .Setup(s => s.CancelBookingAsync(bookingId, customerId, It.IsAny<CancelBookingRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingCancellationResultDto(
+                bookingId, "REF-123", "Confirmed", "Cancelled", DateTimeOffset.UtcNow, true, "Booking cancelled successfully"));
+
+        var controller = CreateController(
+            context,
+            eventClientMock,
+            referenceGeneratorMock,
+            eventPublisherMock,
+            cartServiceMock,
+            user: authenticatedUser,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var result = await controller.CancelBooking(bookingId, new CancelBookingRequest { Reason = "User request" }, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var dto = Assert.IsType<BookingCancellationResultDto>(okResult.Value);
+        Assert.True(dto.Success);
+        Assert.Equal("Cancelled", dto.NewStatus);
+        Assert.Equal("Booking cancelled successfully", dto.Message);
     }
 }
