@@ -15,4 +15,10 @@ public interface IBookingCancellationService
         Guid customerId,
         CancelBookingRequest? request,
         CancellationToken ct = default);
+
+    Task<TicketCancellationResultDto> CancelSingleTicketAsync(
+        Guid ticketId, 
+        Guid customerId, 
+        string? reason = default, 
+        CancellationToken ct = default);
 }

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
-import { getBookingTickets } from '../../services/bookingService';
+import { getBookingTickets, cancelTicket } from '../../services/bookingService';
 import { fetchEventById } from '../../services/eventService';
 import {
   Ticket as TicketIcon,
@@ -19,6 +19,9 @@ import {
   ShieldCheck,
   Clock,
   ExternalLink,
+  Ban,
+  X,
+  AlertCircle,
 } from 'lucide-react';
 
 function formatDate(dateString) {
@@ -46,6 +49,13 @@ export function Tickets() {
   const [errorCode, setErrorCode] = useState(null);
   const [copiedCode, setCopiedCode] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Partial ticket cancellation modal state
+  const [cancellingTicket, setCancellingTicket] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
+  const [successToast, setSuccessToast] = useState(null);
 
   const pollCountRef = useRef(0);
   const maxPolls = 10;
@@ -138,6 +148,62 @@ export function Tickets() {
     });
   };
 
+  const handleOpenCancelModal = (ticket) => {
+    setCancellingTicket(ticket);
+    setCancelReason('');
+    setCancelError(null);
+  };
+
+  const handleCloseCancelModal = () => {
+    if (isSubmittingCancel) return;
+    setCancellingTicket(null);
+    setCancelReason('');
+    setCancelError(null);
+  };
+
+  const handleConfirmCancelTicket = async () => {
+    if (!cancellingTicket) return;
+    setIsSubmittingCancel(true);
+    setCancelError(null);
+
+    try {
+      const result = await cancelTicket(
+        cancellingTicket.ticketId,
+        cancelReason.trim() || undefined,
+        accessToken
+      );
+
+      // Update state locally without wiping out sibling tickets
+      setBookingData((prev) => {
+        if (!prev) return prev;
+        const updatedTickets = prev.tickets.map((t) =>
+          t.ticketId === cancellingTicket.ticketId
+            ? { ...t, status: 'Cancelled' }
+            : t
+        );
+        return {
+          ...prev,
+          bookingStatus: result?.parentBookingStatus || prev.bookingStatus,
+          tickets: updatedTickets,
+        };
+      });
+
+      setSuccessToast(`Ticket #${cancellingTicket.ticketCode} was cancelled successfully. 1 seat capacity released.`);
+      setCancellingTicket(null);
+      setCancelReason('');
+    } catch (err) {
+      console.error('Failed to cancel ticket:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to cancel the ticket. Please try again.';
+      setCancelError(msg);
+    } finally {
+      setIsSubmittingCancel(false);
+    }
+  };
+
   const eventTitle =
     eventData?.title ||
     cachedBookingInfo?.eventTitle ||
@@ -217,6 +283,45 @@ export function Tickets() {
             </button>
           )}
         </div>
+
+        {/* Success / Status Toast Notification */}
+        {successToast && (
+          <div
+            style={{
+              marginBottom: '20px',
+              padding: '12px 16px',
+              backgroundColor: '#ECFDF5',
+              border: '1px solid #A7F3D0',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              color: '#065F46',
+              fontSize: '14px',
+              fontWeight: 500,
+              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CheckCircle2 size={18} color="#059669" />
+              <span>{successToast}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccessToast(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#065F46',
+                padding: '2px',
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {/* ==================== STATE 1: INITIAL LOADING ==================== */}
         {loading && (
@@ -540,15 +645,24 @@ export function Tickets() {
                       gap: '4px',
                       fontSize: '12px',
                       fontWeight: 700,
-                      color: '#16A34A',
-                      backgroundColor: '#F0FDF4',
-                      border: '1px solid #BBF7D0',
+                      color: bookingData.bookingStatus === 'Cancelled' ? '#DC2626' : '#16A34A',
+                      backgroundColor: bookingData.bookingStatus === 'Cancelled' ? '#FEF2F2' : '#F0FDF4',
+                      border: bookingData.bookingStatus === 'Cancelled' ? '1px solid #FECACA' : '1px solid #BBF7D0',
                       padding: '4px 10px',
                       borderRadius: 'var(--ep-radius-pill)',
                     }}
                   >
-                    <CheckCircle2 size={13} />
-                    <span>Booking Confirmed</span>
+                    {bookingData.bookingStatus === 'Cancelled' ? (
+                      <>
+                        <Ban size={13} />
+                        <span>Booking Cancelled</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={13} />
+                        <span>Booking Confirmed</span>
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
@@ -809,6 +923,40 @@ export function Tickets() {
                           </div>
                         </div>
 
+                        {/* Cancel Single Ticket Action */}
+                        {isValid && (
+                          <div style={{ marginBottom: '16px' }}>
+                            <button
+                              type="button"
+                              id={`cancel-ticket-${ticket.ticketId || ticket.ticketCode}`}
+                              onClick={() => handleOpenCancelModal(ticket)}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                backgroundColor: '#FEF2F2',
+                                color: '#DC2626',
+                                border: '1px solid #FECACA',
+                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                              }}
+                              onMouseOver={(e) => {
+                                e.currentTarget.style.backgroundColor = '#FEE2E2';
+                              }}
+                              onMouseOut={(e) => {
+                                e.currentTarget.style.backgroundColor = '#FEF2F2';
+                              }}
+                            >
+                              <Ban size={13} />
+                              <span>Cancel This Ticket</span>
+                            </button>
+                          </div>
+                        )}
+
                         {/* Security notice */}
                         <div
                           style={{
@@ -935,6 +1083,190 @@ export function Tickets() {
           </>
         )}
       </main>
+
+      {/* Confirmation Modal for Individual Ticket Cancellation */}
+      {cancellingTicket && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '16px',
+            backdropFilter: 'blur(3px)',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCloseCancelModal();
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              padding: '24px 28px',
+              maxWidth: '480px',
+              width: '100%',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    backgroundColor: '#FEF2F2',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#DC2626',
+                  }}
+                >
+                  <AlertTriangle size={20} />
+                </div>
+                <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--ep-text-primary)', margin: 0 }}>
+                  Cancel Admission Ticket?
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseCancelModal}
+                disabled={isSubmittingCancel}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '14px', color: 'var(--ep-text-secondary)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+              Are you sure you want to cancel ticket{' '}
+              <strong style={{ fontFamily: 'monospace', color: 'var(--ep-text-primary)' }}>
+                #{cancellingTicket.ticketCode}
+              </strong>{' '}
+              ({cancellingTicket.ticketName || 'General Admission'})?
+            </p>
+
+            <div
+              style={{
+                backgroundColor: '#FFFBEB',
+                border: '1px solid #FDE68A',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                fontSize: '13px',
+                color: '#92400E',
+                marginBottom: '16px',
+                lineHeight: 1.4,
+              }}
+            >
+              <strong>Note:</strong> This action will deactivate this single pass and restore 1 ticket unit back to the event inventory. Any other tickets in this order remain valid.
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label
+                htmlFor="cancel-ticket-reason"
+                style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}
+              >
+                Reason for cancellation (optional)
+              </label>
+              <textarea
+                id="cancel-ticket-reason"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="e.g. Guest cannot attend, duplicate purchase, etc."
+                rows={3}
+                disabled={isSubmittingCancel}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid var(--ep-border)',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {cancelError && (
+              <div
+                style={{
+                  backgroundColor: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  color: '#DC2626',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{cancelError}</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={handleCloseCancelModal}
+                disabled={isSubmittingCancel}
+                style={{
+                  padding: '10px 18px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: '1px solid var(--ep-border)',
+                  backgroundColor: '#ffffff',
+                  color: 'var(--ep-text-primary)',
+                  cursor: isSubmittingCancel ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Keep Ticket
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCancelTicket}
+                disabled={isSubmittingCancel}
+                style={{
+                  padding: '10px 18px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#DC2626',
+                  color: '#ffffff',
+                  cursor: isSubmittingCancel ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isSubmittingCancel ? (
+                  <>
+                    <Loader2 size={14} className="ep-spin" />
+                    <span>Cancelling…</span>
+                  </>
+                ) : (
+                  <>
+                    <Ban size={14} />
+                    <span>Confirm Cancellation</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -27,4 +27,12 @@ public class LoggingBookingEventPublisher : IBookingEventPublisher
         
         return Task.CompletedTask;
     }
+
+    public Task PublishTicketCancelledAsync(TicketCancelledEvent @event, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Publishing TicketCancelledEvent for Ticket {TicketId} (Booking {BookingId}). Payload: {Payload}", 
+            @event.TicketId, @event.BookingId, JsonSerializer.Serialize(@event));
+        
+        return Task.CompletedTask;
+    }
 }

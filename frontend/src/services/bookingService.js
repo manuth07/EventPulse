@@ -78,10 +78,27 @@ export async function cancelBooking(bookingId, reason, token) {
   return apiClient.post(`/api/bookings/${bookingId}/cancel`, { reason }, { headers });
 }
 
+/**
+ * Cancels an individual customer ticket (EP-partial cancellation).
+ * 
+ * @param {string} ticketId - The GUID of the ticket.
+ * @param {string} [reason] - Optional cancellation reason.
+ * @param {string} [token] - Optional JWT authentication token.
+ * @returns {Promise<{ ticketId: string, ticketCode: string, status: string, parentBookingStatus: string, success: boolean, message?: string }>}
+ */
+export async function cancelTicket(ticketId, reason, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.post(`/api/tickets/${ticketId}/cancel`, { reason }, { headers });
+}
+
 export default {
   getBookingSummary,
   getBookingTickets,
   getTicketById,
   getMyBookings,
   cancelBooking,
+  cancelTicket,
 };
+

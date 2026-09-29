@@ -780,6 +780,24 @@ export function MyBookingsPage() {
                                 </div>
                               </div>
                             ))}
+                            {isConfirmed && (
+                              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed var(--ep-border)', display: 'flex', justifyContent: 'flex-end' }}>
+                                <Link
+                                  to={`/bookings/${booking.id}/tickets`}
+                                  style={{
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    color: 'var(--ep-primary)',
+                                    textDecoration: 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                >
+                                  <span>Manage & Cancel Individual Tickets →</span>
+                                </Link>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

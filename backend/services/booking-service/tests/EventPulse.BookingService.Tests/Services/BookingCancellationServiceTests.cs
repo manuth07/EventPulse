@@ -161,4 +161,194 @@ public class BookingCancellationServiceTests
 
         eventPublisherMock.Verify(p => p.PublishBookingCancelledAsync(It.IsAny<BookingCancelledEvent>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task CancelSingleTicket_WhenOtherTicketsExist_SetsTicketCancelledAndMaintainsConfirmedBooking()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var ticket1Id = Guid.NewGuid();
+        var ticket2Id = Guid.NewGuid();
+        var ticketTypeId = Guid.NewGuid();
+
+        var booking = new Booking
+        {
+            Id = bookingId,
+            BookingReference = "EP-2026-MULTI-TICKET",
+            CustomerId = customerId,
+            EventId = Guid.NewGuid(),
+            Status = BookingStatus.Confirmed,
+            Tickets = new List<Ticket>
+            {
+                new Ticket { Id = ticket1Id, TicketCode = "TCK-1", TicketTypeId = ticketTypeId, Status = TicketStatus.Valid },
+                new Ticket { Id = ticket2Id, TicketCode = "TCK-2", TicketTypeId = ticketTypeId, Status = TicketStatus.Valid }
+            }
+        };
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+
+        // Act - Cancel only ticket1
+        var result = await service.CancelSingleTicketAsync(ticket1Id, customerId, "Guest cannot come", CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(TicketStatus.Cancelled.ToString(), result.Status);
+        Assert.Equal(BookingStatus.Confirmed.ToString(), result.ParentBookingStatus);
+
+        var updatedTicket1 = await context.Tickets.FindAsync(ticket1Id);
+        var updatedTicket2 = await context.Tickets.FindAsync(ticket2Id);
+        var updatedBooking = await context.Bookings.FindAsync(bookingId);
+
+        Assert.NotNull(updatedTicket1);
+        Assert.Equal(TicketStatus.Cancelled, updatedTicket1.Status);
+
+        Assert.NotNull(updatedTicket2);
+        Assert.Equal(TicketStatus.Valid, updatedTicket2.Status);
+
+        Assert.NotNull(updatedBooking);
+        Assert.Equal(BookingStatus.Confirmed, updatedBooking.Status);
+
+        eventPublisherMock.Verify(p => p.PublishTicketCancelledAsync(
+            It.Is<TicketCancelledEvent>(e =>
+                e.TicketId == ticket1Id &&
+                e.BookingId == bookingId &&
+                e.CustomerId == customerId &&
+                e.TicketTypeId == ticketTypeId &&
+                e.TicketCode == "TCK-1"),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CancelSingleTicket_WhenLastValidTicket_SetsTicketAndParentBookingCancelled()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var ticket1Id = Guid.NewGuid();
+        var ticket2Id = Guid.NewGuid();
+        var ticketTypeId = Guid.NewGuid();
+
+        var booking = new Booking
+        {
+            Id = bookingId,
+            BookingReference = "EP-2026-LAST-TICKET",
+            CustomerId = customerId,
+            EventId = Guid.NewGuid(),
+            Status = BookingStatus.Confirmed,
+            Tickets = new List<Ticket>
+            {
+                new Ticket { Id = ticket1Id, TicketCode = "TCK-1", TicketTypeId = ticketTypeId, Status = TicketStatus.Valid },
+                new Ticket { Id = ticket2Id, TicketCode = "TCK-2", TicketTypeId = ticketTypeId, Status = TicketStatus.Cancelled }
+            }
+        };
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+
+        // Act - Cancel the only remaining valid ticket
+        var result = await service.CancelSingleTicketAsync(ticket1Id, customerId, "Cancelling last ticket", CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        Assert.Equal(TicketStatus.Cancelled.ToString(), result.Status);
+        Assert.Equal(BookingStatus.Cancelled.ToString(), result.ParentBookingStatus);
+
+        var updatedTicket1 = await context.Tickets.FindAsync(ticket1Id);
+        var updatedBooking = await context.Bookings.FindAsync(bookingId);
+
+        Assert.NotNull(updatedTicket1);
+        Assert.Equal(TicketStatus.Cancelled, updatedTicket1.Status);
+
+        Assert.NotNull(updatedBooking);
+        Assert.Equal(BookingStatus.Cancelled, updatedBooking.Status);
+
+        eventPublisherMock.Verify(p => p.PublishTicketCancelledAsync(
+            It.Is<TicketCancelledEvent>(e => e.TicketId == ticket1Id && e.BookingId == bookingId),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CancelSingleTicket_WhenUserNotOwner_ReturnsIneligibleResult()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var ownerId = Guid.NewGuid();
+        var anotherCustomerId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+
+        var booking = new Booking
+        {
+            Id = Guid.NewGuid(),
+            BookingReference = "EP-2026-NOT-OWNER",
+            CustomerId = ownerId,
+            Status = BookingStatus.Confirmed,
+            Tickets = new List<Ticket>
+            {
+                new Ticket { Id = ticketId, TicketCode = "TCK-1", Status = TicketStatus.Valid }
+            }
+        };
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+
+        // Act
+        var result = await service.CancelSingleTicketAsync(ticketId, anotherCustomerId, null, CancellationToken.None);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal("Ticket not found or access denied", result.Message);
+
+        var ticket = await context.Tickets.FindAsync(ticketId);
+        Assert.NotNull(ticket);
+        Assert.Equal(TicketStatus.Valid, ticket.Status);
+    }
+
+    [Fact]
+    public async Task CancelSingleTicket_WhenAlreadyCancelled_ReturnsIneligibleResult()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+
+        var booking = new Booking
+        {
+            Id = Guid.NewGuid(),
+            BookingReference = "EP-2026-ALREADY-CANCELLED",
+            CustomerId = customerId,
+            Status = BookingStatus.Confirmed,
+            Tickets = new List<Ticket>
+            {
+                new Ticket { Id = ticketId, TicketCode = "TCK-1", Status = TicketStatus.Cancelled }
+            }
+        };
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+
+        // Act
+        var result = await service.CancelSingleTicketAsync(ticketId, customerId, null, CancellationToken.None);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal("Ticket is already Cancelled", result.Message);
+    }
 }

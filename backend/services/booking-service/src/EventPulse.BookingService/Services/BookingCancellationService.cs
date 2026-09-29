@@ -127,4 +127,82 @@ public class BookingCancellationService : IBookingCancellationService
             message: "Booking cancelled successfully"
         );
     }
+
+    public async Task<TicketCancellationResultDto> CancelSingleTicketAsync(
+        Guid ticketId,
+        Guid customerId,
+        string? reason = default,
+        CancellationToken ct = default)
+    {
+        var ticket = await _dbContext.Tickets
+            .Include(t => t.Booking)
+                .ThenInclude(b => b!.Tickets)
+            .FirstOrDefaultAsync(t => t.Id == ticketId, ct);
+
+        if (ticket == null || ticket.Booking == null || ticket.Booking.CustomerId != customerId)
+        {
+            _logger.LogWarning("Single ticket cancellation failed for TicketId {TicketId}, CustomerId {CustomerId}: Ticket not found or access denied.",
+                ticketId, customerId);
+            return new TicketCancellationResultDto(
+                ticketId,
+                ticket?.TicketCode ?? string.Empty,
+                ticket?.Status.ToString() ?? string.Empty,
+                ticket?.Booking?.Status.ToString() ?? string.Empty,
+                false,
+                "Ticket not found or access denied");
+        }
+
+        if (ticket.Status != TicketStatus.Valid)
+        {
+            _logger.LogInformation("Single ticket cancellation rejected for TicketId {TicketId}: Ticket status is {Status} (cannot cancel).",
+                ticketId, ticket.Status);
+            return new TicketCancellationResultDto(
+                ticket.Id,
+                ticket.TicketCode,
+                ticket.Status.ToString(),
+                ticket.Booking.Status.ToString(),
+                false,
+                $"Ticket is already {ticket.Status}");
+        }
+
+        ticket.Status = TicketStatus.Cancelled;
+
+        // Check if any valid tickets remain in parent booking
+        var hasRemainingValidTickets = ticket.Booking.Tickets.Any(t => t.Id != ticket.Id && t.Status == TicketStatus.Valid);
+        if (!hasRemainingValidTickets)
+        {
+            ticket.Booking.Status = BookingStatus.Cancelled;
+            _logger.LogInformation("All tickets for Booking {BookingId} are now cancelled. Booking status transitioned to Cancelled.",
+                ticket.Booking.Id);
+        }
+
+        await _dbContext.SaveChangesAsync(ct);
+
+        // Emit TicketCancelledEvent for inventory/capacity restoration
+        var cancelledEvent = new TicketCancelledEvent
+        {
+            TicketId = ticket.Id,
+            BookingId = ticket.Booking.Id,
+            BookingReference = ticket.Booking.BookingReference,
+            CustomerId = customerId,
+            EventId = ticket.EventId,
+            TicketTypeId = ticket.TicketTypeId,
+            TicketCode = ticket.TicketCode,
+            CancelledAt = DateTimeOffset.UtcNow,
+            Reason = reason
+        };
+
+        await _eventPublisher.PublishTicketCancelledAsync(cancelledEvent, ct);
+
+        _logger.LogInformation("Ticket {TicketId} ({TicketCode}) cancelled successfully by customer {CustomerId}. Parent booking status: {BookingStatus}.",
+            ticket.Id, ticket.TicketCode, customerId, ticket.Booking.Status);
+
+        return new TicketCancellationResultDto(
+            ticket.Id,
+            ticket.TicketCode,
+            TicketStatus.Cancelled.ToString(),
+            ticket.Booking.Status.ToString(),
+            true,
+            "Ticket cancelled successfully");
+    }
 }
