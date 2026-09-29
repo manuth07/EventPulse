@@ -33,6 +33,7 @@ public class CustomerTicketEndpointsTests
         var referenceGeneratorMock = new Mock<IBookingReferenceGenerator>();
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
         var cartServiceMock = new Mock<ICartService>();
+        var bookingHistoryServiceMock = new Mock<IBookingHistoryService>();
 
         var controller = new BookingsController(
             context,
@@ -40,7 +41,8 @@ public class CustomerTicketEndpointsTests
             referenceGeneratorMock.Object,
             eventPublisherMock.Object,
             loggerMock.Object,
-            cartServiceMock.Object);
+            cartServiceMock.Object,
+            bookingHistoryServiceMock.Object);
 
         var claims = new List<Claim>();
         if (customerId.HasValue)
