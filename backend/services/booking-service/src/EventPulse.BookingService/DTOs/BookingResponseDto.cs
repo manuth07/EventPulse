@@ -16,5 +16,6 @@ public class BookingResponseDto
     public Guid EventId { get; set; }
     public decimal TotalAmount { get; set; }
     public string Status { get; set; } = string.Empty;
+    public DateTimeOffset ExpiresAt { get; set; }
     public List<BookingItemResponseDto> Items { get; set; } = new();
 }

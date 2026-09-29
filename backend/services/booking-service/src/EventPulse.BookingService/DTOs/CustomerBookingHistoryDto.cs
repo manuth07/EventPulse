@@ -8,6 +8,7 @@ public record CustomerBookingHistoryDto(
     decimal TotalAmount,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ConfirmedAt,
+    DateTimeOffset ExpiresAt,
     int TotalTickets,
     IReadOnlyList<BookingHistoryItemDto> Items
 );

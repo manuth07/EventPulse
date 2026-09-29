@@ -131,6 +131,7 @@ builder.Services.AddScoped<IPaymentSucceededEventHandler, PaymentSucceededEventH
 builder.Services.AddScoped<IPaymentFailedEventHandler, PaymentFailedEventHandler>();
 builder.Services.AddScoped<IKafkaPaymentEventDispatcher, KafkaPaymentEventDispatcher>();
 builder.Services.AddHostedService<KafkaPaymentEventConsumer>();
+builder.Services.AddHostedService<EventPulse.BookingService.BackgroundServices.ExpiredBookingCleanupWorker>();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {

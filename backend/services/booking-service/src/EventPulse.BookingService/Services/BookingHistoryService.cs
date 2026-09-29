@@ -59,6 +59,7 @@ public class BookingHistoryService : IBookingHistoryService
                 b.TotalAmount,
                 b.CreatedAt,
                 b.ConfirmedAt,
+                b.ExpiresAt,
                 b.Items.Sum(i => i.Quantity),
                 b.Items.Select(i => new BookingHistoryItemDto(
                     i.TicketTypeId,

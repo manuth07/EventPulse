@@ -96,7 +96,8 @@ public class BookingsController : ControllerBase
             booking.BookingReference,
             booking.CustomerId,
             booking.TotalAmount,
-            booking.Status.ToString()
+            booking.Status.ToString(),
+            booking.ExpiresAt
         ));
     }
 
@@ -228,6 +229,7 @@ public class BookingsController : ControllerBase
             EventId = request.EventId,
             TotalAmount = totalAmount,
             Status = BookingStatus.PendingPayment,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(3),
             Items = bookingItems
         };
 
@@ -282,6 +284,7 @@ public class BookingsController : ControllerBase
             EventId = booking.EventId,
             TotalAmount = booking.TotalAmount,
             Status = booking.Status.ToString(),
+            ExpiresAt = booking.ExpiresAt,
             Items = booking.Items.Select(i => new BookingItemResponseDto
             {
                 TicketTypeId = i.TicketTypeId,

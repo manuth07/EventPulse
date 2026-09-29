@@ -5,5 +5,6 @@ public record BookingSummaryDto(
     string BookingReference,
     Guid CustomerId,
     decimal TotalAmount,
-    string Status
+    string Status,
+    DateTimeOffset ExpiresAt
 );

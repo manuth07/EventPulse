@@ -10,6 +10,7 @@ public class Booking
     public decimal TotalAmount { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ConfirmedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
 
     public ICollection<BookingItem> Items { get; set; } = new List<BookingItem>();
     public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();
