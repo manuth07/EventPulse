@@ -265,7 +265,7 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task CancelBooking_WhenUnauthorized_Returns401()
+    public async Task CancelBooking_ReturnsUnauthorized_WhenNoUserClaims()
     {
         using var context = CreateInMemoryDbContext();
         var eventClientMock = new Mock<IEventAvailabilityClient>();
@@ -327,7 +327,7 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task CancelBooking_WhenAlreadyCancelled_Returns400()
+    public async Task CancelBooking_ReturnsBadRequest_WhenIneligible()
     {
         using var context = CreateInMemoryDbContext();
         var eventClientMock = new Mock<IEventAvailabilityClient>();
@@ -366,7 +366,7 @@ public class BookingsControllerTests
     }
 
     [Fact]
-    public async Task CancelBooking_WhenSuccess_Returns200Ok()
+    public async Task CancelBooking_ReturnsOk_WhenCancellationSucceeds()
     {
         using var context = CreateInMemoryDbContext();
         var eventClientMock = new Mock<IEventAvailabilityClient>();
