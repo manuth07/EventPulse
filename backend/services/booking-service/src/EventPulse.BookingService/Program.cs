@@ -119,6 +119,7 @@ builder.Services.AddScoped<IBookingPaymentFailureService, BookingPaymentFailureS
 builder.Services.AddScoped<ITicketCodeGenerator, TicketCodeGenerator>();
 builder.Services.AddScoped<IValidationTokenGenerator, ValidationTokenGenerator>();
 builder.Services.AddScoped<ITicketGenerationService, TicketGenerationService>();
+builder.Services.AddScoped<IBookingHistoryService, BookingHistoryService>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,7 @@ builder.Services.AddScoped<IPaymentSucceededEventHandler, PaymentSucceededEventH
 builder.Services.AddScoped<IPaymentFailedEventHandler, PaymentFailedEventHandler>();
 builder.Services.AddScoped<IKafkaPaymentEventDispatcher, KafkaPaymentEventDispatcher>();
 builder.Services.AddHostedService<KafkaPaymentEventConsumer>();
+builder.Services.AddHostedService<EventPulse.BookingService.BackgroundServices.ExpiredBookingCleanupWorker>();
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {

@@ -21,6 +21,7 @@ public class BookingsController : ControllerBase
     private readonly IBookingEventPublisher _eventPublisher;
     private readonly ILogger<BookingsController> _logger;
     private readonly ICartService _cartService;
+    private readonly IBookingHistoryService _bookingHistoryService;
 
     public BookingsController(
         BookingDbContext dbContext,
@@ -28,7 +29,8 @@ public class BookingsController : ControllerBase
         IBookingReferenceGenerator referenceGenerator,
         IBookingEventPublisher eventPublisher,
         ILogger<BookingsController> logger,
-        ICartService cartService)
+        ICartService cartService,
+        IBookingHistoryService bookingHistoryService)
     {
         _dbContext = dbContext;
         _eventClient = eventClient;
@@ -36,12 +38,32 @@ public class BookingsController : ControllerBase
         _eventPublisher = eventPublisher;
         _logger = logger;
         _cartService = cartService;
+        _bookingHistoryService = bookingHistoryService;
     }
 
     private bool TryGetCustomerId(out Guid customerId)
     {
         var customerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
         return Guid.TryParse(customerIdStr, out customerId);
+    }
+
+    /// <summary>
+    /// Retrieves the authenticated customer's paginated booking history (US-27 / EP-47).
+    /// </summary>
+    [HttpGet("my-bookings")]
+    [ProducesResponseType(typeof(PagedResult<CustomerBookingHistoryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyBookings(
+        [FromQuery] BookingHistoryQueryParameters queryParams,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid or missing token identity." });
+        }
+
+        var result = await _bookingHistoryService.GetCustomerBookingHistoryAsync(customerId, queryParams, cancellationToken);
+        return Ok(result);
     }
 
     /// <summary>
@@ -74,7 +96,8 @@ public class BookingsController : ControllerBase
             booking.BookingReference,
             booking.CustomerId,
             booking.TotalAmount,
-            booking.Status.ToString()
+            booking.Status.ToString(),
+            booking.ExpiresAt
         ));
     }
 
@@ -206,6 +229,7 @@ public class BookingsController : ControllerBase
             EventId = request.EventId,
             TotalAmount = totalAmount,
             Status = BookingStatus.PendingPayment,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(3),
             Items = bookingItems
         };
 
@@ -260,6 +284,7 @@ public class BookingsController : ControllerBase
             EventId = booking.EventId,
             TotalAmount = booking.TotalAmount,
             Status = booking.Status.ToString(),
+            ExpiresAt = booking.ExpiresAt,
             Items = booking.Items.Select(i => new BookingItemResponseDto
             {
                 TicketTypeId = i.TicketTypeId,
