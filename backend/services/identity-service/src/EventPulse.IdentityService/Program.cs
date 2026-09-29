@@ -53,6 +53,8 @@ builder.Services.Configure<JwtSettings>(options =>
     }
 });
 builder.Services.Configure<GoogleSettings>(builder.Configuration.GetSection("Google"));
+builder.Services.Configure<AdminBootstrapSettings>(builder.Configuration.GetSection("AdminBootstrap"));
+builder.Services.Configure<DevOrganizerSettings>(builder.Configuration.GetSection("DevOrganizer"));
 builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 builder.Services.AddScoped<IEmailVerificationService, EmailVerificationService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
@@ -61,6 +63,7 @@ builder.Services.AddScoped<ILoginService, LoginService>();
 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
+builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationService>();
 builder.Services.AddScoped<EventPulse.IdentityService.Services.IdentityDataSeeder>();
 
 // ---------------------------------------------------------------------------
