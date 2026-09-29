@@ -26,7 +26,8 @@ public class BookingCancellationServiceTests
     {
         using var dbContext = CreateInMemoryDbContext();
         var loggerMock = new Mock<ILogger<BookingCancellationService>>();
-        var service = new BookingCancellationService(dbContext, loggerMock.Object);
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(dbContext, eventPublisherMock.Object, loggerMock.Object);
 
         var (isEligible, reason, booking) = await service.EvaluateCancellationEligibilityAsync(Guid.NewGuid(), Guid.NewGuid());
 
@@ -50,7 +51,8 @@ public class BookingCancellationServiceTests
         await dbContext.SaveChangesAsync();
 
         var loggerMock = new Mock<ILogger<BookingCancellationService>>();
-        var service = new BookingCancellationService(dbContext, loggerMock.Object);
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(dbContext, eventPublisherMock.Object, loggerMock.Object);
 
         var (isEligible, reason, returnedBooking) = await service.EvaluateCancellationEligibilityAsync(booking.Id, Guid.NewGuid());
 
@@ -75,7 +77,8 @@ public class BookingCancellationServiceTests
         await dbContext.SaveChangesAsync();
 
         var loggerMock = new Mock<ILogger<BookingCancellationService>>();
-        var service = new BookingCancellationService(dbContext, loggerMock.Object);
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(dbContext, eventPublisherMock.Object, loggerMock.Object);
 
         var (isEligible, reason, returnedBooking) = await service.EvaluateCancellationEligibilityAsync(booking.Id, customerId);
 
@@ -100,7 +103,8 @@ public class BookingCancellationServiceTests
         await dbContext.SaveChangesAsync();
 
         var loggerMock = new Mock<ILogger<BookingCancellationService>>();
-        var service = new BookingCancellationService(dbContext, loggerMock.Object);
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(dbContext, eventPublisherMock.Object, loggerMock.Object);
 
         var (isEligible, reason, returnedBooking) = await service.EvaluateCancellationEligibilityAsync(booking.Id, customerId);
 
@@ -110,16 +114,30 @@ public class BookingCancellationServiceTests
     }
 
     [Fact]
-    public async Task CancelBookingAsync_WhenEligible_CancelsBookingAndTickets()
+    public async Task CancelBookingAsync_WhenEligible_CancelsBookingAndTicketsAndPublishesEvent()
     {
         using var dbContext = CreateInMemoryDbContext();
         var customerId = Guid.NewGuid();
+        var ticketTypeId = Guid.NewGuid();
         var booking = new Booking
         {
             Id = Guid.NewGuid(),
             BookingReference = "REF-CANCEL-1",
             CustomerId = customerId,
+            EventId = Guid.NewGuid(),
             Status = BookingStatus.Confirmed,
+            Items = new List<BookingItem>
+            {
+                new BookingItem
+                {
+                    Id = Guid.NewGuid(),
+                    TicketTypeId = ticketTypeId,
+                    TicketName = "VIP",
+                    Quantity = 2,
+                    UnitPrice = 100m,
+                    Subtotal = 200m
+                }
+            },
             Tickets = new List<Ticket>
             {
                 new Ticket { Id = Guid.NewGuid(), Status = TicketStatus.Valid },
@@ -130,7 +148,8 @@ public class BookingCancellationServiceTests
         await dbContext.SaveChangesAsync();
 
         var loggerMock = new Mock<ILogger<BookingCancellationService>>();
-        var service = new BookingCancellationService(dbContext, loggerMock.Object);
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(dbContext, eventPublisherMock.Object, loggerMock.Object);
 
         var result = await service.CancelBookingAsync(booking.Id, customerId, new CancelBookingRequest { Reason = "User change of plans" });
 
@@ -142,5 +161,16 @@ public class BookingCancellationServiceTests
         var updated = await dbContext.Bookings.Include(b => b.Tickets).FirstAsync(b => b.Id == booking.Id);
         Assert.Equal(BookingStatus.Cancelled, updated.Status);
         Assert.All(updated.Tickets, t => Assert.Equal(TicketStatus.Cancelled, t.Status));
+
+        eventPublisherMock.Verify(p => p.PublishBookingCancelledAsync(
+            It.Is<EventPulse.BookingService.Events.BookingCancelledEvent>(e =>
+                e.BookingId == booking.Id &&
+                e.BookingReference == booking.BookingReference &&
+                e.CustomerId == customerId &&
+                e.ReleasedTickets.Count == 1 &&
+                e.ReleasedTickets[0].TicketTypeId == ticketTypeId &&
+                e.ReleasedTickets[0].Quantity == 2),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

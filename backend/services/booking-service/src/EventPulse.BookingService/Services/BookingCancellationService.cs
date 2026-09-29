@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using EventPulse.BookingService.Data;
 using EventPulse.BookingService.DTOs;
+using EventPulse.BookingService.Events;
 using EventPulse.BookingService.Models;
 
 namespace EventPulse.BookingService.Services;
@@ -8,11 +9,16 @@ namespace EventPulse.BookingService.Services;
 public class BookingCancellationService : IBookingCancellationService
 {
     private readonly BookingDbContext _dbContext;
+    private readonly IBookingEventPublisher _eventPublisher;
     private readonly ILogger<BookingCancellationService> _logger;
 
-    public BookingCancellationService(BookingDbContext dbContext, ILogger<BookingCancellationService> logger)
+    public BookingCancellationService(
+        BookingDbContext dbContext,
+        IBookingEventPublisher eventPublisher,
+        ILogger<BookingCancellationService> logger)
     {
         _dbContext = dbContext;
+        _eventPublisher = eventPublisher;
         _logger = logger;
     }
 
@@ -81,15 +87,42 @@ public class BookingCancellationService : IBookingCancellationService
 
         await _dbContext.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Booking {BookingId} ({BookingReference}) cancelled successfully by customer {CustomerId}. Reason: {Reason}",
-            booking.Id, booking.BookingReference, customerId, request?.Reason ?? "None");
+        // Publish outbound domain event to release capacity and notify downstream services
+        // Note: Capacity restoration is handled asynchronously via Kafka event emission (topic: booking-cancelled).
+        var cancelledAt = DateTimeOffset.UtcNow;
+        var releasedTickets = booking.Items
+            .Select(i => new CancelledTicketItemDto(i.TicketTypeId, i.Quantity))
+            .ToList();
+
+        var cancelledEvent = new BookingCancelledEvent
+        {
+            BookingId = booking.Id,
+            BookingReference = booking.BookingReference,
+            CustomerId = booking.CustomerId,
+            EventId = booking.EventId,
+            ReleasedTickets = releasedTickets,
+            CancelledAt = cancelledAt,
+            Items = booking.Items.Select(i => new BookingItemDto
+            {
+                TicketTypeId = i.TicketTypeId,
+                TicketName = i.TicketName,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice,
+                Subtotal = i.Subtotal
+            }).ToList()
+        };
+
+        await _eventPublisher.PublishBookingCancelledAsync(cancelledEvent, ct);
+
+        _logger.LogInformation("Booking {BookingId} ({BookingReference}) cancelled successfully by customer {CustomerId}. Reason: {Reason}. Emitted BookingCancelledEvent with {TicketTypeCount} ticket types released.",
+            booking.Id, booking.BookingReference, customerId, request?.Reason ?? "None", releasedTickets.Count);
 
         return new BookingCancellationResultDto(
             bookingId: booking.Id,
             bookingReference: booking.BookingReference,
             previousStatus: previousStatus,
             newStatus: BookingStatus.Cancelled.ToString(),
-            cancelledAt: DateTimeOffset.UtcNow,
+            cancelledAt: cancelledAt,
             success: true,
             message: "Booking cancelled successfully"
         );
