@@ -229,6 +229,7 @@ public class BookingsControllerTests
                     150.0m,
                     DateTimeOffset.UtcNow,
                     DateTimeOffset.UtcNow,
+                    DateTimeOffset.UtcNow.AddHours(3),
                     2,
                     new List<BookingHistoryItemDto>())
             },
