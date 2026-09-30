@@ -15,7 +15,7 @@ function formatDateShort(dateString) {
     const day = d.getDate();
     const month = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
     const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    return `${day} ${month}  ${time}`;
+    return `${day} ${month} · ${time}`;
   } catch (e) {
     return dateString;
   }
@@ -25,7 +25,7 @@ export function SelectTickets() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { cart, addOrUpdateItem, refreshCart } = useCart();
+  const { cart, addOrUpdateItem, refreshCart, clearCart } = useCart();
 
   const [event, setEvent] = useState(null);
   const [ticketTypes, setTicketTypes] = useState([]);
@@ -100,10 +100,28 @@ export function SelectTickets() {
   const cartCount = selectedItems.reduce((sum, t) => sum + t.qty, 0);
 
   const handleAdd = (ticketTypeId) => {
+    if (cart && cart.eventId && cart.eventId !== id && Array.isArray(cart.items) && cart.items.length > 0) {
+      setConflictModal({
+        currentEventTitle: cart.eventTitle || 'another event',
+        currentEventId: cart.eventId,
+        attemptedEventId: id,
+        pendingAction: () => setQuantities({ [ticketTypeId]: 1 }),
+      });
+      return;
+    }
     setQuantities((prev) => ({ ...prev, [ticketTypeId]: 1 }));
   };
 
   const handleStep = (ticketTypeId, delta, max) => {
+    if (delta > 0 && cart && cart.eventId && cart.eventId !== id && Array.isArray(cart.items) && cart.items.length > 0) {
+      setConflictModal({
+        currentEventTitle: cart.eventTitle || 'another event',
+        currentEventId: cart.eventId,
+        attemptedEventId: id,
+        pendingAction: () => setQuantities({ [ticketTypeId]: 1 }),
+      });
+      return;
+    }
     setQuantities((prev) => {
       const current = prev[ticketTypeId] || 0;
       const next = Math.max(0, Math.min(current + delta, max));
@@ -118,11 +136,26 @@ export function SelectTickets() {
     }
     if (selectedItems.length === 0) return;
 
+    // Check if cart already holds items for a different event
+    if (!clearExisting && cart && cart.eventId && cart.eventId !== id && Array.isArray(cart.items) && cart.items.length > 0) {
+      setConflictModal({
+        currentEventTitle: cart.eventTitle || 'another event',
+        currentEventId: cart.eventId,
+        attemptedEventId: id,
+        pendingAction: null,
+      });
+      return;
+    }
+
     setSubmitError(null);
     setSubmitting(true);
 
     try {
-      // If updating, submit items with their desired final quantities
+      if (clearExisting && clearCart) {
+        await clearCart();
+      }
+
+      // Submit items with desired quantities
       let isFirst = true;
       for (const item of selectedItems) {
         await addOrUpdateItem(id, item.id, item.qty, isFirst && clearExisting, false);
@@ -141,11 +174,13 @@ export function SelectTickets() {
       await refreshCart();
       navigate('/cart');
     } catch (err) {
-      if (err.status === 409 && err.conflictData) {
+      const conflict = err.data || err.conflictData;
+      if (err.status === 409 || conflict?.code === 'EVENT_CONFLICT' || conflict?.Code === 'EVENT_CONFLICT') {
         setConflictModal({
-          currentEventTitle: err.conflictData.currentEventTitle || 'another event',
-          currentEventId: err.conflictData.currentEventId,
+          currentEventTitle: conflict?.currentEventTitle || conflict?.CurrentEventTitle || cart?.eventTitle || 'another event',
+          currentEventId: conflict?.currentEventId || conflict?.CurrentEventId || cart?.eventId,
           attemptedEventId: id,
+          pendingAction: null,
         });
       } else {
         setSubmitError(err.message || 'Failed to add tickets to cart.');
@@ -156,8 +191,24 @@ export function SelectTickets() {
   };
 
   const handleConfirmClearAndContinue = async () => {
+    const action = conflictModal?.pendingAction;
     setConflictModal(null);
-    await handleCheckout(true);
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      if (clearCart) {
+        await clearCart();
+      }
+      if (action) {
+        action();
+      } else {
+        await handleCheckout(true);
+      }
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to clear cart.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -411,8 +462,7 @@ export function SelectTickets() {
                 </h3>
               </div>
               <p style={{ fontSize: '14px', color: 'var(--ep-text-secondary)', lineHeight: 1.5, margin: '0 0 20px 0' }}>
-                Your cart currently contains tickets for <strong>{conflictModal.currentEventTitle}</strong>.
-                To select tickets for <strong>{event?.title}</strong>, your current cart must be cleared.
+                Your cart contains tickets for another event (<strong>{conflictModal.currentEventTitle}</strong>). Clear cart and add these tickets?
               </p>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <button
@@ -421,7 +471,7 @@ export function SelectTickets() {
                   className="ep-btn-secondary"
                   style={{ fontSize: '13px', padding: '9px 16px' }}
                 >
-                  Keep {conflictModal.currentEventTitle} Tickets
+                  Cancel
                 </button>
                 <button
                   type="button"
@@ -429,7 +479,7 @@ export function SelectTickets() {
                   className="ep-btn-primary"
                   style={{ fontSize: '13px', padding: '9px 18px' }}
                 >
-                  Clear Cart & Continue
+                  Clear Cart & Add Tickets
                 </button>
               </div>
             </div>

@@ -22,6 +22,79 @@ namespace EventPulse.BookingService.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("EventPulse.BookingService.Models.Booking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BookingReference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingReference")
+                        .IsUnique();
+
+                    b.ToTable("Bookings");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.BookingItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("TicketName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TicketTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.ToTable("BookingItems");
+                });
+
             modelBuilder.Entity("EventPulse.BookingService.Models.Cart", b =>
                 {
                     b.Property<Guid>("Id")
@@ -101,6 +174,103 @@ namespace EventPulse.BookingService.Migrations
                     b.ToTable("CartItems");
                 });
 
+            modelBuilder.Entity("EventPulse.BookingService.Models.ProcessedIntegrationEvent", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<DateTimeOffset>("ProcessedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.HasKey("EventId");
+
+                    b.ToTable("ProcessedIntegrationEvents");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.Ticket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TicketCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("TicketName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("TicketSequence")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TicketTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ValidationToken")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("TicketCode")
+                        .IsUnique();
+
+                    b.HasIndex("ValidationToken")
+                        .IsUnique();
+
+                    b.HasIndex("BookingItemId", "TicketSequence")
+                        .IsUnique();
+
+                    b.ToTable("Tickets");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.BookingItem", b =>
+                {
+                    b.HasOne("EventPulse.BookingService.Models.Booking", "Booking")
+                        .WithMany("Items")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("EventPulse.BookingService.Models.CartItem", b =>
                 {
                     b.HasOne("EventPulse.BookingService.Models.Cart", "Cart")
@@ -110,6 +280,37 @@ namespace EventPulse.BookingService.Migrations
                         .IsRequired();
 
                     b.Navigation("Cart");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.Ticket", b =>
+                {
+                    b.HasOne("EventPulse.BookingService.Models.Booking", "Booking")
+                        .WithMany("Tickets")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EventPulse.BookingService.Models.BookingItem", "BookingItem")
+                        .WithMany("Tickets")
+                        .HasForeignKey("BookingItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("BookingItem");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.Booking", b =>
+                {
+                    b.Navigation("Items");
+
+                    b.Navigation("Tickets");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.BookingItem", b =>
+                {
+                    b.Navigation("Tickets");
                 });
 
             modelBuilder.Entity("EventPulse.BookingService.Models.Cart", b =>

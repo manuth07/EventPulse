@@ -1,9 +1,14 @@
+using System.Security.Claims;
 using System.Text;
+using EventPulse.BookingService.Consumers;
 using EventPulse.BookingService.Data;
+using EventPulse.BookingService.Events;
 using EventPulse.BookingService.Services;
+using EventPulse.Contracts.Kafka;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,8 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 // ---------------------------------------------------------------------------
 // Owns: ticket reservations, seat availability, booking lifecycle.
 // Does NOT reference: IdentityService, EventService, PaymentService.
-// Communicates with EventService (read event/seat data) → via HTTP client later.
-// Communicates with PaymentService (payment confirmation) → via Kafka later.
+// Communicates with EventService (read event/seat data) → via HTTP client.
 // ---------------------------------------------------------------------------
 
 builder.Services.AddDbContext<BookingDbContext>(options =>
@@ -25,18 +29,40 @@ builder.Services.AddHttpClient<IEventAvailabilityClient, EventServiceAvailabilit
 });
 
 // ---------------------------------------------------------------------------
+// CORS Policy
+// ---------------------------------------------------------------------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
+// ---------------------------------------------------------------------------
 // JWT Bearer — validates tokens issued by Identity Service
 // ---------------------------------------------------------------------------
-// The signing key MUST match the key configured in IdentityService.
-// Supply via:
-//   Local dev: dotnet user-secrets set "Jwt:Key" "<same-key>"
-//   Azure:     App Service environment variable Jwt__Key
-// ---------------------------------------------------------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var jwtKeyStr = jwtSection["Key"];
-var jwtKeyBytes = !string.IsNullOrEmpty(jwtKeyStr)
-    ? Encoding.UTF8.GetBytes(jwtKeyStr)
-    : new byte[32]; // fallback — token validation will fail at runtime without a real key
+var keyStr = builder.Configuration["Jwt:Key"] 
+    ?? builder.Configuration["Jwt__Key"] 
+    ?? jwtSection["Key"]
+    ?? "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
+
+using (var sha256 = System.Security.Cryptography.SHA256.Create())
+{
+    var hash = Convert.ToHexString(sha256.ComputeHash(Encoding.UTF8.GetBytes(keyStr)));
+    Console.WriteLine($"[KEY-VERIFY] {builder.Environment.ApplicationName} Key Hash: {hash}");
+}
+
+var jwtKeyBytes = Encoding.UTF8.GetBytes(keyStr);
+
+var keyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes)
+{
+    KeyId = "EventPulseKey_2026"
+};
+var unkeyedSigningKey = new SymmetricSecurityKey(jwtKeyBytes);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -50,45 +76,100 @@ builder.Services.AddAuthentication(options =>
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(jwtKeyBytes),
+        IssuerSigningKey = keyedSigningKey,
+        IssuerSigningKeys = new SecurityKey[] { keyedSigningKey, unkeyedSigningKey },
+        IssuerSigningKeyResolver = (token, securityToken, kid, validationParameters) =>
+            new SecurityKey[] { keyedSigningKey, unkeyedSigningKey },
         ValidateIssuer = true,
-        ValidIssuer = jwtSection["Issuer"] ?? "EventPulse.IdentityService",
+        ValidIssuer = jwtSection["Issuer"] ?? builder.Configuration["Jwt:Issuer"] ?? "EventPulse.IdentityService",
         ValidateAudience = true,
-        ValidAudience = jwtSection["Audience"] ?? "EventPulse.Clients",
+        ValidAudience = jwtSection["Audience"] ?? builder.Configuration["Jwt:Audience"] ?? "EventPulse.Clients",
         ValidateLifetime = true,
         ClockSkew = TimeSpan.FromMinutes(1),
+        RoleClaimType = ClaimTypes.Role,
+        NameClaimType = ClaimTypes.NameIdentifier
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("BookingService.JwtAuthentication");
+            logger.LogWarning("JWT authentication failed: {Message}", context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("BookingService.JwtAuthentication");
+            logger.LogWarning("JWT challenge triggered: Error={Error}, Description={Description}",
+                context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        }
     };
 });
 
 builder.Services.AddAuthorization();
-
 builder.Services.AddScoped<ICartService, CartService>();
-builder.Services.AddControllers();
+builder.Services.AddScoped<IBookingReferenceGenerator, BookingReferenceGenerator>();
+builder.Services.AddScoped<IBookingConfirmationService, BookingConfirmationService>();
+builder.Services.AddScoped<IBookingPaymentFailureService, BookingPaymentFailureService>();
+builder.Services.AddScoped<ITicketCodeGenerator, TicketCodeGenerator>();
+builder.Services.AddScoped<IValidationTokenGenerator, ValidationTokenGenerator>();
+builder.Services.AddScoped<ITicketGenerationService, TicketGenerationService>();
+builder.Services.AddScoped<IBookingHistoryService, BookingHistoryService>();
+builder.Services.AddScoped<IBookingCancellationService, BookingCancellationService>();
+builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
+
+// ---------------------------------------------------------------------------
+// Kafka Event Consumers & Handlers
+// ---------------------------------------------------------------------------
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
+builder.Services.AddScoped<IPaymentSucceededEventHandler, PaymentSucceededEventHandler>();
+builder.Services.AddScoped<IPaymentFailedEventHandler, PaymentFailedEventHandler>();
+builder.Services.AddScoped<IKafkaPaymentEventDispatcher, KafkaPaymentEventDispatcher>();
+builder.Services.AddHostedService<KafkaPaymentEventConsumer>();
+builder.Services.AddHostedService<EventPulse.BookingService.BackgroundServices.ExpiredBookingCleanupWorker>();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+builder.Services.AddApplicationInsightsTelemetry();
 
 var app = builder.Build();
 
-// ---------------------------------------------------------------------------
-// Database Migration on Startup
-// ---------------------------------------------------------------------------
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
     await dbContext.Database.MigrateAsync();
 }
 
+app.UseRouting();
+
+// Prometheus HTTP metrics middleware
+app.UseHttpMetrics();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-// Authentication must precede Authorization in the middleware pipeline
+app.UseCors("AllowAll");
+
+// Middleware Ordering: CORS -> Authentication -> Authorization -> Endpoints
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapHealthChecks("/health");
+
+// Prometheus Scrape Endpoint
+app.MapMetrics();
 
 app.MapControllers();
 
-app.Run();
+await app.RunAsync();

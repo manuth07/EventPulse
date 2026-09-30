@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 
@@ -403,6 +403,37 @@ export function Header({ location = 'Colombo, LK' }) {
                       <span>List Your Event</span>
                     </Link>
                   )}
+
+                  {/* My Bookings (available to all authenticated users: Customer, Organizer, Admin) */}
+                  <Link
+                    to="/my-bookings"
+                    id="account-menu-my-bookings"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'none',
+                      borderBottom: '1px solid var(--ep-border)',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: 'var(--ep-text-primary)',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      transition: 'var(--ep-transition)',
+                      fontFamily: 'var(--ep-font-body)',
+                      textAlign: 'left',
+                      boxSizing: 'border-box',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <Calendar size={14} color="var(--ep-text-secondary)" />
+                    <span>My Bookings</span>
+                  </Link>
 
                   {/* Log out */}
                   <button

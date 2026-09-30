@@ -1,3 +1,5 @@
+using Prometheus;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------------------------------------------------------------------------
@@ -16,23 +18,32 @@ builder.Services.AddCors(options =>
 // ---------------------------------------------------------------------------
 // YARP Reverse Proxy
 // ---------------------------------------------------------------------------
-// ReverseProxy reads its configuration from appsettings.json (ReverseProxy
-// section). No business logic, no DB access, no controllers needed here.
-// The Gateway is ONLY a routing/proxy layer.
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 // ---------------------------------------------------------------------------
-// OpenAPI / Swagger (development only – useful to inspect gateway routes)
+// OpenAPI & Health Checks
 // ---------------------------------------------------------------------------
 builder.Services.AddOpenApi();
-
-// ---------------------------------------------------------------------------
-// Health checks endpoint for the gateway itself
-// ---------------------------------------------------------------------------
 builder.Services.AddHealthChecks();
 
+// Application Insights Telemetry (EP-200 / TECH-11)
+var appInsightsConn = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+                   ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+
+if (!string.IsNullOrWhiteSpace(appInsightsConn))
+{
+    builder.Services.AddApplicationInsightsTelemetry(options =>
+    {
+        options.ConnectionString = appInsightsConn;
+    });
+}
+
 var app = builder.Build();
+
+// Prometheus HTTP Request Metrics (TECH-12)
+app.UseRouting();
+app.UseHttpMetrics();
 
 if (app.Environment.IsDevelopment())
 {
@@ -41,10 +52,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowFrontend");
 
-// Health endpoint for the gateway (not proxied, resolved locally)
+// Health endpoint for the gateway (resolved locally)
 app.MapHealthChecks("/health");
 
-// Map all configured YARP routes
+// Prometheus Scrape Endpoint for Gateway metrics (resolved locally before proxy)
+app.MapMetrics();
+
+// Map all configured YARP routes downstream
 app.MapReverseProxy();
 
 app.Run();

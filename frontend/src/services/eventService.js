@@ -90,19 +90,42 @@ export async function submitEvent(formData, token) {
 
   if (!response.ok) {
     let errorMsg = `Failed to submit event (${response.status})`;
+    let responseData = null;
+    let errorList = [];
+
     try {
-      const data = await response.json();
-      if (data.message) {
-        errorMsg = data.message;
-      }
-      if (data.errors && data.errors.length > 0) {
-        errorMsg += ': ' + data.errors.join(', ');
+      responseData = await response.json();
+      if (responseData) {
+        if (responseData.message) {
+          errorMsg = responseData.message;
+        } else if (responseData.title) {
+          errorMsg = responseData.title;
+        }
+
+        // Support string array: ["Field 1 error", "Field 2 error"]
+        if (Array.isArray(responseData.errors)) {
+          errorList = responseData.errors;
+        }
+        // Support ASP.NET ValidationProblemDetails object: { FieldName: ["Error 1"] }
+        else if (responseData.errors && typeof responseData.errors === 'object') {
+          errorList = Object.entries(responseData.errors).flatMap(([field, msgs]) =>
+            Array.isArray(msgs) ? msgs.map((m) => `${field}: ${m}`) : [`${field}: ${msgs}`]
+          );
+        }
+
+        if (errorList.length > 0) {
+          errorMsg = `${errorMsg}: ${errorList.join(', ')}`;
+        }
       }
     } catch (e) {
       // response might not be JSON
     }
+
     const error = new Error(errorMsg);
     error.status = response.status;
+    error.data = responseData;
+    error.response = { status: response.status, data: responseData };
+    error.errors = errorList;
     throw error;
   }
 

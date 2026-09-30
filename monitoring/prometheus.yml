@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 5s     # Scrape metrics every 5 seconds
+  evaluation_interval: 5s
+
+rule_files:
+  - "/etc/prometheus/alert.rules.yml"
+
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape EventPulse Gateway
+  - job_name: 'eventpulse-gateway'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:7000']
+
+  # Scrape EventPulse Identity Service
+  - job_name: 'eventpulse-identity'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:7101']
+
+  # Scrape EventPulse Event Service
+  - job_name: 'eventpulse-events'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:7102']
+
+  # Scrape EventPulse Booking Service
+  - job_name: 'eventpulse-booking'                  
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:7103']  
+
+  # Scrape EventPulse Payment Service
+  - job_name: 'eventpulse-payment'
+    metrics_path: '/metrics'
+    static_configs: 
+      - targets: ['host.docker.internal:7104']
+
+  # ---------------------------------------------------------
+  # AZURE APP SERVICE CONFIGURATION (FOR CI/CD DEPLOYMENTS)
+  # Uncomment and update the domains when deploying to Azure.
+  # ---------------------------------------------------------
+  # - job_name: 'eventpulse-azure-gateway'
+  #   scheme: https
+  #   metrics_path: '/metrics'
+  #   static_configs:
+  #     - targets: ['eventpulse-gateway-dev-xyz.azurewebsites.net:443']
+  #
+  # - job_name: 'eventpulse-azure-identity'
+  #   scheme: https
+  #   metrics_path: '/metrics'
+  #   static_configs:
+  #     - targets: ['eventpulse-identity-dev-xyz.azurewebsites.net:443']

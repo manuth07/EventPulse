@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Image as ImageIcon,
 } from 'lucide-react';
+import { ImageCropperModal } from '../../components/common/ImageCropperModal';
 
 function toLocalDatetimeInput(dateString) {
   if (!dateString) return '';
@@ -77,6 +78,19 @@ export function EditEvent() {
   const [submitError, setSubmitError] = useState(null);
   const [success, setSuccess] = useState(false);
 
+  // Interactive Cropper configuration
+  const [cropperConfig, setCropperConfig] = useState({
+    isOpen: false,
+    imageSrc: '',
+    fileName: '',
+    fileType: '',
+    aspectRatio: 4 / 5,
+    aspectTitle: 'Event Poster',
+    targetWidth: 1200,
+    targetHeight: 1500,
+    cropType: 'poster',
+  });
+
   // Cleanup object URLs to prevent memory leaks
   useEffect(() => {
     return () => {
@@ -86,8 +100,11 @@ export function EditEvent() {
       if (coverPreview && coverPreview.startsWith('blob:')) {
         URL.revokeObjectURL(coverPreview);
       }
+      if (cropperConfig.imageSrc && cropperConfig.imageSrc.startsWith('blob:')) {
+        URL.revokeObjectURL(cropperConfig.imageSrc);
+      }
     };
-  }, [imagePreview, coverPreview]);
+  }, [imagePreview, coverPreview, cropperConfig.imageSrc]);
 
   // Load event details & check for existing pending update or cancellation request
   const loadEventData = useCallback(async () => {
@@ -170,13 +187,26 @@ export function EditEvent() {
       return;
     }
 
+    e.target.value = '';
+
     setFieldErrors((prev) => {
       const updated = { ...prev };
       delete updated.image;
       return updated;
     });
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+
+    const rawUrl = URL.createObjectURL(file);
+    setCropperConfig({
+      isOpen: true,
+      imageSrc: rawUrl,
+      fileName: file.name,
+      fileType: file.type,
+      aspectRatio: 4 / 5,
+      aspectTitle: 'Event Poster (Portrait 4:5)',
+      targetWidth: 1200,
+      targetHeight: 1500,
+      cropType: 'poster',
+    });
   };
 
   const handleRemoveImageReplacement = () => {
@@ -206,13 +236,55 @@ export function EditEvent() {
       return;
     }
 
+    e.target.value = '';
+
     setFieldErrors((prev) => {
       const updated = { ...prev };
       delete updated.cover;
       return updated;
     });
-    setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
+
+    const rawUrl = URL.createObjectURL(file);
+    setCropperConfig({
+      isOpen: true,
+      imageSrc: rawUrl,
+      fileName: file.name,
+      fileType: file.type,
+      aspectRatio: 16 / 6,
+      aspectTitle: 'Event Cover Banner (16:6 / 1920x720)',
+      targetWidth: 1920,
+      targetHeight: 720,
+      cropType: 'cover',
+    });
+  };
+
+  const handleCropComplete = (croppedFile, previewUrl) => {
+    if (cropperConfig.cropType === 'poster') {
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+      setImageFile(croppedFile);
+      setImagePreview(previewUrl);
+    } else {
+      if (coverPreview && coverPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(coverPreview);
+      }
+      setCoverFile(croppedFile);
+      setCoverPreview(previewUrl);
+    }
+
+    if (cropperConfig.imageSrc && cropperConfig.imageSrc.startsWith('blob:')) {
+      URL.revokeObjectURL(cropperConfig.imageSrc);
+    }
+
+    setCropperConfig((prev) => ({ ...prev, isOpen: false, imageSrc: '' }));
+  };
+
+  const handleCropCancel = () => {
+    if (cropperConfig.imageSrc && cropperConfig.imageSrc.startsWith('blob:')) {
+      URL.revokeObjectURL(cropperConfig.imageSrc);
+    }
+    setCropperConfig((prev) => ({ ...prev, isOpen: false, imageSrc: '' }));
   };
 
   const handleRemoveCoverReplacement = () => {
@@ -1134,6 +1206,19 @@ export function EditEvent() {
           </div>
         )}
       </main>
+
+      <ImageCropperModal
+        isOpen={cropperConfig.isOpen}
+        imageSrc={cropperConfig.imageSrc}
+        fileName={cropperConfig.fileName}
+        fileType={cropperConfig.fileType}
+        aspectRatio={cropperConfig.aspectRatio}
+        aspectTitle={cropperConfig.aspectTitle}
+        targetWidth={cropperConfig.targetWidth}
+        targetHeight={cropperConfig.targetHeight}
+        onCropComplete={handleCropComplete}
+        onCancel={handleCropCancel}
+      />
     </div>
   );
 }
