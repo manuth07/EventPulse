@@ -20,6 +20,7 @@ import {
   Edit3,
   Image as ImageIcon,
 } from 'lucide-react';
+import { ImageCropperModal } from '../../components/common/ImageCropperModal';
 
 function formatEventDateTime(dateString) {
   if (!dateString) return 'Date TBA';
@@ -155,6 +156,17 @@ export function OrganizerEventDetails() {
   const [imagePreview, setImagePreview] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
+  const [cropperConfig, setCropperConfig] = useState({
+    isOpen: false,
+    imageSrc: '',
+    fileName: '',
+    fileType: '',
+    aspectRatio: 4 / 5,
+    aspectTitle: 'Event Poster (Portrait 4:5)',
+    targetWidth: 1200,
+    targetHeight: 1500,
+    cropType: 'poster',
+  });
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -317,9 +329,21 @@ export function OrganizerEventDetails() {
       return;
     }
 
+    e.target.value = '';
     setFormError(null);
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+
+    const rawUrl = URL.createObjectURL(file);
+    setCropperConfig({
+      isOpen: true,
+      imageSrc: rawUrl,
+      fileName: file.name,
+      fileType: file.type,
+      aspectRatio: 4 / 5,
+      aspectTitle: 'Event Poster (Portrait 4:5)',
+      targetWidth: 1200,
+      targetHeight: 1500,
+      cropType: 'poster',
+    });
   };
 
   const handleCoverChange = (e) => {
@@ -336,9 +360,50 @@ export function OrganizerEventDetails() {
       return;
     }
 
+    e.target.value = '';
     setFormError(null);
-    setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
+
+    const rawUrl = URL.createObjectURL(file);
+    setCropperConfig({
+      isOpen: true,
+      imageSrc: rawUrl,
+      fileName: file.name,
+      fileType: file.type,
+      aspectRatio: 16 / 6,
+      aspectTitle: 'Event Cover Banner (16:6 / 1920x720)',
+      targetWidth: 1920,
+      targetHeight: 720,
+      cropType: 'cover',
+    });
+  };
+
+  const handleCropComplete = (croppedFile, previewUrl) => {
+    if (cropperConfig.cropType === 'poster') {
+      if (imagePreview && imagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(imagePreview);
+      }
+      setImageFile(croppedFile);
+      setImagePreview(previewUrl);
+    } else {
+      if (coverPreview && coverPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(coverPreview);
+      }
+      setCoverFile(croppedFile);
+      setCoverPreview(previewUrl);
+    }
+
+    if (cropperConfig.imageSrc && cropperConfig.imageSrc.startsWith('blob:')) {
+      URL.revokeObjectURL(cropperConfig.imageSrc);
+    }
+
+    setCropperConfig((prev) => ({ ...prev, isOpen: false, imageSrc: '' }));
+  };
+
+  const handleCropCancel = () => {
+    if (cropperConfig.imageSrc && cropperConfig.imageSrc.startsWith('blob:')) {
+      URL.revokeObjectURL(cropperConfig.imageSrc);
+    }
+    setCropperConfig((prev) => ({ ...prev, isOpen: false, imageSrc: '' }));
   };
 
   const handleResubmit = async (e) => {
@@ -1286,6 +1351,9 @@ export function OrganizerEventDetails() {
                         <button
                           type="button"
                           onClick={() => {
+                            if (imagePreview && imagePreview.startsWith('blob:')) {
+                              URL.revokeObjectURL(imagePreview);
+                            }
                             setImageFile(null);
                             setImagePreview(null);
                           }}
@@ -1326,7 +1394,7 @@ export function OrganizerEventDetails() {
                           Select replacement poster
                         </span>
                         <span style={{ fontSize: '11px', color: 'var(--ep-text-secondary)' }}>
-                          JPEG, PNG or WebP • Max 5 MB
+                          Portrait 4:5 • JPEG, PNG or WebP • Max 5 MB
                         </span>
                         <input
                           type="file"
@@ -1364,6 +1432,9 @@ export function OrganizerEventDetails() {
                         <button
                           type="button"
                           onClick={() => {
+                            if (coverPreview && coverPreview.startsWith('blob:')) {
+                              URL.revokeObjectURL(coverPreview);
+                            }
                             setCoverFile(null);
                             setCoverPreview(null);
                           }}
@@ -1969,6 +2040,19 @@ export function OrganizerEventDetails() {
           </div>
         )}
       </main>
+
+      <ImageCropperModal
+        isOpen={cropperConfig.isOpen}
+        imageSrc={cropperConfig.imageSrc}
+        fileName={cropperConfig.fileName}
+        fileType={cropperConfig.fileType}
+        aspectRatio={cropperConfig.aspectRatio}
+        aspectTitle={cropperConfig.aspectTitle}
+        targetWidth={cropperConfig.targetWidth}
+        targetHeight={cropperConfig.targetHeight}
+        onCropComplete={handleCropComplete}
+        onCancel={handleCropCancel}
+      />
     </div>
   );
 }
