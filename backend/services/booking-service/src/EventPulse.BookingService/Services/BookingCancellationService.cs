@@ -114,6 +114,23 @@ public class BookingCancellationService : IBookingCancellationService
 
         await _eventPublisher.PublishBookingCancelledAsync(cancelledEvent, ct);
 
+        // If booking was Confirmed and has a paid amount, emit BookingRefundRequestedEvent
+        if (previousStatus == BookingStatus.Confirmed.ToString() && booking.TotalAmount > 0)
+        {
+            var refundEvent = new EventPulse.Contracts.Kafka.Events.BookingRefundRequestedEvent(
+                RefundRequestId: Guid.NewGuid(),
+                BookingId: booking.Id,
+                BookingReference: booking.BookingReference,
+                CustomerId: booking.CustomerId,
+                EventId: booking.EventId,
+                RefundAmount: booking.TotalAmount,
+                Reason: request?.Reason ?? "Booking cancelled by customer",
+                RequestedAt: cancelledAt
+            );
+
+            await _eventPublisher.PublishBookingRefundRequestedAsync(refundEvent, ct);
+        }
+
         _logger.LogInformation("Booking {BookingId} ({BookingReference}) cancelled successfully by customer {CustomerId}. Reason: {Reason}. Emitted BookingCancelledEvent with {TicketTypeCount} ticket types released.",
             booking.Id, booking.BookingReference, customerId, request?.Reason ?? "None", releasedTickets.Count);
 
@@ -137,6 +154,8 @@ public class BookingCancellationService : IBookingCancellationService
         var ticket = await _dbContext.Tickets
             .Include(t => t.Booking)
                 .ThenInclude(b => b!.Tickets)
+            .Include(t => t.Booking)
+                .ThenInclude(b => b!.Items)
             .FirstOrDefaultAsync(t => t.Id == ticketId, ct);
 
         if (ticket == null || ticket.Booking == null || ticket.Booking.CustomerId != customerId)
@@ -165,6 +184,7 @@ public class BookingCancellationService : IBookingCancellationService
                 $"Ticket is already {ticket.Status}");
         }
 
+        var parentWasConfirmed = ticket.Booking.Status == BookingStatus.Confirmed;
         ticket.Status = TicketStatus.Cancelled;
 
         // Check if any valid tickets remain in parent booking
@@ -193,6 +213,30 @@ public class BookingCancellationService : IBookingCancellationService
         };
 
         await _eventPublisher.PublishTicketCancelledAsync(cancelledEvent, ct);
+
+        // Emit BookingRefundRequestedEvent for this single ticket if parent booking was paid/confirmed
+        var item = ticket.Booking.Items?.FirstOrDefault(i => i.TicketTypeId == ticket.TicketTypeId);
+        var refundAmount = item?.UnitPrice ?? 0m;
+        if (refundAmount == 0m && item != null && item.Quantity > 0 && item.Subtotal > 0)
+        {
+            refundAmount = item.Subtotal / item.Quantity;
+        }
+
+        if (parentWasConfirmed && refundAmount > 0)
+        {
+            var refundEvent = new EventPulse.Contracts.Kafka.Events.BookingRefundRequestedEvent(
+                RefundRequestId: Guid.NewGuid(),
+                BookingId: ticket.Booking.Id,
+                BookingReference: ticket.Booking.BookingReference,
+                CustomerId: customerId,
+                EventId: ticket.EventId,
+                RefundAmount: refundAmount,
+                Reason: reason ?? $"Individual ticket {ticket.TicketCode} cancelled by customer",
+                RequestedAt: DateTimeOffset.UtcNow
+            );
+
+            await _eventPublisher.PublishBookingRefundRequestedAsync(refundEvent, ct);
+        }
 
         _logger.LogInformation("Ticket {TicketId} ({TicketCode}) cancelled successfully by customer {CustomerId}. Parent booking status: {BookingStatus}.",
             ticket.Id, ticket.TicketCode, customerId, ticket.Booking.Status);

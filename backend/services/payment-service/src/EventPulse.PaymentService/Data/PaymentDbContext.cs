@@ -10,6 +10,7 @@ public class PaymentDbContext : DbContext
     }
 
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<RefundRecord> RefundRecords => Set<RefundRecord>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -53,6 +54,34 @@ public class PaymentDbContext : DbContext
                 .HasConversion<string>();
 
             entity.Property(p => p.CreatedAt)
+                .IsRequired();
+
+            entity.HasMany(p => p.RefundRecords)
+                .WithOne(r => r.Payment)
+                .HasForeignKey(r => r.PaymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RefundRecord>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.PaymentId)
+                .IsRequired();
+
+            entity.Property(r => r.BookingId)
+                .IsRequired();
+
+            entity.HasIndex(r => r.BookingId);
+
+            entity.Property(r => r.Amount)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.Property(r => r.Reason)
+                .HasMaxLength(500);
+
+            entity.Property(r => r.CreatedAt)
                 .IsRequired();
         });
 

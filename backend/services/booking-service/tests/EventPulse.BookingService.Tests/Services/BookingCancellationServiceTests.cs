@@ -351,4 +351,102 @@ public class BookingCancellationServiceTests
         Assert.False(result.Success);
         Assert.Equal("Ticket is already Cancelled", result.Message);
     }
+
+    [Fact]
+    public async Task CancelBooking_WhenConfirmedWithAmount_EmitsBookingRefundRequestedEvent()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+
+        var booking = new Booking
+        {
+            Id = bookingId,
+            BookingReference = "EP-2026-REFUND-FULL",
+            CustomerId = customerId,
+            EventId = eventId,
+            Status = BookingStatus.Confirmed,
+            TotalAmount = 250.0m,
+            Items = new List<BookingItem>(),
+            Tickets = new List<Ticket>()
+        };
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+
+        // Act
+        var result = await service.CancelBookingAsync(bookingId, customerId, new CancelBookingRequest { Reason = "Emergency" }, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        eventPublisherMock.Verify(p => p.PublishBookingRefundRequestedAsync(
+            It.Is<EventPulse.Contracts.Kafka.Events.BookingRefundRequestedEvent>(e =>
+                e.BookingId == bookingId &&
+                e.RefundAmount == 250.0m &&
+                e.Reason == "Emergency"),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CancelSingleTicket_WhenConfirmed_EmitsBookingRefundRequestedEvent()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+        var ticketTypeId = Guid.NewGuid();
+
+        var booking = new Booking
+        {
+            Id = bookingId,
+            BookingReference = "EP-2026-REFUND-PARTIAL",
+            CustomerId = customerId,
+            EventId = Guid.NewGuid(),
+            Status = BookingStatus.Confirmed,
+            TotalAmount = 150.0m,
+            Items = new List<BookingItem>
+            {
+                new BookingItem
+                {
+                    Id = Guid.NewGuid(),
+                    TicketTypeId = ticketTypeId,
+                    TicketName = "VIP Pass",
+                    Quantity = 2,
+                    UnitPrice = 75.0m,
+                    Subtotal = 150.0m
+                }
+            },
+            Tickets = new List<Ticket>
+            {
+                new Ticket { Id = ticketId, TicketCode = "TCK-VIP-1", TicketTypeId = ticketTypeId, Status = TicketStatus.Valid },
+                new Ticket { Id = Guid.NewGuid(), TicketCode = "TCK-VIP-2", TicketTypeId = ticketTypeId, Status = TicketStatus.Valid }
+            }
+        };
+
+        context.Bookings.Add(booking);
+        await context.SaveChangesAsync();
+
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+
+        // Act
+        var result = await service.CancelSingleTicketAsync(ticketId, customerId, "VIP cancel", CancellationToken.None);
+
+        // Assert
+        Assert.True(result.Success);
+        eventPublisherMock.Verify(p => p.PublishBookingRefundRequestedAsync(
+            It.Is<EventPulse.Contracts.Kafka.Events.BookingRefundRequestedEvent>(e =>
+                e.BookingId == bookingId &&
+                e.RefundAmount == 75.0m &&
+                e.Reason == "VIP cancel"),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
 }
