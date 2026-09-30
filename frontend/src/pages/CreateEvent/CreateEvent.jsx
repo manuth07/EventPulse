@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Calendar, MapPin, ArrowLeft, CheckCircle, UploadCloud, X } from 'lucide-react';
 import { submitEvent, getEventCategories } from '../../services/eventService';
 import { EVENT_CATEGORIES, VENUE_TYPES } from '../../data/eventConstants';
+import { ImageCropperModal } from '../../components/common/ImageCropperModal';
 
 export function CreateEvent() {
   const navigate = useNavigate();
@@ -44,6 +45,19 @@ export function CreateEvent() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
+  // Interactive Cropper configuration
+  const [cropperConfig, setCropperConfig] = useState({
+    isOpen: false,
+    imageSrc: '',
+    fileName: '',
+    fileType: '',
+    aspectRatio: 4 / 5,
+    aspectTitle: 'Event Poster',
+    targetWidth: 1200,
+    targetHeight: 1500,
+    cropType: 'poster',
+  });
+
   // Cleanup object URLs to prevent memory leaks
   React.useEffect(() => {
     return () => {
@@ -53,8 +67,11 @@ export function CreateEvent() {
       if (coverImagePreview) {
         URL.revokeObjectURL(coverImagePreview);
       }
+      if (cropperConfig.imageSrc) {
+        URL.revokeObjectURL(cropperConfig.imageSrc);
+      }
     };
-  }, [imagePreview, coverImagePreview]);
+  }, [imagePreview, coverImagePreview, cropperConfig.imageSrc]);
 
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
@@ -70,9 +87,22 @@ export function CreateEvent() {
       return;
     }
 
+    // Reset input value so re-selecting the same file fires onChange
+    e.target.value = '';
+
     setError(null);
-    setImage(file);
-    setImagePreview(URL.createObjectURL(file));
+    const rawUrl = URL.createObjectURL(file);
+    setCropperConfig({
+      isOpen: true,
+      imageSrc: rawUrl,
+      fileName: file.name,
+      fileType: file.type,
+      aspectRatio: 4 / 5,
+      aspectTitle: 'Event Poster (Portrait 4:5)',
+      targetWidth: 1200,
+      targetHeight: 1500,
+      cropType: 'poster',
+    });
   };
 
   const handleCoverChange = (e) => {
@@ -89,9 +119,47 @@ export function CreateEvent() {
       return;
     }
 
+    // Reset input value so re-selecting the same file fires onChange
+    e.target.value = '';
+
     setError(null);
-    setCoverImage(file);
-    setCoverImagePreview(URL.createObjectURL(file));
+    const rawUrl = URL.createObjectURL(file);
+    setCropperConfig({
+      isOpen: true,
+      imageSrc: rawUrl,
+      fileName: file.name,
+      fileType: file.type,
+      aspectRatio: 16 / 6,
+      aspectTitle: 'Event Cover Banner (16:6 / 1920x720)',
+      targetWidth: 1920,
+      targetHeight: 720,
+      cropType: 'cover',
+    });
+  };
+
+  const handleCropComplete = (croppedFile, previewUrl) => {
+    if (cropperConfig.cropType === 'poster') {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+      setImage(croppedFile);
+      setImagePreview(previewUrl);
+    } else {
+      if (coverImagePreview) URL.revokeObjectURL(coverImagePreview);
+      setCoverImage(croppedFile);
+      setCoverImagePreview(previewUrl);
+    }
+
+    if (cropperConfig.imageSrc) {
+      URL.revokeObjectURL(cropperConfig.imageSrc);
+    }
+
+    setCropperConfig((prev) => ({ ...prev, isOpen: false, imageSrc: '' }));
+  };
+
+  const handleCropCancel = () => {
+    if (cropperConfig.imageSrc) {
+      URL.revokeObjectURL(cropperConfig.imageSrc);
+    }
+    setCropperConfig((prev) => ({ ...prev, isOpen: false, imageSrc: '' }));
   };
 
   const handleSubmit = async (e) => {
@@ -595,6 +663,19 @@ export function CreateEvent() {
           )}
         </div>
       </main>
+
+      <ImageCropperModal
+        isOpen={cropperConfig.isOpen}
+        imageSrc={cropperConfig.imageSrc}
+        fileName={cropperConfig.fileName}
+        fileType={cropperConfig.fileType}
+        aspectRatio={cropperConfig.aspectRatio}
+        aspectTitle={cropperConfig.aspectTitle}
+        targetWidth={cropperConfig.targetWidth}
+        targetHeight={cropperConfig.targetHeight}
+        onCropComplete={handleCropComplete}
+        onCancel={handleCropCancel}
+      />
     </div>
   );
 }
