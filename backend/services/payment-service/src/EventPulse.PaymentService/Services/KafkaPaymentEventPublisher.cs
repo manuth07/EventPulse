@@ -62,6 +62,23 @@ public class KafkaPaymentEventPublisher : IPaymentEventPublisher, IDisposable
             evt.EventId, evt.BookingId, deliveryResult.Topic, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
     }
 
+    public async Task PublishPaymentRefundedAsync(EventPulse.Contracts.Kafka.Events.PaymentRefundedEvent evt, CancellationToken ct = default)
+    {
+        var json = JsonSerializer.Serialize(evt);
+        var message = new Message<string, string>
+        {
+            Key = evt.BookingId.ToString(),
+            Value = json
+        };
+
+        var topic = _kafkaOptions.Topics.PaymentRefunded;
+        var deliveryResult = await _producer.ProduceAsync(topic, message, ct);
+
+        _logger.LogInformation(
+            "Published PaymentRefundedEvent {RefundId} for Payment {PaymentId}, Booking {BookingId} to {Topic} partition {Partition} offset {Offset}",
+            evt.RefundId, evt.PaymentId, evt.BookingId, deliveryResult.Topic, deliveryResult.Partition.Value, deliveryResult.Offset.Value);
+    }
+
     public void Dispose()
     {
         try

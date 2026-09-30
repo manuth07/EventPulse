@@ -42,7 +42,8 @@ public class CustomerTicketEndpointsTests
             eventPublisherMock.Object,
             loggerMock.Object,
             cartServiceMock.Object,
-            bookingHistoryServiceMock.Object);
+            bookingHistoryServiceMock.Object,
+            new Mock<IBookingCancellationService>().Object);
 
         var claims = new List<Claim>();
         if (customerId.HasValue)
@@ -65,9 +66,13 @@ public class CustomerTicketEndpointsTests
         return controller;
     }
 
-    private TicketsController CreateTicketsController(BookingDbContext context, Guid? customerId = null, bool isAdmin = false)
+    private TicketsController CreateTicketsController(
+        BookingDbContext context, 
+        Guid? customerId = null, 
+        bool isAdmin = false, 
+        IBookingCancellationService? cancellationService = null)
     {
-        var controller = new TicketsController(context);
+        var controller = new TicketsController(context, cancellationService ?? new Mock<IBookingCancellationService>().Object);
 
         var claims = new List<Claim>();
         if (customerId.HasValue)
@@ -404,5 +409,99 @@ public class CustomerTicketEndpointsTests
 
         // Assert
         Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CancelTicket_WhenUnauthorized_Returns401()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var controller = CreateTicketsController(context, customerId: null);
+
+        // Act
+        var result = await controller.CancelTicket(Guid.NewGuid(), null, CancellationToken.None);
+
+        // Assert
+        Assert.IsType<UnauthorizedObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CancelTicket_WhenNotFoundOrAccessDenied_Returns404()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        cancellationServiceMock
+            .Setup(s => s.CancelSingleTicketAsync(ticketId, customerId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TicketCancellationResultDto(
+                ticketId, string.Empty, string.Empty, string.Empty, false, "Ticket not found or access denied"));
+
+        var controller = CreateTicketsController(context, customerId, cancellationService: cancellationServiceMock.Object);
+
+        // Act
+        var result = await controller.CancelTicket(ticketId, null, CancellationToken.None);
+
+        // Assert
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        var dto = Assert.IsType<TicketCancellationResultDto>(notFoundResult.Value);
+        Assert.False(dto.Success);
+        Assert.Equal("Ticket not found or access denied", dto.Message);
+    }
+
+    [Fact]
+    public async Task CancelTicket_WhenAlreadyCancelledOrInvalid_Returns400()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        cancellationServiceMock
+            .Setup(s => s.CancelSingleTicketAsync(ticketId, customerId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TicketCancellationResultDto(
+                ticketId, "TCK-1", "Cancelled", "Confirmed", false, "Ticket is already Cancelled"));
+
+        var controller = CreateTicketsController(context, customerId, cancellationService: cancellationServiceMock.Object);
+
+        // Act
+        var result = await controller.CancelTicket(ticketId, null, CancellationToken.None);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var dto = Assert.IsType<TicketCancellationResultDto>(badRequestResult.Value);
+        Assert.False(dto.Success);
+        Assert.Equal("Ticket is already Cancelled", dto.Message);
+    }
+
+    [Fact]
+    public async Task CancelTicket_WhenSuccessful_Returns200Ok()
+    {
+        // Arrange
+        using var context = CreateInMemoryDbContext();
+        var customerId = Guid.NewGuid();
+        var ticketId = Guid.NewGuid();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        cancellationServiceMock
+            .Setup(s => s.CancelSingleTicketAsync(ticketId, customerId, "User cancelled", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TicketCancellationResultDto(
+                ticketId, "TCK-1", "Cancelled", "Confirmed", true, "Ticket cancelled successfully"));
+
+        var controller = CreateTicketsController(context, customerId, cancellationService: cancellationServiceMock.Object);
+
+        // Act
+        var result = await controller.CancelTicket(ticketId, new CancelTicketRequest { Reason = "User cancelled" }, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var dto = Assert.IsType<TicketCancellationResultDto>(okResult.Value);
+        Assert.True(dto.Success);
+        Assert.Equal("Cancelled", dto.Status);
+        Assert.Equal("Confirmed", dto.ParentBookingStatus);
+        Assert.Equal("Ticket cancelled successfully", dto.Message);
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using EventPulse.BookingService.Data;
 using EventPulse.BookingService.DTOs;
+using EventPulse.BookingService.Services;
 
 namespace EventPulse.BookingService.Controllers;
 
@@ -13,10 +14,12 @@ namespace EventPulse.BookingService.Controllers;
 public class TicketsController : ControllerBase
 {
     private readonly BookingDbContext _dbContext;
+    private readonly IBookingCancellationService _bookingCancellationService;
 
-    public TicketsController(BookingDbContext dbContext)
+    public TicketsController(BookingDbContext dbContext, IBookingCancellationService bookingCancellationService)
     {
         _dbContext = dbContext;
+        _bookingCancellationService = bookingCancellationService;
     }
 
     private bool TryGetCustomerId(out Guid customerId)
@@ -68,5 +71,38 @@ public class TicketsController : ControllerBase
         };
 
         return Ok(dto);
+    }
+
+    /// <summary>
+    /// Cancels an individual ticket from a booking.
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    [ProducesResponseType(typeof(TicketCancellationResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(TicketCancellationResultDto), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(TicketCancellationResultDto), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> CancelTicket(
+        [FromRoute] Guid id,
+        [FromBody] CancelTicketRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        var result = await _bookingCancellationService.CancelSingleTicketAsync(id, customerId, request?.Reason, cancellationToken);
+
+        if (!result.Success)
+        {
+            if (result.Message == "Ticket not found or access denied")
+            {
+                return NotFound(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        return Ok(result);
     }
 }

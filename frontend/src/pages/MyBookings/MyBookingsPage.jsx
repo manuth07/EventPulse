@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
-import { getMyBookings } from '../../services/bookingService';
+import { getMyBookings, cancelBooking } from '../../services/bookingService';
 import { createCheckoutSession } from '../../services/paymentService';
 import {
   Ticket,
@@ -21,6 +21,9 @@ import {
   Receipt,
   ArrowLeft,
   CreditCard,
+  AlertTriangle,
+  X,
+  Ban,
 } from 'lucide-react';
 
 const STATUS_TABS = [
@@ -200,6 +203,44 @@ export function MyBookingsPage() {
   const [copiedRef, setCopiedRef] = useState(null);
   const [payingBookingId, setPayingBookingId] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
+
+  const [bookingToCancel, setBookingToCancel] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  const handleOpenCancelModal = (booking) => {
+    setBookingToCancel(booking);
+    setCancelReason('');
+    setCancelError(null);
+  };
+
+  const handleCloseCancelModal = () => {
+    if (cancelling) return;
+    setBookingToCancel(null);
+    setCancelReason('');
+    setCancelError(null);
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!bookingToCancel) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await cancelBooking(bookingToCancel.id, cancelReason || undefined, accessToken);
+      setBookingToCancel(null);
+      setCancelReason('');
+      setToast({ message: 'Booking successfully cancelled', type: 'success' });
+      setTimeout(() => setToast(null), 5000);
+      await fetchBookings(currentPage, activeTab);
+    } catch (err) {
+      console.error('Failed to cancel booking:', err);
+      setCancelError(err?.message || 'Unable to cancel this booking. Please try again.');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const handleResumePayment = async (bookingId) => {
     setPayingBookingId(bookingId);
@@ -739,6 +780,24 @@ export function MyBookingsPage() {
                                 </div>
                               </div>
                             ))}
+                            {isConfirmed && (
+                              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed var(--ep-border)', display: 'flex', justifyContent: 'flex-end' }}>
+                                <Link
+                                  to={`/bookings/${booking.id}/tickets`}
+                                  style={{
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    color: 'var(--ep-primary)',
+                                    textDecoration: 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                >
+                                  <span>Manage & Cancel Individual Tickets →</span>
+                                </Link>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -776,79 +835,115 @@ export function MyBookingsPage() {
                         )}
                       </div>
 
-                      {/* Complete Payment / Pay Now for Pending Bookings */}
-                      {!isConfirmed && booking.status === 'PendingPayment' && (
-                        <button
-                          type="button"
-                          id={`pay-now-${booking.bookingReference}`}
-                          onClick={() => handleResumePayment(booking.id)}
-                          disabled={payingBookingId === booking.id}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            backgroundColor: 'var(--ep-primary)',
-                            color: '#ffffff',
-                            border: 'none',
-                            padding: '8px 18px',
-                            borderRadius: 'var(--ep-radius-btn)',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            boxShadow: '0 2px 6px rgba(255, 91, 0, 0.25)',
-                            cursor: payingBookingId === booking.id ? 'not-allowed' : 'pointer',
-                            opacity: payingBookingId === booking.id ? 0.75 : 1,
-                            transition: 'var(--ep-transition)',
-                          }}
-                          onMouseEnter={(e) => {
-                            if (payingBookingId !== booking.id) {
-                              e.currentTarget.style.backgroundColor = 'var(--ep-primary-hover)';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (payingBookingId !== booking.id) {
-                              e.currentTarget.style.backgroundColor = 'var(--ep-primary)';
-                            }
-                          }}
-                        >
-                          {payingBookingId === booking.id ? (
-                            <>
-                              <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                              <span>Redirecting...</span>
-                            </>
-                          ) : (
-                            <>
-                              <CreditCard size={15} />
-                              <span>Pay Now</span>
-                            </>
-                          )}
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {/* Cancel Booking for Confirmed or PendingPayment */}
+                        {(isConfirmed || booking.status === 'PendingPayment') && (
+                          <button
+                            type="button"
+                            id={`cancel-booking-${booking.bookingReference}`}
+                            onClick={() => handleOpenCancelModal(booking)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: 'transparent',
+                              color: 'var(--ep-danger)',
+                              border: '1px solid #FECACA',
+                              padding: '8px 14px',
+                              borderRadius: 'var(--ep-radius-btn)',
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'var(--ep-transition)',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#FEF2F2';
+                              e.currentTarget.style.borderColor = 'var(--ep-danger)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                              e.currentTarget.style.borderColor = '#FECACA';
+                            }}
+                          >
+                            <Ban size={14} />
+                            <span>Cancel Booking</span>
+                          </button>
+                        )}
 
-                      {isConfirmed && (
-                        <Link
-                          to={`/bookings/${booking.id}/tickets`}
-                          id={`view-tickets-${booking.bookingReference}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            backgroundColor: 'var(--ep-primary)',
-                            color: '#ffffff',
-                            textDecoration: 'none',
-                            padding: '8px 18px',
-                            borderRadius: 'var(--ep-radius-btn)',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            boxShadow: '0 2px 6px rgba(255, 91, 0, 0.25)',
-                            transition: 'var(--ep-transition)',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-primary-hover)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-primary)')}
-                        >
-                          <Ticket size={15} />
-                          <span>View Digital Tickets</span>
-                        </Link>
-                      )}
+                        {/* Complete Payment / Pay Now for Pending Bookings */}
+                        {!isConfirmed && booking.status === 'PendingPayment' && (
+                          <button
+                            type="button"
+                            id={`pay-now-${booking.bookingReference}`}
+                            onClick={() => handleResumePayment(booking.id)}
+                            disabled={payingBookingId === booking.id}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              backgroundColor: 'var(--ep-primary)',
+                              color: '#ffffff',
+                              border: 'none',
+                              padding: '8px 18px',
+                              borderRadius: 'var(--ep-radius-btn)',
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              boxShadow: '0 2px 6px rgba(255, 91, 0, 0.25)',
+                              cursor: payingBookingId === booking.id ? 'not-allowed' : 'pointer',
+                              opacity: payingBookingId === booking.id ? 0.75 : 1,
+                              transition: 'var(--ep-transition)',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (payingBookingId !== booking.id) {
+                                e.currentTarget.style.backgroundColor = 'var(--ep-primary-hover)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (payingBookingId !== booking.id) {
+                                e.currentTarget.style.backgroundColor = 'var(--ep-primary)';
+                              }
+                            }}
+                          >
+                            {payingBookingId === booking.id ? (
+                              <>
+                                <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                                <span>Redirecting...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CreditCard size={15} />
+                                <span>Pay Now</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        {isConfirmed && (
+                          <Link
+                            to={`/bookings/${booking.id}/tickets`}
+                            id={`view-tickets-${booking.bookingReference}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              backgroundColor: 'var(--ep-primary)',
+                              color: '#ffffff',
+                              textDecoration: 'none',
+                              padding: '8px 18px',
+                              borderRadius: 'var(--ep-radius-btn)',
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              boxShadow: '0 2px 6px rgba(255, 91, 0, 0.25)',
+                              transition: 'var(--ep-transition)',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-primary-hover)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-primary)')}
+                          >
+                            <Ticket size={15} />
+                            <span>View Digital Tickets</span>
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -912,6 +1007,253 @@ export function MyBookingsPage() {
           )}
         </div>
       </main>
+
+      {/* Floating Toast Notification */}
+      {toast && (
+        <div
+          role="status"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            backgroundColor: toast.type === 'error' ? '#FEF2F2' : '#ECFDF5',
+            color: toast.type === 'error' ? '#991B1B' : '#065F46',
+            border: `1px solid ${toast.type === 'error' ? '#FECACA' : '#A7F3D0'}`,
+            borderRadius: 'var(--ep-radius-btn)',
+            padding: '12px 20px',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.12)',
+            fontSize: '14px',
+            fontWeight: 600,
+          }}
+        >
+          {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+          <span>{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px',
+              marginLeft: '8px',
+              color: 'inherit',
+              display: 'inline-flex',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Cancellation Confirmation Dialog */}
+      {bookingToCancel && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1050,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={handleCloseCancelModal}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: 'var(--ep-radius-card)',
+              maxWidth: '480px',
+              width: '100%',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--ep-border)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  backgroundColor: '#FEF2F2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--ep-danger)',
+                }}>
+                  <AlertTriangle size={20} />
+                </div>
+                <h3 id="cancel-modal-title" style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                  Cancel Booking
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseCancelModal}
+                disabled={cancelling}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--ep-text-secondary)',
+                  cursor: cancelling ? 'not-allowed' : 'pointer',
+                  padding: '4px',
+                  borderRadius: '6px',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{
+                backgroundColor: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: '10px',
+                padding: '14px 16px',
+                color: '#991B1B',
+                fontSize: '13px',
+                lineHeight: 1.5,
+              }}>
+                <strong>Warning:</strong> Cancelling booking{' '}
+                <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{bookingToCancel.bookingReference}</span>{' '}
+                will immediately release your reserved tickets back to the available inventory. Any issued digital tickets will be permanently invalidated.
+              </div>
+
+              {cancelError && (
+                <div style={{
+                  backgroundColor: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  color: '#B91C1C',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}>
+                  <AlertCircle size={16} />
+                  <span>{cancelError}</span>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="cancel-reason"
+                  style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}
+                >
+                  Reason for cancellation (optional):
+                </label>
+                <textarea
+                  id="cancel-reason"
+                  rows={3}
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="e.g., Unable to attend, scheduled conflict..."
+                  disabled={cancelling}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--ep-border)',
+                    fontSize: '13px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    outline: 'none',
+                    transition: 'var(--ep-transition)',
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = 'var(--ep-primary)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'var(--ep-border)')}
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: '12px',
+              padding: '16px 24px',
+              backgroundColor: '#FAFAFA',
+              borderTop: '1px solid var(--ep-border)',
+            }}>
+              <button
+                type="button"
+                onClick={handleCloseCancelModal}
+                disabled={cancelling}
+                style={{
+                  backgroundColor: '#ffffff',
+                  color: 'var(--ep-text-primary)',
+                  border: '1px solid var(--ep-border)',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--ep-radius-btn)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: cancelling ? 'not-allowed' : 'pointer',
+                  transition: 'var(--ep-transition)',
+                }}
+              >
+                Keep Booking
+              </button>
+              <button
+                type="button"
+                id="confirm-cancel-booking-btn"
+                onClick={handleConfirmCancel}
+                disabled={cancelling}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: 'var(--ep-danger)',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '8px 18px',
+                  borderRadius: 'var(--ep-radius-btn)',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  boxShadow: '0 2px 6px rgba(239, 68, 68, 0.3)',
+                  cursor: cancelling ? 'not-allowed' : 'pointer',
+                  opacity: cancelling ? 0.75 : 1,
+                  transition: 'var(--ep-transition)',
+                }}
+              >
+                {cancelling ? (
+                  <>
+                    <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                    <span>Cancelling...</span>
+                  </>
+                ) : (
+                  <>
+                    <Ban size={15} />
+                    <span>Yes, Cancel Booking</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

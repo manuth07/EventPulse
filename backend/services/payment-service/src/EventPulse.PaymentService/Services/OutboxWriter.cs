@@ -38,6 +38,11 @@ public class OutboxWriter : IOutboxWriter
         return Enqueue(evt, _kafkaOptions.Topics.PaymentFailed, evt.BookingId.ToString(), evt.EventId);
     }
 
+    public OutboxMessage EnqueuePaymentRefunded(EventPulse.Contracts.Kafka.Events.PaymentRefundedEvent evt)
+    {
+        return Enqueue(evt, _kafkaOptions.Topics.PaymentRefunded, evt.BookingId.ToString(), evt.RefundId);
+    }
+
     public OutboxMessage Enqueue<T>(T integrationEvent, string topic, string messageKey, Guid eventId) where T : class
     {
         var payload = JsonSerializer.Serialize(integrationEvent, SerializerOptions);

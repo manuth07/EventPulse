@@ -28,4 +28,12 @@ public class LoggingPaymentEventPublisher : IPaymentEventPublisher
 
         return Task.CompletedTask;
     }
+
+    public Task PublishPaymentRefundedAsync(EventPulse.Contracts.Kafka.Events.PaymentRefundedEvent evt, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Publishing PaymentRefundedEvent for Refund {RefundId}, Payment {PaymentId}, Booking {BookingId}. Payload: {Payload}",
+            evt.RefundId, evt.PaymentId, evt.BookingId, JsonSerializer.Serialize(evt));
+
+        return Task.CompletedTask;
+    }
 }

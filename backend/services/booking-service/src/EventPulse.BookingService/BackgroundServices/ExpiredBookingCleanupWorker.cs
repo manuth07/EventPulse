@@ -62,7 +62,11 @@ public class ExpiredBookingCleanupWorker : BackgroundService
             var cancelledEvent = new BookingCancelledEvent
             {
                 BookingId = booking.Id,
+                BookingReference = booking.BookingReference,
+                CustomerId = booking.CustomerId,
                 EventId = booking.EventId,
+                CancelledAt = DateTimeOffset.UtcNow,
+                ReleasedTickets = booking.Items.Select(i => new CancelledTicketItemDto(i.TicketTypeId, i.Quantity)).ToList(),
                 Items = booking.Items.Select(i => new BookingItemDto
                 {
                     TicketTypeId = i.TicketTypeId,

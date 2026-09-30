@@ -63,9 +63,42 @@ export async function getMyBookings(page = 1, pageSize = 10, status, token) {
   return apiClient.get(`/api/bookings/my-bookings${queryString}`, { headers });
 }
 
+/**
+ * Cancels a booking for the customer (US-28 / EP-308).
+ * 
+ * @param {string} bookingId - The GUID of the booking.
+ * @param {string} [reason] - Optional cancellation reason.
+ * @param {string} [token] - Optional JWT authentication token.
+ * @returns {Promise<{ bookingId: string, bookingReference: string, previousStatus: string, newStatus: string, cancelledAt: string, success: boolean, message?: string }>}
+ */
+export async function cancelBooking(bookingId, reason, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.post(`/api/bookings/${bookingId}/cancel`, { reason }, { headers });
+}
+
+/**
+ * Cancels an individual customer ticket (EP-partial cancellation).
+ * 
+ * @param {string} ticketId - The GUID of the ticket.
+ * @param {string} [reason] - Optional cancellation reason.
+ * @param {string} [token] - Optional JWT authentication token.
+ * @returns {Promise<{ ticketId: string, ticketCode: string, status: string, parentBookingStatus: string, success: boolean, message?: string }>}
+ */
+export async function cancelTicket(ticketId, reason, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.post(`/api/tickets/${ticketId}/cancel`, { reason }, { headers });
+}
+
 export default {
   getBookingSummary,
   getBookingTickets,
   getTicketById,
   getMyBookings,
+  cancelBooking,
+  cancelTicket,
 };
+

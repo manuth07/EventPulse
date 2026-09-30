@@ -23,4 +23,6 @@ public class Payment
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? CompletedAt { get; set; }
+
+    public List<RefundRecord> RefundRecords { get; set; } = new();
 }
