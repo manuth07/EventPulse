@@ -12,7 +12,10 @@ export const createImage = (url) =>
     const image = new Image();
     image.addEventListener('load', () => resolve(image));
     image.addEventListener('error', (error) => reject(error));
-    image.setAttribute('crossOrigin', 'anonymous');
+    // Only set crossOrigin for remote http/https URLs to avoid browser security restrictions on blob: URLs
+    if (url && (url.startsWith('http://') || url.startsWith('https://')) && !url.startsWith('blob:')) {
+      image.setAttribute('crossOrigin', 'anonymous');
+    }
     image.src = url;
   });
 
@@ -71,8 +74,14 @@ export async function getCroppedImg(
   );
 
   return new Promise((resolve, reject) => {
-    // If original was PNG, keep image/png, otherwise default to image/jpeg for smaller file size
-    const effectiveMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+    // Preserve PNG and WebP if specified, otherwise default to image/jpeg for broad compatibility
+    let effectiveMime = 'image/jpeg';
+    if (mimeType === 'image/png') {
+      effectiveMime = 'image/png';
+    } else if (mimeType === 'image/webp') {
+      effectiveMime = 'image/webp';
+    }
+
     const quality = effectiveMime === 'image/png' ? undefined : 0.92;
 
     canvas.toBlob(
@@ -82,7 +91,12 @@ export async function getCroppedImg(
           return;
         }
 
-        const safeFileName = fileName ? fileName.replace(/\.[^/.]+$/, '') + (effectiveMime === 'image/png' ? '.png' : '.jpg') : 'cropped-image.jpg';
+        let extension = '.jpg';
+        if (effectiveMime === 'image/png') extension = '.png';
+        else if (effectiveMime === 'image/webp') extension = '.webp';
+
+        const baseName = fileName ? fileName.replace(/\.[^/.]+$/, '') : 'cropped-image';
+        const safeFileName = `${baseName || 'cropped-image'}${extension}`;
 
         const file = new File([blob], safeFileName, {
           type: effectiveMime,

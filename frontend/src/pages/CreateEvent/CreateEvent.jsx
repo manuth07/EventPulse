@@ -43,6 +43,7 @@ export function CreateEvent() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [errorDetails, setErrorDetails] = useState([]);
   const [success, setSuccess] = useState(false);
 
   // Interactive Cropper configuration
@@ -165,6 +166,28 @@ export function CreateEvent() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setErrorDetails([]);
+
+    // Validate string fields & lengths
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle || trimmedTitle.length < 3) {
+      setError('Event title must be at least 3 characters.');
+      return;
+    }
+    if (trimmedTitle.length > 200) {
+      setError('Event title cannot exceed 200 characters.');
+      return;
+    }
+
+    const trimmedDescription = description.trim();
+    if (!trimmedDescription || trimmedDescription.length < 10) {
+      setError('Event description must be at least 10 characters.');
+      return;
+    }
+    if (trimmedDescription.length > 2000) {
+      setError('Event description cannot exceed 2000 characters.');
+      return;
+    }
 
     if (!category) {
       setError('Please select an event category.');
@@ -176,19 +199,49 @@ export function CreateEvent() {
       return;
     }
 
-    if (!image) {
-      setError('Please provide an event poster.');
+    const trimmedVenue = venue.trim();
+    if (!trimmedVenue || trimmedVenue.length < 3) {
+      setError('Venue location must be at least 3 characters.');
+      return;
+    }
+    if (trimmedVenue.length > 200) {
+      setError('Venue location cannot exceed 200 characters.');
       return;
     }
 
-    if (!coverImage) {
-      setError('Please provide an event cover image.');
+    if (!eventDate) {
+      setError('Please select an event date and time.');
+      return;
+    }
+
+    const eventDateTime = new Date(eventDate);
+    if (isNaN(eventDateTime.getTime())) {
+      setError('Please provide a valid event date and time.');
+      return;
+    }
+
+    if (eventDateTime.getTime() <= Date.now()) {
+      setError('Event date and time must be in the future.');
       return;
     }
 
     const parsedPrice = Number(price);
     if (isNaN(parsedPrice) || parsedPrice < 0 || !Number.isInteger(parsedPrice)) {
-      setError('Ticket price must be entered in whole LKR.');
+      setError('Ticket price must be entered in whole LKR (0 or greater).');
+      return;
+    }
+    if (parsedPrice > 1000000) {
+      setError('Ticket price cannot exceed 1,000,000 LKR.');
+      return;
+    }
+
+    if (!image) {
+      setError('Please provide an event poster image.');
+      return;
+    }
+
+    if (!coverImage) {
+      setError('Please provide an event cover banner image.');
       return;
     }
 
@@ -196,15 +249,19 @@ export function CreateEvent() {
 
     try {
       const formData = new FormData();
-      formData.append('title', title);
-      formData.append('description', description);
+      formData.append('title', trimmedTitle);
+      formData.append('description', trimmedDescription);
       formData.append('category', category);
       formData.append('venueType', venueType);
-      formData.append('venue', venue);
-      formData.append('eventDate', new Date(eventDate).toISOString());
+      formData.append('venue', trimmedVenue);
+      formData.append('eventDate', eventDateTime.toISOString());
       formData.append('price', String(parsedPrice));
-      formData.append('image', image);
-      formData.append('coverImage', coverImage);
+
+      const posterFileName = image.name || 'poster.jpg';
+      formData.append('image', image, posterFileName);
+
+      const coverFileName = coverImage.name || 'cover.jpg';
+      formData.append('coverImage', coverImage, coverFileName);
 
       const token = accessToken || sessionStorage.getItem('ep_access_token');
       await submitEvent(formData, token);
@@ -214,7 +271,27 @@ export function CreateEvent() {
         navigate('/organizer');
       }, 2000);
     } catch (err) {
-      setError(err.message || 'An error occurred while submitting the event.');
+      console.error('Submit event error:', err);
+      const responseData = err.response?.data || err.data;
+      let detailedErrors = [];
+
+      if (Array.isArray(responseData?.errors)) {
+        detailedErrors = responseData.errors;
+      } else if (responseData?.errors && typeof responseData.errors === 'object') {
+        detailedErrors = Object.entries(responseData.errors).flatMap(([field, msgs]) =>
+          Array.isArray(msgs) ? msgs.map((m) => `${field}: ${m}`) : [`${field}: ${msgs}`]
+        );
+      } else if (Array.isArray(err.errors) && err.errors.length > 0) {
+        detailedErrors = err.errors;
+      }
+
+      setErrorDetails(detailedErrors);
+      setError(
+        responseData?.message ||
+        responseData?.title ||
+        err.message ||
+        'An error occurred while submitting the event.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -304,7 +381,16 @@ export function CreateEvent() {
                   fontSize: '13px',
                   color: 'var(--ep-danger)',
                 }}>
-                  {error}
+                  <div style={{ fontWeight: 600, marginBottom: errorDetails.length > 0 ? '6px' : '0' }}>
+                    {error}
+                  </div>
+                  {errorDetails.length > 0 && (
+                    <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      {errorDetails.map((detail, idx) => (
+                        <li key={idx} style={{ fontSize: '12px' }}>{detail}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
 
