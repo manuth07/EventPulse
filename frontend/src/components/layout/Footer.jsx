@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Ticket, Activity } from 'lucide-react';
+import { Ticket, Activity, Mail, Clock, ShieldCheck, MessageCircle } from 'lucide-react';
 
 const socialLinks = [
   {
@@ -50,6 +50,22 @@ const socialLinks = [
   },
 ];
 
+const helpfulLinks = [
+  { label: 'Explore Events', href: '/' },
+  { label: 'My Bookings', href: '/my-bookings' },
+  { label: 'Pricing & Fees', href: '/pricing' },
+  { label: 'Refund Policy', href: '/refund-policy' },
+  { label: 'Organizer Guidelines', href: '/organizer-guidelines' },
+];
+
+const aboutUsLinks = [
+  { label: 'Who We Are', href: '/about' },
+  { label: 'Why EventPulse', href: '/why-eventpulse' },
+  { label: 'Careers', href: '/careers' },
+  { label: 'Frequently Asked Questions', href: '/faq' },
+  { label: 'Terms & Conditions', href: '/terms' },
+];
+
 export function Footer() {
   return (
     <footer
@@ -72,18 +88,17 @@ export function Footer() {
           paddingRight: '1.5rem',
         }}
       >
-        {/* Main Footer Content Grid */}
+        {/* Responsive Grid: Brand (2 cols) + 3 Support & Nav Columns (1 col each) */}
         <div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-12 pb-12"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-12"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '2.5rem',
+            gap: '2rem',
             paddingBottom: '3rem',
           }}
         >
-          {/* Left Brand Column */}
-          <div className="lg:col-span-5 space-y-6" style={{ maxWidth: '440px' }}>
+          {/* Column 1: Left Brand Column (2 cols) */}
+          <div className="lg:col-span-2 space-y-6" style={{ gridColumn: 'span 2' }}>
             {/* EventPulse Logo */}
             <Link
               to="/"
@@ -152,6 +167,7 @@ export function Footer() {
                 lineHeight: '1.625',
                 marginTop: '1rem',
                 marginBottom: '1.25rem',
+                maxWidth: '400px',
               }}
             >
               EventPulse is Sri Lanka's premier online event ticketing destination, providing a secure, real-time platform to discover and book concerts, festivals, tech conferences, and performances.
@@ -320,10 +336,235 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Right Columns: Empty placeholders for subsequent subtasks */}
-          <div className="lg:col-span-2 hidden md:block" />
-          <div className="lg:col-span-2 hidden md:block" />
-          <div className="lg:col-span-3 hidden md:block" />
+          {/* Column 2: Helpful Links */}
+          <div className="lg:col-span-1">
+            <h4
+              className="text-white font-semibold text-sm tracking-wider uppercase mb-4"
+              style={{
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                marginBottom: '1rem',
+              }}
+            >
+              Helpful Links
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {helpfulLinks.map((link) => (
+                <li key={link.label}>
+                  <Link
+                    to={link.href}
+                    className="text-slate-400 hover:text-orange-400 text-sm transition-colors duration-200 block mb-2.5 text-decoration-none"
+                    style={{
+                      color: '#94a3b8',
+                      fontSize: '0.875rem',
+                      display: 'block',
+                      marginBottom: '0.625rem',
+                      textDecoration: 'none',
+                      transition: 'color 200ms ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Column 3: About Us */}
+          <div className="lg:col-span-1">
+            <h4
+              className="text-white font-semibold text-sm tracking-wider uppercase mb-4"
+              style={{
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                marginBottom: '1rem',
+              }}
+            >
+              About Us
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {aboutUsLinks.map((link) => (
+                <li key={link.label}>
+                  <Link
+                    to={link.href}
+                    className="text-slate-400 hover:text-orange-400 text-sm transition-colors duration-200 block mb-2.5 text-decoration-none"
+                    style={{
+                      color: '#94a3b8',
+                      fontSize: '0.875rem',
+                      display: 'block',
+                      marginBottom: '0.625rem',
+                      textDecoration: 'none',
+                      transition: 'color 200ms ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Column 4: Contact & Support */}
+          <div className="lg:col-span-1">
+            <h4
+              className="text-white font-semibold text-sm tracking-wider uppercase mb-4"
+              style={{
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                marginBottom: '1rem',
+              }}
+            >
+              Contact & Support
+            </h4>
+
+            <div className="space-y-3.5 text-sm" style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              {/* Support Email */}
+              <a
+                href="mailto:support@eventpulse.com"
+                className="text-slate-400 hover:text-orange-400 text-sm transition-colors duration-200 flex items-center gap-2.5 text-decoration-none group"
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '0.875rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  textDecoration: 'none',
+                  transition: 'color 200ms ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+              >
+                <div
+                  className="w-7 h-7 rounded-lg bg-slate-800/80 flex items-center justify-center text-slate-400 group-hover:text-orange-400 group-hover:bg-slate-800 transition-colors"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Mail className="w-3.5 h-3.5" style={{ width: '14px', height: '14px' }} />
+                </div>
+                <span>support@eventpulse.com</span>
+              </a>
+
+              {/* WhatsApp Text Support */}
+              <a
+                href="https://wa.me/94771234567"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-400 hover:text-orange-400 text-sm transition-colors duration-200 flex items-start gap-2.5 text-decoration-none group"
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '0.875rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                  textDecoration: 'none',
+                  transition: 'color 200ms ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+              >
+                <div
+                  className="w-7 h-7 rounded-lg bg-slate-800/80 flex items-center justify-center text-slate-400 group-hover:text-orange-400 group-hover:bg-slate-800 transition-colors mt-0.5"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: '2px',
+                  }}
+                >
+                  <MessageCircle className="w-3.5 h-3.5" style={{ width: '14px', height: '14px' }} />
+                </div>
+                <div>
+                  <div style={{ color: '#cbd5e1', fontWeight: 500 }}>WhatsApp</div>
+                  <div style={{ fontSize: '0.8125rem' }}>+94 77 123 4567 (Text-only support)</div>
+                </div>
+              </a>
+
+              {/* Service Hours */}
+              <div
+                className="text-slate-400 text-sm flex items-start gap-2.5"
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '0.875rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                }}
+              >
+                <div
+                  className="w-7 h-7 rounded-lg bg-slate-800/80 flex items-center justify-center text-slate-400 mt-0.5"
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: '2px',
+                  }}
+                >
+                  <Clock className="w-3.5 h-3.5" style={{ width: '14px', height: '14px' }} />
+                </div>
+                <div>
+                  <div style={{ color: '#cbd5e1', fontWeight: 500 }}>Service Hours</div>
+                  <div style={{ fontSize: '0.8125rem' }}>Mon - Sat: 9:00 AM - 7:00 PM IST</div>
+                </div>
+              </div>
+
+              {/* Trust Badge Reassurance */}
+              <div
+                className="mt-3 p-3 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300 flex items-center gap-2.5 shadow-sm"
+                style={{
+                  marginTop: '0.75rem',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                  border: '1px solid #1e293b',
+                  fontSize: '0.75rem',
+                  color: '#cbd5e1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+                }}
+              >
+                <ShieldCheck
+                  className="w-4 h-4 text-emerald-400 shrink-0"
+                  style={{ width: '16px', height: '16px', color: '#34d399', flexShrink: 0 }}
+                />
+                <span style={{ fontWeight: 500, lineHeight: 1.4 }}>
+                  100% Guaranteed Tickets • Instant Verification
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </footer>
