@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Ticket, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
+import { Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 
 const socialLinks = [
   {
@@ -49,7 +49,7 @@ const helpfulLinks = [
 ];
 
 const aboutUsLinks = [
-  { label: 'Who We Are', href: '/about' },
+  { label: 'Who We Are', href: '/who-we-are' },
   { label: 'For Organizers', href: '/list-your-event' },
   { label: 'FAQ', href: '/faq' },
   { label: 'Contact Us', href: '/contact' },
@@ -58,11 +58,11 @@ const aboutUsLinks = [
 export function Footer() {
   return (
     <footer
-      className="bg-[#090d16] border-t border-zinc-800/70 text-zinc-300"
+      className="bg-slate-100 border-t border-slate-200 text-slate-700"
       style={{
-        backgroundColor: '#090d16',
-        borderTop: '1px solid rgba(39, 39, 42, 0.7)',
-        color: '#d4d4d8',
+        backgroundColor: '#f1f5f9',
+        borderTop: '1px solid #e2e8f0',
+        color: '#334155',
       }}
     >
       <div
@@ -85,35 +85,17 @@ export function Footer() {
           }}
         >
           {/* Column 1: Brand Section (5 cols on desktop) */}
-          <div className="col-span-1 md:col-span-1 lg:col-span-5 ep-footer-brand">
-            {/* EventPulse Logo */}
+          <div className="col-span-1 md:col-span-1 lg:col-span-5 ep-footer-brand text-left">
+            {/* EventPulse Logo: Clean Typography without icon badge */}
             <Link
               to="/"
-              className="inline-flex items-center gap-2.5 text-xl font-bold tracking-tight text-decoration-none group"
+              className="inline-flex items-center text-xl font-bold tracking-tight text-decoration-none group"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '10px',
                 textDecoration: 'none',
               }}
             >
-              {/* Rounded orange square badge with white ticket icon */}
-              <div
-                className="w-8 h-8 rounded-lg bg-[#ea580c] flex items-center justify-center text-white shadow-sm"
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  backgroundColor: '#ea580c',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#ffffff',
-                }}
-              >
-                <Ticket className="w-4 h-4 text-white -rotate-12" style={{ width: '16px', height: '16px', transform: 'rotate(-12deg)' }} />
-              </div>
-
               <span
                 className="text-xl font-bold tracking-tight"
                 style={{
@@ -123,10 +105,10 @@ export function Footer() {
                   letterSpacing: '-0.02em',
                 }}
               >
-                <span className="text-white" style={{ color: '#ffffff' }}>
+                <span className="text-slate-900" style={{ color: '#0f172a' }}>
                   Event
                 </span>
-                <span className="text-orange-500" style={{ color: '#f97316' }}>
+                <span className="text-orange-600" style={{ color: '#ea580c' }}>
                   Pulse
                 </span>
               </span>
@@ -134,9 +116,9 @@ export function Footer() {
 
             {/* Concise Brand Description */}
             <p
-              className="text-xs text-zinc-400 mt-2.5 max-w-sm leading-relaxed"
+              className="text-xs text-slate-600 mt-2.5 max-w-sm leading-relaxed"
               style={{
-                color: '#a1a1aa',
+                color: '#475569',
                 fontSize: '0.75rem',
                 lineHeight: '1.6',
                 marginTop: '0.625rem',
@@ -147,7 +129,7 @@ export function Footer() {
               EventPulse is Sri Lanka's premier online ticket marketplace, providing a secure and safe platform for discovering and booking live entertainment, concerts, and tech events.
             </p>
 
-            {/* Social Icons row (4 icons: Facebook, Instagram, TikTok, WhatsApp) */}
+            {/* Social Icons row (light circular background) */}
             <div
               className="mt-3 flex items-center gap-2"
               style={{
@@ -164,30 +146,30 @@ export function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={item.name}
-                  className="w-7 h-7 rounded-full bg-zinc-800/90 hover:bg-orange-500 text-zinc-300 hover:text-white transition flex items-center justify-center"
+                  className="w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition flex items-center justify-center shadow-xs"
                   style={{
                     width: '28px',
                     height: '28px',
                     borderRadius: '9999px',
-                    backgroundColor: 'rgba(39, 39, 42, 0.9)',
-                    color: '#d4d4d8',
+                    backgroundColor: '#ffffff',
+                    color: '#334155',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     textDecoration: 'none',
                     transition: 'all 150ms ease-in-out',
-                    border: '1px solid rgba(63, 63, 70, 0.4)',
+                    border: '1px solid #e2e8f0',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#f97316';
+                    e.currentTarget.style.backgroundColor = '#ea580c';
                     e.currentTarget.style.color = '#ffffff';
-                    e.currentTarget.style.borderColor = '#f97316';
+                    e.currentTarget.style.borderColor = '#ea580c';
                     e.currentTarget.style.transform = 'translateY(-1px)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(39, 39, 42, 0.9)';
-                    e.currentTarget.style.color = '#d4d4d8';
-                    e.currentTarget.style.borderColor = 'rgba(63, 63, 70, 0.4)';
+                    e.currentTarget.style.backgroundColor = '#ffffff';
+                    e.currentTarget.style.color = '#334155';
+                    e.currentTarget.style.borderColor = '#e2e8f0';
                     e.currentTarget.style.transform = 'translateY(0)';
                   }}
                 >
@@ -196,7 +178,7 @@ export function Footer() {
               ))}
             </div>
 
-            {/* Payment Badges underneath socials: Visa, Mastercard, Stripe */}
+            {/* Payment Badges underneath socials: Visa, Mastercard, Stripe on light cards */}
             <div
               className="mt-3 flex items-center gap-2"
               style={{
@@ -208,12 +190,12 @@ export function Footer() {
             >
               {/* Visa Badge */}
               <div
-                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 flex items-center gap-1.5 shadow-sm"
+                className="px-2 py-0.5 rounded bg-white border border-slate-200 flex items-center gap-1.5 shadow-xs"
                 style={{
                   padding: '3px 8px',
                   borderRadius: '4px',
-                  backgroundColor: '#18181b',
-                  border: '1px solid #27272a',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '5px',
@@ -225,17 +207,17 @@ export function Footer() {
                     fill="#2563EB"
                   />
                 </svg>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#d4d4d8' }}>Visa</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: '#334155' }}>Visa</span>
               </div>
 
               {/* Mastercard Badge */}
               <div
-                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 flex items-center gap-1.5 shadow-sm"
+                className="px-2 py-0.5 rounded bg-white border border-slate-200 flex items-center gap-1.5 shadow-xs"
                 style={{
                   padding: '3px 8px',
                   borderRadius: '4px',
-                  backgroundColor: '#18181b',
-                  border: '1px solid #27272a',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '5px',
@@ -245,17 +227,17 @@ export function Footer() {
                   <circle cx="10" cy="10" r="10" fill="#EB001B" />
                   <circle cx="22" cy="10" r="10" fill="#F79E1B" fillOpacity="0.88" />
                 </svg>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#d4d4d8' }}>Mastercard</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: '#334155' }}>Mastercard</span>
               </div>
 
               {/* Stripe Badge */}
               <div
-                className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 flex items-center gap-1.5 shadow-sm"
+                className="px-2 py-0.5 rounded bg-white border border-slate-200 flex items-center gap-1.5 shadow-xs"
                 style={{
                   padding: '3px 8px',
                   borderRadius: '4px',
-                  backgroundColor: '#18181b',
-                  border: '1px solid #27272a',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '5px',
@@ -267,42 +249,43 @@ export function Footer() {
                     fill="#635BFF"
                   />
                 </svg>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#d4d4d8' }}>Stripe</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: '#334155' }}>Stripe</span>
               </div>
             </div>
           </div>
 
           {/* Right Container: 3 Navigation & Contact Columns (7 cols on desktop) */}
-          <div className="col-span-1 md:col-span-1 lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-6 ep-footer-nav">
+          <div className="col-span-1 md:col-span-1 lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-6 ep-footer-nav text-left">
             {/* Column 2: Helpful Links */}
-            <div>
+            <div className="text-left">
               <h4
-                className="text-white font-semibold text-xs tracking-wider uppercase mb-3"
+                className="text-slate-900 font-semibold text-xs tracking-wider uppercase mb-3"
                 style={{
-                  color: '#ffffff',
+                  color: '#0f172a',
                   fontWeight: 600,
                   fontSize: '0.75rem',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
                   marginBottom: '0.75rem',
+                  textAlign: 'left',
                 }}
               >
                 Helpful Links
               </h4>
-              <ul className="space-y-1.5 text-xs text-zinc-400" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+              <ul className="space-y-1.5 text-xs text-slate-600" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.375rem', textAlign: 'left' }}>
                 {helpfulLinks.map((link) => (
                   <li key={link.label}>
                     <Link
                       to={link.href}
-                      className="hover:text-orange-400 transition-colors block text-decoration-none"
+                      className="text-xs text-slate-600 hover:text-orange-600 transition-colors block text-decoration-none"
                       style={{
-                        color: '#a1a1aa',
+                        color: '#475569',
                         fontSize: '0.75rem',
                         textDecoration: 'none',
                         transition: 'color 150ms ease',
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = '#a1a1aa')}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#ea580c')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#475569')}
                     >
                       {link.label}
                     </Link>
@@ -312,34 +295,35 @@ export function Footer() {
             </div>
 
             {/* Column 3: About Us */}
-            <div>
+            <div className="text-left">
               <h4
-                className="text-white font-semibold text-xs tracking-wider uppercase mb-3"
+                className="text-slate-900 font-semibold text-xs tracking-wider uppercase mb-3"
                 style={{
-                  color: '#ffffff',
+                  color: '#0f172a',
                   fontWeight: 600,
                   fontSize: '0.75rem',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
                   marginBottom: '0.75rem',
+                  textAlign: 'left',
                 }}
               >
                 About Us
               </h4>
-              <ul className="space-y-1.5 text-xs text-zinc-400" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+              <ul className="space-y-1.5 text-xs text-slate-600" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.375rem', textAlign: 'left' }}>
                 {aboutUsLinks.map((link) => (
                   <li key={link.label}>
                     <Link
                       to={link.href}
-                      className="hover:text-orange-400 transition-colors block text-decoration-none"
+                      className="text-xs text-slate-600 hover:text-orange-600 transition-colors block text-decoration-none"
                       style={{
-                        color: '#a1a1aa',
+                        color: '#475569',
                         fontSize: '0.75rem',
                         textDecoration: 'none',
                         transition: 'color 150ms ease',
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = '#a1a1aa')}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#ea580c')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#475569')}
                     >
                       {link.label}
                     </Link>
@@ -348,31 +332,32 @@ export function Footer() {
               </ul>
             </div>
 
-            {/* Column 4: Contact */}
-            <div>
+            {/* Column 4: Contact (Strictly Left-Aligned) */}
+            <div className="text-left flex flex-col items-start">
               <h4
-                className="text-white font-semibold text-xs tracking-wider uppercase mb-3"
+                className="text-slate-900 font-semibold text-xs tracking-wider uppercase mb-3 text-left w-full"
                 style={{
-                  color: '#ffffff',
+                  color: '#0f172a',
                   fontWeight: 600,
                   fontSize: '0.75rem',
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
                   marginBottom: '0.75rem',
+                  textAlign: 'left',
                 }}
               >
                 Contact
               </h4>
 
-              <div className="space-y-2 text-xs" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {/* WhatsApp (Text-only) */}
+              <div className="space-y-2 text-xs w-full flex flex-col items-start text-left" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', textAlign: 'left' }}>
+                {/* WhatsApp (Text-only) - Flush Left */}
                 <a
                   href="https://wa.me/94771234567"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-xs text-zinc-300 hover:text-orange-400 transition-colors text-decoration-none"
+                  className="flex items-center gap-2 text-xs text-slate-600 hover:text-orange-600 transition-colors text-decoration-none"
                   style={{
-                    color: '#d4d4d8',
+                    color: '#475569',
                     fontSize: '0.75rem',
                     display: 'flex',
                     alignItems: 'center',
@@ -380,19 +365,19 @@ export function Footer() {
                     textDecoration: 'none',
                     transition: 'color 150ms ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = '#d4d4d8')}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#ea580c')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#475569')}
                 >
-                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" style={{ width: '14px', height: '14px', color: '#34d399', flexShrink: 0 }} />
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" style={{ width: '14px', height: '14px', color: '#059669', flexShrink: 0 }} />
                   <span>+94 77 123 4567 (Text only)</span>
                 </a>
 
-                {/* Email */}
+                {/* Email - Flush Left */}
                 <a
                   href="mailto:support@eventpulse.com"
-                  className="flex items-center gap-2 text-xs text-zinc-300 hover:text-orange-400 transition-colors text-decoration-none"
+                  className="flex items-center gap-2 text-xs text-slate-600 hover:text-orange-600 transition-colors text-decoration-none"
                   style={{
-                    color: '#d4d4d8',
+                    color: '#475569',
                     fontSize: '0.75rem',
                     display: 'flex',
                     alignItems: 'center',
@@ -400,33 +385,34 @@ export function Footer() {
                     textDecoration: 'none',
                     transition: 'color 150ms ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = '#d4d4d8')}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#ea580c')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#475569')}
                 >
-                  <Mail className="w-3.5 h-3.5 text-orange-400 shrink-0" style={{ width: '14px', height: '14px', color: '#fb923c', flexShrink: 0 }} />
+                  <Mail className="w-3.5 h-3.5 text-orange-600 shrink-0" style={{ width: '14px', height: '14px', color: '#ea580c', flexShrink: 0 }} />
                   <span>support@eventpulse.com</span>
                 </a>
 
-                {/* Compact Verified / Trust Seal Badge */}
+                {/* Compact Verified / Trust Seal Badge - Flush Left */}
                 <div
-                  className="mt-2.5 p-2 rounded-lg bg-zinc-900/90 border border-zinc-800/80 flex items-center gap-2 shadow-sm"
+                  className="mt-2.5 p-2 rounded-lg bg-white border border-slate-200 flex items-center gap-2 shadow-xs"
                   style={{
                     marginTop: '0.625rem',
                     padding: '6px 10px',
                     borderRadius: '6px',
-                    backgroundColor: 'rgba(24, 24, 27, 0.9)',
-                    border: '1px solid rgba(39, 39, 42, 0.8)',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e2e8f0',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
+                    width: 'fit-content',
                   }}
                 >
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" style={{ width: '15px', height: '15px', color: '#34d399', flexShrink: 0 }} />
-                  <div>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#f4f4f5', letterSpacing: '0.02em', lineHeight: 1.2 }}>
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" style={{ width: '15px', height: '15px', color: '#059669', flexShrink: 0 }} />
+                  <div className="text-left" style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#0f172a', letterSpacing: '0.02em', lineHeight: 1.2 }}>
                       100% Verified Tickets
                     </div>
-                    <div style={{ fontSize: '9px', color: '#71717a', lineHeight: 1.2 }}>
+                    <div style={{ fontSize: '9px', color: '#64748b', lineHeight: 1.2 }}>
                       Instant digital guarantee
                     </div>
                   </div>
@@ -436,20 +422,20 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Sub-Footer Legal Bar */}
+        {/* Sub-Footer Legal Bar & Copyright */}
         <div
-          className="mt-6 pt-4 border-t border-zinc-800/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-500"
+          className="mt-6 pt-4 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500"
           style={{
             marginTop: '1.5rem',
             paddingTop: '1rem',
-            borderTop: '1px solid rgba(39, 39, 42, 0.6)',
+            borderTop: '1px solid rgba(226, 232, 240, 0.8)',
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '0.75rem',
             fontSize: '0.75rem',
-            color: '#71717a',
+            color: '#64748b',
           }}
         >
           {/* Left Side: Legal Links */}
@@ -463,43 +449,43 @@ export function Footer() {
           >
             <Link
               to="/privacy"
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors text-decoration-none"
+              className="text-xs text-slate-500 hover:text-slate-800 transition-colors text-decoration-none"
               style={{
-                color: '#71717a',
+                color: '#64748b',
                 fontSize: '0.75rem',
                 textDecoration: 'none',
                 transition: 'color 150ms ease',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#d4d4d8')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#71717a')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#1e293b')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
             >
               Privacy Policy
             </Link>
             <Link
               to="/cookies"
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors text-decoration-none"
+              className="text-xs text-slate-500 hover:text-slate-800 transition-colors text-decoration-none"
               style={{
-                color: '#71717a',
+                color: '#64748b',
                 fontSize: '0.75rem',
                 textDecoration: 'none',
                 transition: 'color 150ms ease',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#d4d4d8')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#71717a')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#1e293b')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
             >
               Cookie Policy
             </Link>
             <Link
               to="/terms"
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors text-decoration-none"
+              className="text-xs text-slate-500 hover:text-slate-800 transition-colors text-decoration-none"
               style={{
-                color: '#71717a',
+                color: '#64748b',
                 fontSize: '0.75rem',
                 textDecoration: 'none',
                 transition: 'color 150ms ease',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#d4d4d8')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#71717a')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#1e293b')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
             >
               Terms and Conditions
             </Link>
@@ -510,7 +496,7 @@ export function Footer() {
             className="text-center sm:text-right"
             style={{
               fontSize: '0.75rem',
-              color: '#71717a',
+              color: '#64748b',
               textAlign: 'center',
             }}
           >
