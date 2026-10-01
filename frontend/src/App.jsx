@@ -24,6 +24,8 @@ import { PaymentSuccess } from './pages/PaymentSuccess/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel/PaymentCancel';
 import { Tickets } from './pages/Tickets/Tickets';
 import { MyBookingsPage } from './pages/MyBookings/MyBookingsPage';
+import { WhoWeAre } from './pages/WhoWeAre/WhoWeAre';
+import { ContactUs } from './pages/ContactUs/ContactUs';
 
 function App() {
   return (
@@ -34,6 +36,9 @@ function App() {
             {/* Public / Customer Routes */}
             <Route path="/" element={<Home />} />
             <Route path="/events/:id" element={<EventDetails />} />
+            <Route path="/who-we-are" element={<WhoWeAre />} />
+            <Route path="/about" element={<WhoWeAre />} />
+            <Route path="/contact" element={<ContactUs />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />

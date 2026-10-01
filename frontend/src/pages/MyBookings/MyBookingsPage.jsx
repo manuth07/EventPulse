@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Header } from '../../components/Header/Header';
+import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../context/AuthContext';
 import { getMyBookings, cancelBooking } from '../../services/bookingService';
 import { createCheckoutSession } from '../../services/paymentService';
@@ -315,10 +315,7 @@ export function MyBookingsPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--ep-canvas)' }}>
-      <Header />
-
-      <main style={{ flex: 1, padding: '36px 16px 64px' }}>
+    <Layout style={{ backgroundColor: 'var(--ep-canvas)' }} mainStyle={{ padding: '36px 16px 64px' }}>
         <div style={{ maxWidth: '960px', margin: '0 auto' }}>
           {/* Breadcrumb / Back Link */}
           <div style={{ marginBottom: '20px' }}>
@@ -1006,7 +1003,6 @@ export function MyBookingsPage() {
             </div>
           )}
         </div>
-      </main>
 
       {/* Floating Toast Notification */}
       {toast && (
@@ -1254,7 +1250,7 @@ export function MyBookingsPage() {
           </div>
         </div>
       )}
-    </div>
+    </Layout>
   );
 }
 
