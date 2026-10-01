@@ -286,76 +286,134 @@ export function Home() {
                 ))}
               </div>
             ) : (
-              <div className="w-full max-w-4xl mx-auto divide-y divide-slate-100 bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
-                {paginatedEvents.map((event) => (
-                  <Link
-                    key={event.id}
-                    to={`/events/${event.id}`}
-                    className="flex items-center gap-3.5 sm:gap-4 p-3 hover:bg-slate-50/80 transition-colors group text-decoration-none"
-                    style={{ textDecoration: 'none' }}
-                  >
-                    {/* 1. COMPACT SQUARE THUMBNAIL */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-md overflow-hidden flex-shrink-0 bg-slate-100 border border-slate-200/70">
-                      <img
-                        src={event.imageUrl || event.imagePath || event.coverUrl || '/fallback-event-cover.jpg'}
-                        alt={event.title}
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px', marginBottom: '24px' }}>
+                {paginatedEvents.map((event) => {
+                  const rawDate = event.eventDate || event.date;
+                  const parsedDate = rawDate ? new Date(rawDate) : null;
+                  const dateStr = parsedDate && !isNaN(parsedDate)
+                    ? parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                    : 'TBA';
+                  const timeStr = parsedDate && !isNaN(parsedDate)
+                    ? parsedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+                    : '';
+
+                  const imageSrc =
+                    event.coverBlobName ||
+                    event.imageBlobName ||
+                    event.imageUrl ||
+                    event.coverUrl ||
+                    '/fallback-event-cover.jpg';
+
+                  return (
+                    <Link
+                      key={event.id}
+                      to={`/events/${event.id}`}
+                      className="hover:border-orange-400 hover:shadow-sm transition-all group"
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                        padding: '12px 16px',
+                        gap: '12px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        boxSizing: 'border-box',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      {/* 1. LEFT: FIXED 56x56 THUMBNAIL */}
+                      <div
+                        style={{
+                          width: '56px',
+                          height: '56px',
+                          minWidth: '56px',
+                          minHeight: '56px',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          backgroundColor: '#f1f5f9',
+                          border: '1px solid #e2e8f0',
+                          flexShrink: 0
                         }}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    </div>
-
-                    {/* 2. TITLE & DATE/TIME */}
-                    <div className="flex-1 min-w-0 pr-2">
-                      <h4 className="text-sm sm:text-base font-semibold text-slate-900 group-hover:text-orange-600 transition-colors truncate m-0">
-                        {event.title}
-                      </h4>
-                      <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 font-normal m-0">
-                        {event.eventDate ? (
-                          <>
-                            <span>
-                              {new Date(event.eventDate).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                              })}
-                            </span>
-                            <span>•</span>
-                            <span>
-                              {new Date(event.eventDate).toLocaleTimeString('en-US', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                hour12: false,
-                              })}
-                            </span>
-                          </>
-                        ) : (
-                          <span>Date TBA</span>
-                        )}
-                        {event.venue && (
-                          <>
-                            <span className="hidden sm:inline">•</span>
-                            <span className="hidden sm:inline truncate text-slate-400">
-                              {event.venue}
-                            </span>
-                          </>
-                        )}
-                      </p>
-                    </div>
-
-                    {/* 3. RIGHT-SIDE CALENDAR/TICKET ACTION */}
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      {event.price !== undefined && (
-                        <span className="text-xs font-semibold text-slate-700 hidden sm:block">
-                          LKR {Number(event.price).toLocaleString()}
-                        </span>
-                      )}
-                      <div className="w-8 h-8 rounded-md border border-slate-200 flex items-center justify-center text-slate-500 group-hover:text-orange-600 group-hover:border-orange-300 transition-colors bg-white">
-                        <Calendar className="w-4 h-4" />
+                      >
+                        <img
+                          src={imageSrc}
+                          alt={event.title}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        />
                       </div>
-                    </div>
-                  </Link>
-                ))}
+
+                      {/* 2. MIDDLE: TITLE AND DATE (EXPANDS TO FILL REMAINING SPACE) */}
+                      <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <h4
+                          style={{
+                            margin: 0,
+                            fontSize: '15px',
+                            fontWeight: 600,
+                            color: '#0f172a',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                          className="group-hover:text-orange-600 transition-colors"
+                        >
+                          {event.title}
+                        </h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
+                          <span style={{ fontWeight: 500, color: '#334155' }}>{dateStr}</span>
+                          {timeStr && <span>• {timeStr}</span>}
+                          {event.venue && (
+                            <>
+                              <span>•</span>
+                              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {event.venue}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 3. RIGHT: PRICE & ACTION BADGE */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
+                        {event.price !== undefined && event.price !== null && (
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ display: 'block', fontSize: '10px', textTransform: 'uppercase', color: '#94a3b8', fontWeight: 600 }}>
+                              Starts From
+                            </span>
+                            <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                              LKR {Number(event.price).toLocaleString()}
+                            </span>
+                          </div>
+                        )}
+
+                        <div
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            minWidth: '34px',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            backgroundColor: '#f8fafc',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#64748b'
+                          }}
+                          className="group-hover:border-orange-400 group-hover:text-orange-600 transition-colors"
+                        >
+                          <svg style={{ width: '16px', height: '16px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                          </svg>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, MapPin, Ticket, RotateCcw, CalendarX, AlertCircle } from 'lucide-react';
-import { Header } from '../../components/Header/Header';
+import { Layout } from '../../components/layout/Layout';
 import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { getPublicTicketTypes, getStartingPrice } from '../../services/ticketTypeService';
@@ -61,11 +61,8 @@ export function EventDetails() {
   const heroImage = event?.coverUrl || event?.imageUrl;
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--ep-canvas)' }}>
-      <Header />
-
-      <main style={{ flex: 1, paddingBottom: '64px' }}>
-        <div className="container" style={{ maxWidth: '1080px', paddingLeft: '16px', paddingRight: '16px', paddingTop: '24px' }}>
+    <Layout style={{ backgroundColor: 'var(--ep-canvas)' }} mainStyle={{ paddingBottom: '64px' }}>
+      <div className="container" style={{ maxWidth: '1080px', paddingLeft: '16px', paddingRight: '16px', paddingTop: '24px' }}>
           
           {/* Back Navigation */}
           <div style={{ marginBottom: '24px' }}>
@@ -318,21 +315,6 @@ export function EventDetails() {
           )}
 
         </div>
-      </main>
-
-      {/* Simple Footer */}
-      <footer style={{
-        backgroundColor: '#ffffff',
-        borderTop: '1px solid var(--ep-border)',
-        padding: '24px 0',
-        textAlign: 'center',
-        color: 'var(--ep-text-secondary)',
-        fontSize: '13px'
-      }}>
-        <div className="container">
-          <p style={{ margin: 0 }}>© 2026 EventPulse. All rights reserved.</p>
-        </div>
-      </footer>
-    </div>
-  );
-}
+      </Layout>
+    );
+  }
