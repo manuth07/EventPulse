@@ -504,6 +504,83 @@ export function Footer() {
             </div>
           </div>
         </div>
+
+        {/* Secondary Slim Legal Bottom Bar */}
+        <div
+          className="mt-8 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500"
+          style={{
+            marginTop: '2rem',
+            paddingTop: '1.5rem',
+            borderTop: '1px solid rgba(30, 41, 59, 0.8)',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            fontSize: '0.75rem',
+            color: '#64748b',
+          }}
+        >
+          {/* Left Side: Legal Links */}
+          <div
+            className="flex items-center space-x-4"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+            }}
+          >
+            <Link
+              to="/privacy"
+              className="hover:text-slate-300 transition-colors text-decoration-none"
+              style={{
+                color: '#64748b',
+                textDecoration: 'none',
+                transition: 'color 150ms ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              to="/cookies"
+              className="hover:text-slate-300 transition-colors text-decoration-none"
+              style={{
+                color: '#64748b',
+                textDecoration: 'none',
+                transition: 'color 150ms ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+            >
+              Cookie Policy
+            </Link>
+            <Link
+              to="/terms"
+              className="hover:text-slate-300 transition-colors text-decoration-none"
+              style={{
+                color: '#64748b',
+                textDecoration: 'none',
+                transition: 'color 150ms ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+            >
+              Terms and Conditions
+            </Link>
+          </div>
+
+          {/* Right Side: Copyright */}
+          <div
+            className="text-center sm:text-right"
+            style={{
+              textAlign: 'center',
+            }}
+          >
+            Copyright 2026 © EventPulse All Rights Reserved
+          </div>
+        </div>
       </div>
     </footer>
   );
