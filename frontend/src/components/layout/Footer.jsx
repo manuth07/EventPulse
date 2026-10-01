@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Ticket, Activity } from 'lucide-react';
+import { Ticket, Activity, Mail, MessageCircle, Award } from 'lucide-react';
 
 const socialLinks = [
   {
@@ -66,6 +66,21 @@ const socialLinks = [
       </svg>
     ),
   },
+];
+
+const helpfulLinks = [
+  { label: 'Events', href: '/' },
+  { label: 'EventPulse Deals', href: '/deals' },
+  { label: 'My Account', href: '/my-bookings' },
+  { label: 'Refund Policy', href: '/refund-policy' },
+];
+
+const aboutUsLinks = [
+  { label: 'Who We Are', href: '/about' },
+  { label: 'For Organizers', href: '/list-your-event' },
+  { label: 'Careers', href: '/careers' },
+  { label: 'FAQ', href: '/faq' },
+  { label: 'Contact Us', href: '/contact' },
 ];
 
 export function Footer() {
@@ -319,8 +334,175 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Placeholder for Remaining 3 Columns (7 cols on desktop) */}
-          <div className="lg:col-span-7" style={{ gridColumn: 'span 7' }} />
+          {/* Right Container: 3 Navigation & Contact Columns (7 cols on desktop) */}
+          <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-6" style={{ gridColumn: 'span 7' }}>
+            {/* Column 2: Helpful Links */}
+            <div>
+              <h4
+                className="text-white font-semibold text-sm mb-3.5"
+                style={{
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  marginBottom: '0.875rem',
+                }}
+              >
+                Helpful Links
+              </h4>
+              <ul className="space-y-2 text-sm text-slate-400" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {helpfulLinks.map((link) => (
+                  <li key={link.label}>
+                    <Link
+                      to={link.href}
+                      className="hover:text-orange-400 transition-colors block text-decoration-none"
+                      style={{
+                        color: '#94a3b8',
+                        textDecoration: 'none',
+                        transition: 'color 150ms ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Column 3: About Us */}
+            <div>
+              <h4
+                className="text-white font-semibold text-sm mb-3.5"
+                style={{
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  marginBottom: '0.875rem',
+                }}
+              >
+                About Us
+              </h4>
+              <ul className="space-y-2 text-sm text-slate-400" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {aboutUsLinks.map((link) => (
+                  <li key={link.label}>
+                    <Link
+                      to={link.href}
+                      className="hover:text-orange-400 transition-colors block text-decoration-none"
+                      style={{
+                        color: '#94a3b8',
+                        textDecoration: 'none',
+                        transition: 'color 150ms ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Column 4: Contact */}
+            <div>
+              <h4
+                className="text-white font-semibold text-sm mb-3.5"
+                style={{
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  marginBottom: '0.875rem',
+                }}
+              >
+                Contact
+              </h4>
+
+              <div className="space-y-2.5" style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                {/* WhatsApp (Text-only) */}
+                <a
+                  href="https://wa.me/94771234567"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xs text-slate-300 hover:text-orange-400 transition-colors text-decoration-none"
+                  style={{
+                    color: '#cbd5e1',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    textDecoration: 'none',
+                    transition: 'color 150ms ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                >
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" style={{ width: '14px', height: '14px', color: '#34d399', flexShrink: 0 }} />
+                  <span>WhatsApp: +94 77 123 4567 (Text only)</span>
+                </a>
+
+                {/* Email */}
+                <a
+                  href="mailto:support@eventpulse.com"
+                  className="flex items-center gap-2 text-xs text-slate-300 hover:text-orange-400 transition-colors text-decoration-none"
+                  style={{
+                    color: '#cbd5e1',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    textDecoration: 'none',
+                    transition: 'color 150ms ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#fb923c')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                >
+                  <Mail className="w-3.5 h-3.5 text-orange-400 shrink-0" style={{ width: '14px', height: '14px', color: '#fb923c', flexShrink: 0 }} />
+                  <span>support@eventpulse.com</span>
+                </a>
+
+                {/* Trust / Gold Verified Badge */}
+                <div
+                  className="mt-3.5 p-2.5 rounded-lg bg-gradient-to-br from-amber-500/10 via-slate-900 to-amber-950/20 border border-amber-500/30 flex items-center gap-2.5 shadow-sm"
+                  style={{
+                    marginTop: '0.75rem',
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(15, 23, 42, 0.9) 100%)',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '9999px',
+                      background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      flexShrink: 0,
+                      boxShadow: '0 2px 6px rgba(245, 158, 11, 0.3)',
+                    }}
+                  >
+                    <Award className="w-4 h-4 text-white" style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#fcd34d', letterSpacing: '0.02em', lineHeight: 1.2 }}>
+                      VERIFIED TICKETS
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8', lineHeight: 1.2 }}>
+                      100% Guaranteed Entry
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </footer>
