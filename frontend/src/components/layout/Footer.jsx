@@ -94,28 +94,26 @@ export function Footer() {
       }}
     >
       <div
-        className="py-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto"
+        className="py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto"
         style={{
           maxWidth: '80rem',
           marginLeft: 'auto',
           marginRight: 'auto',
-          paddingTop: '2.5rem',
-          paddingBottom: '2.5rem',
+          paddingTop: '2rem',
+          paddingBottom: '2rem',
           paddingLeft: '1.5rem',
           paddingRight: '1.5rem',
         }}
       >
         {/* Compact Grid Scaffolding */}
         <div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 items-start"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 items-start ep-footer-grid"
           style={{
-            display: 'grid',
-            gap: '2rem',
             alignItems: 'start',
           }}
         >
           {/* Column 1: Brand Section (5 cols on desktop) */}
-          <div className="lg:col-span-5" style={{ gridColumn: 'span 5' }}>
+          <div className="col-span-1 md:col-span-1 lg:col-span-5 ep-footer-brand">
             {/* EventPulse Logo */}
             <Link
               to="/"
@@ -335,7 +333,7 @@ export function Footer() {
           </div>
 
           {/* Right Container: 3 Navigation & Contact Columns (7 cols on desktop) */}
-          <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-6" style={{ gridColumn: 'span 7' }}>
+          <div className="col-span-1 md:col-span-1 lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-6 ep-footer-nav">
             {/* Column 2: Helpful Links */}
             <div>
               <h4
