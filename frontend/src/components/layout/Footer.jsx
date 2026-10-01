@@ -66,6 +66,13 @@ const aboutUsLinks = [
   { label: 'Terms & Conditions', href: '/terms' },
 ];
 
+const legalLinks = [
+  { label: 'Privacy Policy', href: '/privacy' },
+  { label: 'Cookie Policy', href: '/cookies' },
+  { label: 'Terms of Service', href: '/terms' },
+  { label: 'Security', href: '/security' },
+];
+
 export function Footer() {
   return (
     <footer
@@ -90,11 +97,10 @@ export function Footer() {
       >
         {/* Responsive Grid: Brand (2 cols) + 3 Support & Nav Columns (1 col each) */}
         <div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 pb-12"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8"
           style={{
             display: 'grid',
             gap: '2rem',
-            paddingBottom: '3rem',
           }}
         >
           {/* Column 1: Left Brand Column (2 cols) */}
@@ -564,6 +570,62 @@ export function Footer() {
                 </span>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Sub-Footer Bottom Bar */}
+        <div
+          className="mt-12 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500"
+          style={{
+            marginTop: '3rem',
+            paddingTop: '1.5rem',
+            borderTop: '1px solid rgba(30, 41, 59, 0.8)',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            fontSize: '0.75rem',
+            color: '#64748b',
+          }}
+        >
+          {/* Left Side: Legal links row */}
+          <div
+            className="flex flex-wrap items-center justify-center sm:justify-start gap-x-6 gap-y-2"
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              columnGap: '1.5rem',
+              rowGap: '0.5rem',
+            }}
+          >
+            {legalLinks.map((link) => (
+              <Link
+                key={link.label}
+                to={link.href}
+                className="hover:text-slate-300 transition-colors text-decoration-none"
+                style={{
+                  color: '#64748b',
+                  textDecoration: 'none',
+                  transition: 'color 150ms ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          {/* Right Side: Copyright */}
+          <div
+            className="text-center sm:text-right"
+            style={{
+              textAlign: 'center',
+            }}
+          >
+            © 2026 EventPulse Technologies (Pvt) Ltd. All rights reserved.
           </div>
         </div>
       </div>
