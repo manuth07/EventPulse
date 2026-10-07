@@ -717,17 +717,22 @@ export function MyBookingsPage() {
                         gap: '8px',
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span
+                          <Link
+                            to={`/my-bookings/${booking.id}`}
                             data-testid={`booking-event-name-${booking.bookingReference}`}
                             style={{
                               fontSize: '16px',
                               fontWeight: 700,
                               color: 'var(--ep-text-primary)',
                               fontFamily: 'var(--ep-font-heading)',
+                              textDecoration: 'none',
+                              transition: 'color 0.15s ease',
                             }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ep-primary)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ep-text-primary)')}
                           >
                             {booking.eventName || booking.eventTitle}
-                          </span>
+                          </Link>
                         </div>
                         {booking.eventDate && (
                           <div
@@ -995,6 +1000,38 @@ export function MyBookingsPage() {
                             )}
                           </button>
                         )}
+
+                        {/* View Full Booking Detail (EP-354 Part 2) */}
+                        <Link
+                          to={`/my-bookings/${booking.id}`}
+                          id={`view-booking-detail-${booking.bookingReference}`}
+                          data-testid={`view-booking-detail-${booking.bookingReference}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            backgroundColor: '#ffffff',
+                            color: 'var(--ep-text-primary)',
+                            textDecoration: 'none',
+                            padding: '8px 14px',
+                            borderRadius: 'var(--ep-radius-btn)',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            border: '1px solid var(--ep-border)',
+                            transition: 'var(--ep-transition)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--ep-primary)';
+                            e.currentTarget.style.color = 'var(--ep-primary)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--ep-border)';
+                            e.currentTarget.style.color = 'var(--ep-text-primary)';
+                          }}
+                        >
+                          <Receipt size={14} />
+                          <span>View Details</span>
+                        </Link>
 
                         {isConfirmed && (
                           <Link

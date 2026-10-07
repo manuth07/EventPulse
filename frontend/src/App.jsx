@@ -26,6 +26,7 @@ import { PaymentSuccess } from './pages/PaymentSuccess/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel/PaymentCancel';
 import { Tickets } from './pages/Tickets/Tickets';
 import { MyBookingsPage } from './pages/MyBookings/MyBookingsPage';
+import { BookingDetailPage } from './pages/BookingDetail/BookingDetailPage';
 import { WhoWeAre } from './pages/WhoWeAre/WhoWeAre';
 import { ContactUs } from './pages/ContactUs/ContactUs';
 
@@ -57,8 +58,11 @@ function App() {
             <Route path="/payment-cancel" element={<PaymentCancel />} />
             <Route path="/bookings/:bookingId/tickets" element={<RequireAuth><Tickets /></RequireAuth>} />
             <Route path="/my-bookings" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/my-bookings/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
             <Route path="/my-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/my-tickets/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
             <Route path="/booked-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/booked-tickets/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
 
             {/* Organizer Protected Routes */}
             <Route element={<RequireRole allowedRoles="Organizer" />}>

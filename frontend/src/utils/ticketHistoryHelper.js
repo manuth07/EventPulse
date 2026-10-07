@@ -1,5 +1,5 @@
 /**
- * Formatting and derivation helpers for booked ticket history (EP-354).
+ * Formatting and derivation helpers for booked ticket history & detail view (EP-354).
  */
 
 export function formatTicketHistoryDate(dateString) {
@@ -19,6 +19,15 @@ export function formatTicketHistoryDate(dateString) {
   } catch {
     return String(dateString);
   }
+}
+
+export function formatCurrency(amount) {
+  const num = Number(amount);
+  if (isNaN(num)) return 'LKR 0.00';
+  return `LKR ${num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function formatTicketTypesSummary(items = [], totalTickets = 0) {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatTicketHistoryDate,
+  formatCurrency,
   formatTicketTypesSummary,
   getStatusBadgeConfig,
 } from './ticketHistoryHelper.js';
@@ -15,6 +16,13 @@ test('Ticket History Helpers (EP-354)', async (t) => {
   await t.test('formatTicketHistoryDate handles missing or null date', () => {
     assert.equal(formatTicketHistoryDate(null), 'Date unavailable');
     assert.equal(formatTicketHistoryDate(undefined), 'Date unavailable');
+  });
+
+  await t.test('formatCurrency formats valid numbers and strings', () => {
+    assert.equal(formatCurrency(2500), 'LKR 2,500.00');
+    assert.equal(formatCurrency('1500.5'), 'LKR 1,500.50');
+    assert.equal(formatCurrency(0), 'LKR 0.00');
+    assert.equal(formatCurrency('invalid'), 'LKR 0.00');
   });
 
   await t.test('formatTicketTypesSummary summarizes items and total', () => {
