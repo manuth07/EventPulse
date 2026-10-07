@@ -10,8 +10,13 @@ public record CustomerBookingHistoryDto(
     DateTimeOffset? ConfirmedAt,
     DateTimeOffset ExpiresAt,
     int TotalTickets,
-    IReadOnlyList<BookingHistoryItemDto> Items
-);
+    IReadOnlyList<BookingHistoryItemDto> Items,
+    string? EventName = null,
+    DateTime? EventDate = null
+)
+{
+    public string? EventTitle => EventName;
+}
 
 public record BookingHistoryItemDto(
     Guid TicketTypeId,

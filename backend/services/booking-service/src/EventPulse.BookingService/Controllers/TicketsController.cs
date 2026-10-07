@@ -15,11 +15,16 @@ public class TicketsController : ControllerBase
 {
     private readonly BookingDbContext _dbContext;
     private readonly IBookingCancellationService _bookingCancellationService;
+    private readonly IEventAvailabilityClient? _eventClient;
 
-    public TicketsController(BookingDbContext dbContext, IBookingCancellationService bookingCancellationService)
+    public TicketsController(
+        BookingDbContext dbContext,
+        IBookingCancellationService bookingCancellationService,
+        IEventAvailabilityClient? eventClient = null)
     {
         _dbContext = dbContext;
         _bookingCancellationService = bookingCancellationService;
+        _eventClient = eventClient;
     }
 
     private bool TryGetCustomerId(out Guid customerId)
@@ -54,6 +59,28 @@ public class TicketsController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view this ticket." });
         }
 
+        string? eventName = null;
+        DateTime? eventDate = null;
+        string? eventVenue = null;
+
+        if (_eventClient != null)
+        {
+            try
+            {
+                var eventSummary = await _eventClient.GetEventSummaryAsync(ticket.EventId, cancellationToken);
+                if (eventSummary != null)
+                {
+                    eventName = eventSummary.Title;
+                    eventDate = eventSummary.EventDate;
+                    eventVenue = eventSummary.Venue;
+                }
+            }
+            catch (Exception)
+            {
+                // Silently fallback if EventService is temporarily unavailable
+            }
+        }
+
         var dto = new CustomerTicketDto
         {
             TicketId = ticket.Id,
@@ -61,6 +88,9 @@ public class TicketsController : ControllerBase
             BookingId = ticket.BookingId,
             BookingReference = ticket.Booking.BookingReference,
             EventId = ticket.EventId,
+            EventName = eventName,
+            EventDate = eventDate,
+            EventVenue = eventVenue,
             TicketTypeId = ticket.TicketTypeId,
             TicketName = ticket.TicketName,
             TicketSequence = ticket.TicketSequence,

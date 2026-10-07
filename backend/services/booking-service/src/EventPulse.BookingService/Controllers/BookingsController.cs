@@ -105,6 +105,37 @@ public class BookingsController : ControllerBase
     }
 
     /// <summary>
+    /// Retrieves a single booking detail entry for the authenticated customer (EP-353).
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(CustomerBookingDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetBookingDetail([FromRoute] Guid id, CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid or missing token identity." });
+        }
+
+        var isAdmin = User.IsInRole("Administrator");
+        var result = await _bookingHistoryService.GetCustomerBookingDetailAsync(id, customerId, isAdmin, cancellationToken);
+
+        if (!result.Found)
+        {
+            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
+        }
+
+        if (!result.IsAuthorized)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view this booking." });
+        }
+
+        return Ok(result.Booking);
+    }
+
+    /// <summary>
     /// Authoritative customer ticket retrieval for a booking.
     /// </summary>
     [HttpGet("{id:guid}/tickets")]
@@ -130,6 +161,25 @@ public class BookingsController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view tickets for this booking." });
         }
 
+        string? eventName = null;
+        DateTime? eventDate = null;
+        string? eventVenue = null;
+
+        try
+        {
+            var eventSummary = await _eventClient.GetEventSummaryAsync(booking.EventId, cancellationToken);
+            if (eventSummary != null)
+            {
+                eventName = eventSummary.Title;
+                eventDate = eventSummary.EventDate;
+                eventVenue = eventSummary.Venue;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve event summary for booking tickets: {BookingId}", booking.Id);
+        }
+
         var ticketDtos = booking.Tickets
             .OrderBy(t => t.TicketSequence)
             .Select(t => new CustomerTicketDto
@@ -139,6 +189,9 @@ public class BookingsController : ControllerBase
                 BookingId = booking.Id,
                 BookingReference = booking.BookingReference,
                 EventId = booking.EventId,
+                EventName = eventName,
+                EventDate = eventDate,
+                EventVenue = eventVenue,
                 TicketTypeId = t.TicketTypeId,
                 TicketName = t.TicketName,
                 TicketSequence = t.TicketSequence,
@@ -154,6 +207,9 @@ public class BookingsController : ControllerBase
             BookingId = booking.Id,
             BookingReference = booking.BookingReference,
             EventId = booking.EventId,
+            EventName = eventName,
+            EventDate = eventDate,
+            EventVenue = eventVenue,
             BookingStatus = booking.Status.ToString(),
             TotalAmount = booking.TotalAmount,
             CreatedAt = booking.CreatedAt,
