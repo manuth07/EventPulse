@@ -250,3 +250,54 @@ export async function requestPasswordReset(email) {
 
   return response.json();
 }
+
+/**
+ * Validates whether a password reset token is valid, unexpired, and unconsumed.
+ * Backend endpoint: GET /api/auth/validate-reset-token?token=...
+ * @param {string} token 
+ * @returns {Promise<{isValid: boolean, message: string}>}
+ */
+export async function validateResetToken(token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/validate-reset-token?token=${encodeURIComponent(token?.trim() || '')}`, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (!response.ok || !body.isValid) {
+    const err = new Error(body.message || 'The password reset link is invalid or has expired.');
+    err.status = response.status;
+    err.code = body.code || 'INVALID_TOKEN';
+    err.isValid = false;
+    throw err;
+  }
+
+  return body;
+}
+
+/**
+ * Completes the password reset workflow by providing a new password.
+ * Backend endpoint: POST /api/auth/reset-password
+ * @param {Object} data - { token, newPassword, confirmPassword }
+ * @returns {Promise<{message: string}>}
+ */
+export async function resetPassword(data) {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const err = new Error(body.message || 'Password reset failed.');
+    err.status = response.status;
+    err.code = body.code || 'RESET_FAILED';
+    err.errors = body.errors || [];
+    throw err;
+  }
+
+  return response.json();
+}
+
