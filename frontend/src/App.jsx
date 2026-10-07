@@ -7,6 +7,7 @@ import { EventDetails } from './pages/EventDetails/EventDetails';
 import { Register } from './pages/Register/Register';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { Login } from './pages/Login/Login';
+import { ForgotPassword } from './pages/ForgotPassword/ForgotPassword';
 import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
@@ -40,6 +41,8 @@ function App() {
             <Route path="/about" element={<WhoWeAre />} />
             <Route path="/contact" element={<ContactUs />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/request-password-reset" element={<ForgotPassword />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/complete-profile" element={<CompleteProfile />} />
