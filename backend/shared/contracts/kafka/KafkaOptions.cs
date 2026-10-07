@@ -19,6 +19,7 @@ public class KafkaTopicOptions
     public string PaymentFailedDlq { get; set; } = KafkaTopics.PaymentFailedDlq;
     public string BookingRefundRequested { get; set; } = KafkaTopics.BookingRefundRequested;
     public string PaymentRefunded { get; set; } = KafkaTopics.PaymentRefunded;
+    public string EventSubmitted { get; set; } = KafkaTopics.EventSubmitted;
 }
 
 public class KafkaConsumerOptions

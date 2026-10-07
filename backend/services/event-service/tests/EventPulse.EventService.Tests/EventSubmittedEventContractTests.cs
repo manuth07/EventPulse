@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EventPulse.Contracts.Kafka;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace EventPulse.EventService.Tests;
@@ -140,5 +141,44 @@ public class EventSubmittedEventContractTests
         Assert.Equal(Guid.Parse("22222222-2222-2222-2222-222222222222"), deserialized.EventId);
         Assert.Equal("AI Innovation Expo", deserialized.EventTitle);
         Assert.Equal(Guid.Parse("33333333-3333-3333-3333-333333333333"), deserialized.OrganizerId);
+    }
+
+    [Fact]
+    public void KafkaTopics_EventSubmitted_ConstantHasExpectedValue()
+    {
+        Assert.Equal("event-submitted", KafkaTopics.EventSubmitted);
+    }
+
+    [Fact]
+    public void KafkaOptions_Defaults_IncludeEventSubmittedTopic()
+    {
+        var options = new KafkaOptions();
+
+        Assert.Equal("localhost:9092", options.BootstrapServers);
+        Assert.NotNull(options.Topics);
+        Assert.Equal(KafkaTopics.EventSubmitted, options.Topics.EventSubmitted);
+    }
+
+    [Fact]
+    public void KafkaOptions_BindsFromConfiguration_WithCustomAndEnvironmentOverrides()
+    {
+        // Arrange: Test configuration binding simulating appsettings or Kafka__* environment variables
+        var inMemorySettings = new Dictionary<string, string?>
+        {
+            { "Kafka:BootstrapServers", "broker.internal:9094" },
+            { "Kafka:Topics:EventSubmitted", "custom-event-submitted" }
+        };
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(inMemorySettings)
+            .Build();
+
+        // Act
+        var options = configuration.GetSection(KafkaOptions.SectionName).Get<KafkaOptions>();
+
+        // Assert
+        Assert.NotNull(options);
+        Assert.Equal("broker.internal:9094", options.BootstrapServers);
+        Assert.Equal("custom-event-submitted", options.Topics.EventSubmitted);
     }
 }
