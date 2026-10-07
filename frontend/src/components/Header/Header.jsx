@@ -404,10 +404,11 @@ export function Header({ location = 'Colombo, LK' }) {
                     </Link>
                   )}
 
-                  {/* My Bookings (available to all authenticated users: Customer, Organizer, Admin) */}
+                  {/* My Bookings / Booked Tickets (available to all authenticated users: Customer, Organizer, Admin) */}
                   <Link
                     to="/my-bookings"
                     id="account-menu-my-bookings"
+                    data-testid="account-menu-my-bookings"
                     role="menuitem"
                     onClick={() => setMenuOpen(false)}
                     style={{
@@ -431,8 +432,8 @@ export function Header({ location = 'Colombo, LK' }) {
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
-                    <Calendar size={14} color="var(--ep-text-secondary)" />
-                    <span>My Bookings</span>
+                    <Ticket size={14} color="var(--ep-text-secondary)" />
+                    <span>My Booked Tickets</span>
                   </Link>
 
                   {/* Log out */}

@@ -15,6 +15,20 @@ export async function getBookingSummary(bookingId, token) {
 }
 
 /**
+ * Fetch full booking detail for customer (EP-353 / EP-354).
+ * 
+ * @param {string} bookingId - The GUID of the booking.
+ * @param {string} [token] - Optional JWT authentication token.
+ * @returns {Promise<{ id: string, bookingReference: string, customerId: string, eventId: string, eventName?: string, eventDate?: string, eventVenue?: string, status: string, totalAmount: number, createdAt: string, confirmedAt: string|null, expiresAt: string, totalTickets: number, items: Array, tickets: Array }>}
+ */
+export async function getBookingDetail(bookingId, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.get(`/api/bookings/${bookingId}`, { headers });
+}
+
+/**
  * Fetch customer tickets for an authoritative booking.
  * 
  * @param {string} bookingId - The GUID of the booking.
@@ -95,6 +109,7 @@ export async function cancelTicket(ticketId, reason, token) {
 
 export default {
   getBookingSummary,
+  getBookingDetail,
   getBookingTickets,
   getTicketById,
   getMyBookings,

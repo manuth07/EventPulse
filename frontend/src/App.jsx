@@ -57,6 +57,8 @@ function App() {
             <Route path="/payment-cancel" element={<PaymentCancel />} />
             <Route path="/bookings/:bookingId/tickets" element={<RequireAuth><Tickets /></RequireAuth>} />
             <Route path="/my-bookings" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/my-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/booked-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
 
             {/* Organizer Protected Routes */}
             <Route element={<RequireRole allowedRoles="Organizer" />}>
