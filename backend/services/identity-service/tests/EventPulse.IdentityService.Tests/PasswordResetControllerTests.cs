@@ -158,4 +158,125 @@ public class PasswordResetControllerTests
         Assert.False(response.IsValid);
         Assert.Equal("INVALID_REQUEST", response.Code);
     }
+
+    [Fact]
+    public async Task ResetPassword_ValidRequest_Returns200OkWithSuccessMessage()
+    {
+        var controller = CreateController();
+        var request = new ResetPasswordRequest
+        {
+            Token = "valid-token",
+            NewPassword = "SecurePass123!",
+            ConfirmPassword = "SecurePass123!"
+        };
+
+        _passwordResetServiceMock
+            .Setup(s => s.ResetPasswordAsync(request))
+            .ReturnsAsync(ResetPasswordResult.Success());
+
+        var result = await controller.ResetPassword(request);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<ResetPasswordResponse>(okResult.Value);
+        Assert.Contains("successfully", response.Message);
+    }
+
+    [Fact]
+    public async Task ResetPassword_InvalidToken_Returns400BadRequestWithCode()
+    {
+        var controller = CreateController();
+        var request = new ResetPasswordRequest
+        {
+            Token = "bad-token",
+            NewPassword = "SecurePass123!",
+            ConfirmPassword = "SecurePass123!"
+        };
+
+        _passwordResetServiceMock
+            .Setup(s => s.ResetPasswordAsync(request))
+            .ReturnsAsync(ResetPasswordResult.InvalidToken());
+
+        var result = await controller.ResetPassword(request);
+
+        var statusResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, statusResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_ExpiredToken_Returns400BadRequestWithExpiredCode()
+    {
+        var controller = CreateController();
+        var request = new ResetPasswordRequest
+        {
+            Token = "expired-token",
+            NewPassword = "SecurePass123!",
+            ConfirmPassword = "SecurePass123!"
+        };
+
+        _passwordResetServiceMock
+            .Setup(s => s.ResetPasswordAsync(request))
+            .ReturnsAsync(ResetPasswordResult.Expired());
+
+        var result = await controller.ResetPassword(request);
+
+        var statusResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, statusResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_AlreadyUsedToken_Returns400BadRequestWithAlreadyUsedCode()
+    {
+        var controller = CreateController();
+        var request = new ResetPasswordRequest
+        {
+            Token = "used-token",
+            NewPassword = "SecurePass123!",
+            ConfirmPassword = "SecurePass123!"
+        };
+
+        _passwordResetServiceMock
+            .Setup(s => s.ResetPasswordAsync(request))
+            .ReturnsAsync(ResetPasswordResult.AlreadyUsed());
+
+        var result = await controller.ResetPassword(request);
+
+        var statusResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, statusResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WeakPassword_Returns400BadRequestWithErrors()
+    {
+        var controller = CreateController();
+        var request = new ResetPasswordRequest
+        {
+            Token = "valid-token",
+            NewPassword = "weak",
+            ConfirmPassword = "weak"
+        };
+
+        _passwordResetServiceMock
+            .Setup(s => s.ResetPasswordAsync(request))
+            .ReturnsAsync(ResetPasswordResult.InvalidPassword(["Password must have uppercase."]));
+
+        var result = await controller.ResetPassword(request);
+
+        var statusResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, statusResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_InvalidModelState_Returns400BadRequest()
+    {
+        var controller = CreateController();
+        controller.ModelState.AddModelError("NewPassword", "Password is required.");
+
+        var request = new ResetPasswordRequest { Token = "token", NewPassword = "", ConfirmPassword = "" };
+
+        var result = await controller.ResetPassword(request);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.NotNull(badRequest.Value);
+        _passwordResetServiceMock.Verify(s => s.ResetPasswordAsync(It.IsAny<ResetPasswordRequest>()), Times.Never);
+    }
 }

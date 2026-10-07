@@ -367,4 +367,42 @@ public class AuthController : ControllerBase
             Message = result.Message
         });
     }
+
+    /// <summary>
+    /// POST /api/auth/reset-password (alias: POST /api/auth/password-reset)
+    /// Public endpoint — completes password reset using a valid, unconsumed token.
+    /// Hashes the new password, consumes the token, and updates user credentials.
+    /// </summary>
+    [HttpPost("reset-password")]
+    [HttpPost("password-reset")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var result = await _passwordResetService.ResetPasswordAsync(request);
+        if (!result.Succeeded)
+        {
+            if (result.Errors != null && result.Errors.Any())
+            {
+                return StatusCode(result.StatusCode, new
+                {
+                    code = result.Code,
+                    message = result.Message,
+                    errors = result.Errors
+                });
+            }
+
+            return StatusCode(result.StatusCode, new
+            {
+                code = result.Code,
+                message = result.Message
+            });
+        }
+
+        return Ok(new ResetPasswordResponse { Message = result.Message });
+    }
 }

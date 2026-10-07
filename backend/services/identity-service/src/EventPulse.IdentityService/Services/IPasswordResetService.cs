@@ -16,6 +16,12 @@ public interface IPasswordResetService
     /// Does NOT consume the token.
     /// </summary>
     Task<ValidateResetTokenResult> ValidateResetTokenAsync(string token);
+
+    /// <summary>
+    /// Completes the password reset by validating the token, enforcing password policy,
+    /// hashing and updating the user's password, and consuming the reset token.
+    /// </summary>
+    Task<ResetPasswordResult> ResetPasswordAsync(EventPulse.IdentityService.DTOs.ResetPasswordRequest request);
 }
 
 /// <summary>
@@ -74,4 +80,72 @@ public class ValidateResetTokenResult
         code: "TOKEN_ALREADY_USED",
         message: "The password reset link has already been used. Please request a new one."
     );
+}
+
+/// <summary>
+/// Result for a password reset completion operation.
+/// </summary>
+public class ResetPasswordResult
+{
+    public bool Succeeded { get; private set; }
+    public string Code { get; private set; } = string.Empty;
+    public string Message { get; private set; } = string.Empty;
+    public IEnumerable<string> Errors { get; private set; } = [];
+    public int StatusCode { get; private set; }
+
+    public static ResetPasswordResult Success() => new()
+    {
+        Succeeded = true,
+        StatusCode = 200,
+        Message = "Password has been reset successfully. You can now log in with your new password."
+    };
+
+    public static ResetPasswordResult InvalidToken(string message = "The password reset link is invalid or has expired.") => new()
+    {
+        Succeeded = false,
+        Code = "INVALID_TOKEN",
+        Message = message,
+        StatusCode = 400
+    };
+
+    public static ResetPasswordResult Expired() => new()
+    {
+        Succeeded = false,
+        Code = "EXPIRED_TOKEN",
+        Message = "The password reset link has expired. Please request a new one.",
+        StatusCode = 400
+    };
+
+    public static ResetPasswordResult AlreadyUsed() => new()
+    {
+        Succeeded = false,
+        Code = "TOKEN_ALREADY_USED",
+        Message = "The password reset link has already been used. Please request a new one.",
+        StatusCode = 400
+    };
+
+    public static ResetPasswordResult PasswordsDoNotMatch() => new()
+    {
+        Succeeded = false,
+        Code = "PASSWORDS_DO_NOT_MATCH",
+        Message = "Passwords do not match.",
+        StatusCode = 400
+    };
+
+    public static ResetPasswordResult InvalidPassword(IEnumerable<string> errors) => new()
+    {
+        Succeeded = false,
+        Code = "INVALID_PASSWORD",
+        Message = "Password does not meet the security requirements.",
+        Errors = errors,
+        StatusCode = 400
+    };
+
+    public static ResetPasswordResult ServerError(string message = "An error occurred while resetting the password. Please try again.") => new()
+    {
+        Succeeded = false,
+        Code = "SERVER_ERROR",
+        Message = message,
+        StatusCode = 500
+    };
 }

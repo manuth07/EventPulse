@@ -330,4 +330,307 @@ public class PasswordResetServiceTests
         Assert.Equal(400, result.StatusCode);
         Assert.Equal("INVALID_TOKEN", result.Code);
     }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ValidToken_SuccessfullyResetsPasswordAndConsumesToken()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "reset.success@example.com",
+            UserName = "reset.success@example.com",
+            IsActive = true
+        };
+        _dbContext.Users.Add(user);
+
+        var rawToken = _tokenService.GenerateRawToken();
+        var tokenHash = _tokenService.HashToken(rawToken);
+
+        var tokenRecord = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+            CreatedAt = DateTime.UtcNow,
+            UsedAt = null
+        };
+        _dbContext.PasswordResetTokens.Add(tokenRecord);
+        await _dbContext.SaveChangesAsync();
+
+        _userManagerMock.Setup(m => m.HasPasswordAsync(user)).ReturnsAsync(true);
+        _userManagerMock.Setup(m => m.RemovePasswordAsync(user)).ReturnsAsync(IdentityResult.Success);
+        _userManagerMock.Setup(m => m.AddPasswordAsync(user, "NewSecurePass123!")).ReturnsAsync(IdentityResult.Success);
+        _userManagerMock.Setup(m => m.UpdateSecurityStampAsync(user)).ReturnsAsync(IdentityResult.Success);
+
+        var request = new DTOs.ResetPasswordRequest
+        {
+            Token = rawToken,
+            NewPassword = "NewSecurePass123!",
+            ConfirmPassword = "NewSecurePass123!"
+        };
+
+        var result = await _sut.ResetPasswordAsync(request);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(200, result.StatusCode);
+
+        // Verify token was consumed
+        var consumedToken = await _dbContext.PasswordResetTokens.FindAsync(tokenRecord.Id);
+        Assert.NotNull(consumedToken);
+        Assert.True(consumedToken.IsUsed);
+        Assert.NotNull(consumedToken.UsedAt);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_PasswordActuallyChanged_OldPasswordRejectedAndNewPasswordAccepted()
+    {
+        var passwordHasher = new PasswordHasher<ApplicationUser>();
+        var oldPassword = "OldSecurePass123!";
+        var newPassword = "NewSecurePass456!";
+
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "password.change@example.com",
+            UserName = "password.change@example.com",
+            IsActive = true
+        };
+        user.PasswordHash = passwordHasher.HashPassword(user, oldPassword);
+        _dbContext.Users.Add(user);
+
+        var rawToken = _tokenService.GenerateRawToken();
+        var tokenHash = _tokenService.HashToken(rawToken);
+
+        var tokenRecord = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+            CreatedAt = DateTime.UtcNow,
+            UsedAt = null
+        };
+        _dbContext.PasswordResetTokens.Add(tokenRecord);
+        await _dbContext.SaveChangesAsync();
+
+        _userManagerMock.Setup(m => m.HasPasswordAsync(user)).ReturnsAsync(true);
+        _userManagerMock.Setup(m => m.RemovePasswordAsync(user)).ReturnsAsync(() =>
+        {
+            user.PasswordHash = null;
+            return IdentityResult.Success;
+        });
+        _userManagerMock.Setup(m => m.AddPasswordAsync(user, newPassword)).ReturnsAsync(() =>
+        {
+            user.PasswordHash = passwordHasher.HashPassword(user, newPassword);
+            return IdentityResult.Success;
+        });
+        _userManagerMock.Setup(m => m.CheckPasswordAsync(user, It.IsAny<string>())).ReturnsAsync((ApplicationUser u, string pwd) =>
+        {
+            if (u.PasswordHash == null) return false;
+            return passwordHasher.VerifyHashedPassword(u, u.PasswordHash, pwd) == PasswordVerificationResult.Success;
+        });
+
+        // Verify old password works before reset
+        Assert.True(await _userManagerMock.Object.CheckPasswordAsync(user, oldPassword));
+
+        var request = new DTOs.ResetPasswordRequest
+        {
+            Token = rawToken,
+            NewPassword = newPassword,
+            ConfirmPassword = newPassword
+        };
+
+        var result = await _sut.ResetPasswordAsync(request);
+
+        Assert.True(result.Succeeded);
+
+        // Verify old password no longer works
+        Assert.False(await _userManagerMock.Object.CheckPasswordAsync(user, oldPassword));
+
+        // Verify new password works
+        Assert.True(await _userManagerMock.Object.CheckPasswordAsync(user, newPassword));
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ReusedToken_ReturnsAlreadyUsedCode()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "reused.token@example.com",
+            UserName = "reused.token@example.com",
+            IsActive = true
+        };
+        _dbContext.Users.Add(user);
+
+        var rawToken = _tokenService.GenerateRawToken();
+        var tokenHash = _tokenService.HashToken(rawToken);
+
+        var tokenRecord = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+            CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+            UsedAt = DateTime.UtcNow.AddMinutes(-1) // Already consumed
+        };
+        _dbContext.PasswordResetTokens.Add(tokenRecord);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new DTOs.ResetPasswordRequest
+        {
+            Token = rawToken,
+            NewPassword = "NewSecurePass123!",
+            ConfirmPassword = "NewSecurePass123!"
+        };
+
+        var result = await _sut.ResetPasswordAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("TOKEN_ALREADY_USED", result.Code);
+        Assert.Contains("already been used", result.Message, StringComparison.OrdinalIgnoreCase);
+
+        _userManagerMock.Verify(m => m.AddPasswordAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ExpiredToken_ReturnsExpiredCode()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "expired.token@example.com",
+            UserName = "expired.token@example.com",
+            IsActive = true
+        };
+        _dbContext.Users.Add(user);
+
+        var rawToken = _tokenService.GenerateRawToken();
+        var tokenHash = _tokenService.HashToken(rawToken);
+
+        var tokenRecord = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(-5),
+            CreatedAt = DateTime.UtcNow.AddMinutes(-35),
+            UsedAt = null
+        };
+        _dbContext.PasswordResetTokens.Add(tokenRecord);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new DTOs.ResetPasswordRequest
+        {
+            Token = rawToken,
+            NewPassword = "NewSecurePass123!",
+            ConfirmPassword = "NewSecurePass123!"
+        };
+
+        var result = await _sut.ResetPasswordAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("EXPIRED_TOKEN", result.Code);
+        Assert.Contains("expired", result.Message, StringComparison.OrdinalIgnoreCase);
+
+        _userManagerMock.Verify(m => m.AddPasswordAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_InvalidToken_ReturnsInvalidTokenCode()
+    {
+        var request = new DTOs.ResetPasswordRequest
+        {
+            Token = "non-existent-token",
+            NewPassword = "NewSecurePass123!",
+            ConfirmPassword = "NewSecurePass123!"
+        };
+
+        var result = await _sut.ResetPasswordAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("INVALID_TOKEN", result.Code);
+
+        _userManagerMock.Verify(m => m.AddPasswordAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_WeakPassword_FailsValidationAndDoesNotConsumeToken()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "weak.password@example.com",
+            UserName = "weak.password@example.com",
+            IsActive = true
+        };
+        _dbContext.Users.Add(user);
+
+        var rawToken = _tokenService.GenerateRawToken();
+        var tokenHash = _tokenService.HashToken(rawToken);
+
+        var tokenRecord = new PasswordResetToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = tokenHash,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(30),
+            CreatedAt = DateTime.UtcNow,
+            UsedAt = null
+        };
+        _dbContext.PasswordResetTokens.Add(tokenRecord);
+        await _dbContext.SaveChangesAsync();
+
+        // Simulate password validator rejecting weak password
+        var mockValidator = new Mock<IPasswordValidator<ApplicationUser>>();
+        mockValidator
+            .Setup(v => v.ValidateAsync(It.IsAny<UserManager<ApplicationUser>>(), user, "weak"))
+            .ReturnsAsync(IdentityResult.Failed(new IdentityError { Description = "Password must require a non-alphanumeric character." }));
+
+        _userManagerMock.Object.PasswordValidators.Add(mockValidator.Object);
+
+        var request = new DTOs.ResetPasswordRequest
+        {
+            Token = rawToken,
+            NewPassword = "weak",
+            ConfirmPassword = "weak"
+        };
+
+        var result = await _sut.ResetPasswordAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("INVALID_PASSWORD", result.Code);
+        Assert.NotEmpty(result.Errors);
+
+        // Crucial security check: Token must NOT be consumed if password validation failed
+        var untouchedToken = await _dbContext.PasswordResetTokens.FindAsync(tokenRecord.Id);
+        Assert.NotNull(untouchedToken);
+        Assert.Null(untouchedToken.UsedAt);
+        Assert.False(untouchedToken.IsUsed);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_MismatchedConfirmPassword_ReturnsPasswordsDoNotMatch()
+    {
+        var request = new DTOs.ResetPasswordRequest
+        {
+            Token = "some-token",
+            NewPassword = "SecurePassword123!",
+            ConfirmPassword = "DifferentPassword456!"
+        };
+
+        var result = await _sut.ResetPasswordAsync(request);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal("PASSWORDS_DO_NOT_MATCH", result.Code);
+
+        _userManagerMock.Verify(m => m.AddPasswordAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>()), Times.Never);
+    }
 }

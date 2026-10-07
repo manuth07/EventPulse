@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using EventPulse.IdentityService.Data;
 using EventPulse.IdentityService.Models;
 using EventPulse.IdentityService.Security;
@@ -150,5 +151,162 @@ public class PasswordResetService : IPasswordResetService
 
         // Token is valid and NOT consumed. UsedAt remains null.
         return ValidateResetTokenResult.Valid();
+    }
+
+    public async Task<ResetPasswordResult> ResetPasswordAsync(DTOs.ResetPasswordRequest request)
+    {
+        if (request == null)
+        {
+            return ResetPasswordResult.InvalidToken();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Token))
+        {
+            return ResetPasswordResult.InvalidToken("Reset token is required.");
+        }
+
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            return ResetPasswordResult.PasswordsDoNotMatch();
+        }
+
+        var tokenHash = _tokenService.HashToken(request.Token.Trim());
+
+        var tokenRecord = await _dbContext.PasswordResetTokens
+            .Include(t => t.User)
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+
+        if (tokenRecord == null)
+        {
+            _logger.LogWarning("Password reset completion rejected: token record not found.");
+            return ResetPasswordResult.InvalidToken();
+        }
+
+        if (tokenRecord.IsUsed)
+        {
+            _logger.LogWarning("Password reset completion rejected: token already consumed.");
+            return ResetPasswordResult.AlreadyUsed();
+        }
+
+        var now = DateTime.UtcNow;
+        if (tokenRecord.IsExpired(now))
+        {
+            _logger.LogWarning("Password reset completion rejected: token expired.");
+            return ResetPasswordResult.Expired();
+        }
+
+        if (!_tokenService.ValidateTokenHash(request.Token.Trim(), tokenRecord.TokenHash))
+        {
+            _logger.LogWarning("Password reset completion rejected: cryptographic hash mismatch.");
+            return ResetPasswordResult.InvalidToken();
+        }
+
+        var user = tokenRecord.User;
+        if (user == null || !user.IsActive)
+        {
+            _logger.LogWarning("Password reset completion rejected: user inactive or missing.");
+            return ResetPasswordResult.InvalidToken();
+        }
+
+        // Validate password against configured Identity password policy rules
+        var policyErrors = new List<string>();
+        foreach (var validator in _userManager.PasswordValidators)
+        {
+            var valResult = await validator.ValidateAsync(_userManager, user, request.NewPassword);
+            if (!valResult.Succeeded)
+            {
+                policyErrors.AddRange(valResult.Errors.Select(e => e.Description));
+            }
+        }
+
+        if (policyErrors.Count > 0)
+        {
+            _logger.LogWarning("Password reset rejected for user {UserId}: password policy check failed.", user.Id);
+            return ResetPasswordResult.InvalidPassword(policyErrors);
+        }
+
+        IDbContextTransaction? transaction = null;
+        if (_dbContext.Database.IsRelational())
+        {
+            transaction = await _dbContext.Database.BeginTransactionAsync();
+        }
+
+        try
+        {
+            // Consume the single-use token
+            tokenRecord.MarkAsUsed(now);
+
+            // Invalidate any other active reset tokens for this user
+            var otherActiveTokens = await _dbContext.PasswordResetTokens
+                .Where(t => t.UserId == user.Id && t.Id != tokenRecord.Id && t.UsedAt == null && t.ExpiresAt > now)
+                .ToListAsync();
+
+            foreach (var other in otherActiveTokens)
+            {
+                other.ExpiresAt = now;
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            // Update user password using ASP.NET Core Identity
+            if (await _userManager.HasPasswordAsync(user))
+            {
+                var removeResult = await _userManager.RemovePasswordAsync(user);
+                if (!removeResult.Succeeded)
+                {
+                    if (transaction != null) await transaction.RollbackAsync();
+                    tokenRecord.UsedAt = null;
+                    await _dbContext.SaveChangesAsync();
+
+                    var errors = removeResult.Errors.Select(e => e.Description);
+                    _logger.LogError("Failed to remove old password for user {UserId}.", user.Id);
+                    return ResetPasswordResult.ServerError();
+                }
+            }
+
+            var addResult = await _userManager.AddPasswordAsync(user, request.NewPassword);
+            if (!addResult.Succeeded)
+            {
+                if (transaction != null) await transaction.RollbackAsync();
+                tokenRecord.UsedAt = null;
+                await _dbContext.SaveChangesAsync();
+
+                var errors = addResult.Errors.Select(e => e.Description).ToList();
+                _logger.LogError("Failed to add new password for user {UserId}.", user.Id);
+                return ResetPasswordResult.InvalidPassword(errors);
+            }
+
+            await _userManager.UpdateSecurityStampAsync(user);
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync();
+            }
+
+            _logger.LogInformation("Password reset successfully completed for user {UserId}.", user.Id);
+            return ResetPasswordResult.Success();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (transaction != null) await transaction.RollbackAsync();
+            _logger.LogWarning("Concurrency conflict detected while consuming password reset token for user {UserId}.", user.Id);
+            return ResetPasswordResult.AlreadyUsed();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already been used"))
+        {
+            if (transaction != null) await transaction.RollbackAsync();
+            _logger.LogWarning("Token already consumed: {Message}", ex.Message);
+            return ResetPasswordResult.AlreadyUsed();
+        }
+        catch (Exception ex)
+        {
+            if (transaction != null) await transaction.RollbackAsync();
+            _logger.LogError(ex, "Unexpected error completing password reset for user {UserId}.", user.Id);
+            return ResetPasswordResult.ServerError();
+        }
+        finally
+        {
+            transaction?.Dispose();
+        }
     }
 }

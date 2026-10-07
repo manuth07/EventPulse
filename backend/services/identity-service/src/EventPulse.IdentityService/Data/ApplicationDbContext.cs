@@ -91,6 +91,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(t => t.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+            entity.Property(t => t.UsedAt)
+                .IsConcurrencyToken();
+
             entity.HasOne(t => t.User)
                 .WithMany(u => u.PasswordResetTokens)
                 .HasForeignKey(t => t.UserId)
