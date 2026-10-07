@@ -4,6 +4,7 @@ using EventPulse.Contracts.Kafka;
 using EventPulse.EventService;
 using EventPulse.EventService.Configuration;
 using EventPulse.EventService.Data;
+using EventPulse.EventService.Consumers;
 using EventPulse.EventService.Services;
 using EventPulse.EventService.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -101,7 +102,11 @@ builder.Services.AddSingleton<IEventImageStorage, AzureBlobEventImageStorage>();
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
 builder.Services.AddScoped<IEventOutboxWriter, EventOutboxWriter>();
 builder.Services.AddSingleton<IKafkaMessageProducer, KafkaMessageProducer>();
+builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
+builder.Services.AddScoped<IEventSubmittedNotificationHandler, LoggingEventSubmittedNotificationHandler>();
+builder.Services.AddScoped<IKafkaEventSubmittedDispatcher, KafkaEventSubmittedDispatcher>();
 builder.Services.AddHostedService<EventOutboxPublisherService>();
+builder.Services.AddHostedService<KafkaEventSubmittedConsumer>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

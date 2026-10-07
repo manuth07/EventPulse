@@ -9,6 +9,7 @@ public static class KafkaTopics
     public const string BookingRefundRequested = "booking-refund-requested";
     public const string PaymentRefunded = "payment-refunded";
     public const string EventSubmitted = "event-submitted";
+    public const string EventSubmittedDlq = "event-submitted-dlq";
 
     public static string GetDeadLetterTopic(string originalTopic) => $"{originalTopic}-dlq";
 }

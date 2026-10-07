@@ -14,6 +14,7 @@ public class EventDbContext : DbContext
     public DbSet<EventUpdateRequest> EventUpdateRequests => Set<EventUpdateRequest>();
     public DbSet<EventCancellationRequest> EventCancellationRequests => Set<EventCancellationRequest>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<ProcessedIntegrationEvent> ProcessedIntegrationEvents => Set<ProcessedIntegrationEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -247,6 +248,22 @@ public class EventDbContext : DbContext
             entity.HasIndex(o => o.CreatedAtUtc)
                 .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc_Unpublished")
                 .HasFilter("\"PublishedAtUtc\" IS NULL");
+        });
+
+        modelBuilder.Entity<ProcessedIntegrationEvent>(entity =>
+        {
+            entity.HasKey(e => e.EventId);
+
+            entity.Property(e => e.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.ProcessedAtUtc)
+                .IsRequired();
         });
     }
 }
