@@ -1,8 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getCurrentUserProfile, updateUserEmail, updateUserPhone } from '../../services/userService';
+import {
+  getCurrentUserProfile,
+  updateUserEmail,
+  updateUserPhone,
+  changeUserPassword,
+  uploadUserAvatar,
+  removeUserAvatar,
+} from '../../services/userService';
+import { getMyBookings } from '../../services/bookingService';
+import { checkPasswordRules } from '../../utils/resetPasswordValidation';
 import {
   User,
   Mail,
@@ -13,6 +22,7 @@ import {
   AlertTriangle,
   RotateCcw,
   Camera,
+  Trash2,
   KeyRound,
   Ticket,
   ChevronRight,
@@ -20,6 +30,13 @@ import {
   Check,
   X,
   Edit2,
+  Eye,
+  EyeOff,
+  Upload,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  ArrowRight,
 } from 'lucide-react';
 
 function getRoleBadgeConfig(role) {
@@ -64,6 +81,57 @@ function formatDate(dateString) {
   }
 }
 
+function formatEventDate(dateString) {
+  if (!dateString) return null;
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return String(dateString);
+    const day = d.getDate();
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+  } catch {
+    return String(dateString);
+  }
+}
+
+function getBookingStatusBadgeConfig(status) {
+  switch (status?.toLowerCase()) {
+    case 'confirmed':
+      return {
+        label: 'Confirmed',
+        bg: '#ECFDF5',
+        color: '#065F46',
+        border: '#A7F3D0',
+        icon: CheckCircle2,
+      };
+    case 'pendingpayment':
+      return {
+        label: 'Pending Payment',
+        bg: '#FFFBEB',
+        color: '#92400E',
+        border: '#FDE68A',
+        icon: Clock,
+      };
+    case 'cancelled':
+      return {
+        label: 'Cancelled',
+        bg: '#FEF2F2',
+        color: '#991B1B',
+        border: '#FECACA',
+        icon: XCircle,
+      };
+    default:
+      return {
+        label: status || 'Unknown',
+        bg: '#F3F4F6',
+        color: '#374151',
+        border: '#E5E7EB',
+        icon: Clock,
+      };
+  }
+}
+
 export function ProfilePage() {
   const { accessToken } = useAuth();
   const navigate = useNavigate();
@@ -85,6 +153,28 @@ export function ProfilePage() {
   const [phoneSubmitting, setPhoneSubmitting] = useState(false);
   const [phoneError, setPhoneError] = useState(null);
 
+  // Profile Picture (Phase 3) State
+  const fileInputRef = useRef(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarRemoving, setAvatarRemoving] = useState(false);
+  const [avatarError, setAvatarError] = useState(null);
+
+  // Change Password Modal (Phase 4) State
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordError, setPasswordError] = useState(null);
+
+  // Recent Bookings (Phase 5/6) State
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState(null);
+  const [recentBookings, setRecentBookings] = useState([]);
+
   const fetchProfile = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -104,9 +194,30 @@ export function ProfilePage() {
     }
   }, [accessToken]);
 
+  const fetchRecentBookings = useCallback(async () => {
+    setBookingsLoading(true);
+    setBookingsError(null);
+    try {
+      // Fetch the customer's top 5 most recent bookings via existing Booking Service endpoint
+      const res = await getMyBookings(1, 5, 'All', accessToken);
+      setRecentBookings(res?.items || []);
+    } catch (err) {
+      console.error('Failed to load recent bookings:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Unable to load recent bookings.';
+      setBookingsError(msg);
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, [accessToken]);
+
   useEffect(() => {
     fetchProfile();
-  }, [fetchProfile]);
+    fetchRecentBookings();
+  }, [fetchProfile, fetchRecentBookings]);
 
   const handleOpenEmailModal = () => {
     setNewEmail(profile?.email || '');
@@ -200,7 +311,149 @@ export function ProfilePage() {
     }
   };
 
+  // Avatar Upload / Remove Handlers (Phase 3)
+  const handleTriggerAvatarUpload = () => {
+    setAvatarError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleAvatarFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate client-side
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type.toLowerCase())) {
+      setAvatarError('Only JPEG, PNG, or WebP image files are allowed.');
+      return;
+    }
+
+    const maxBytes = 2 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setAvatarError('Image file size must not exceed 2MB.');
+      return;
+    }
+
+    setAvatarUploading(true);
+    setAvatarError(null);
+
+    try {
+      const res = await uploadUserAvatar(file, accessToken);
+      setProfile((prev) => (prev ? { ...prev, profilePictureUrl: res.profilePictureUrl } : null));
+      setToastMessage(res.message || 'Profile picture updated successfully.');
+    } catch (err) {
+      console.error('Failed to upload avatar:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to upload profile picture. Please try again.';
+      setAvatarError(msg);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (avatarRemoving || !profile?.profilePictureUrl) return;
+
+    setAvatarRemoving(true);
+    setAvatarError(null);
+
+    try {
+      const res = await removeUserAvatar(accessToken);
+      setProfile((prev) => (prev ? { ...prev, profilePictureUrl: null } : null));
+      setToastMessage(res.message || 'Profile picture removed.');
+    } catch (err) {
+      console.error('Failed to remove avatar:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to remove profile picture.';
+      setAvatarError(msg);
+    } finally {
+      setAvatarRemoving(false);
+    }
+  };
+
+  // Change Password Handlers (Phase 4)
+  const handleOpenPasswordModal = () => {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setPasswordError(null);
+    setPasswordModalOpen(true);
+  };
+
+  const handleClosePasswordModal = () => {
+    if (passwordSubmitting) return;
+    setPasswordModalOpen(false);
+    setPasswordError(null);
+  };
+
+  const handleSubmitPassword = async (e) => {
+    e.preventDefault();
+
+    if (profile?.hasPassword && !currentPassword) {
+      setPasswordError('Please provide your current password.');
+      return;
+    }
+
+    if (!newPassword) {
+      setPasswordError('Please enter a new password.');
+      return;
+    }
+
+    const rules = checkPasswordRules(newPassword);
+    if (!rules.allMet) {
+      setPasswordError('Your new password does not meet the complexity requirements.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New password and confirm password do not match.');
+      return;
+    }
+
+    setPasswordSubmitting(true);
+    setPasswordError(null);
+
+    try {
+      const res = await changeUserPassword(
+        {
+          currentPassword: profile?.hasPassword ? currentPassword : null,
+          newPassword,
+          confirmPassword,
+        },
+        accessToken
+      );
+
+      // Once successfully set, user now has password
+      setProfile((prev) => (prev ? { ...prev, hasPassword: true } : null));
+      setToastMessage(res.message || 'Password updated successfully.');
+      setPasswordModalOpen(false);
+    } catch (err) {
+      console.error('Failed to change password:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to update password. Please check your current password.';
+      setPasswordError(msg);
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  };
+
   const roleConfig = profile ? getRoleBadgeConfig(profile.role) : null;
+  const passwordRules = checkPasswordRules(newPassword);
 
   return (
     <Layout>
@@ -377,30 +630,130 @@ export function ProfilePage() {
                   flexWrap: 'wrap',
                 }}
               >
-                {/* Avatar Display */}
+                {/* Avatar Display & Actions (Phase 3) */}
                 <div style={{ position: 'relative' }}>
-                  <div
-                    data-testid="profile-avatar"
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    data-testid="profile-avatar-file-input"
+                    style={{ display: 'none' }}
+                    onChange={handleAvatarFileChange}
+                  />
+
+                  {profile.profilePictureUrl ? (
+                    <img
+                      data-testid="profile-avatar-img"
+                      src={profile.profilePictureUrl}
+                      alt={`${profile.firstName} ${profile.lastName}`}
+                      style={{
+                        width: '96px',
+                        height: '96px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: '3px solid #ffffff',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                        display: 'block',
+                      }}
+                    />
+                  ) : (
+                    <div
+                      data-testid="profile-avatar"
+                      style={{
+                        width: '96px',
+                        height: '96px',
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--ep-soft-accent)',
+                        color: 'var(--ep-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '36px',
+                        fontWeight: 800,
+                        fontFamily: 'var(--ep-font-heading)',
+                        border: '3px solid #ffffff',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                      }}
+                    >
+                      {profile.firstName
+                        ? `${profile.firstName.charAt(0)}${profile.lastName ? profile.lastName.charAt(0) : ''}`
+                        : 'U'}
+                    </div>
+                  )}
+
+                  {/* Avatar Upload Button */}
+                  <button
+                    type="button"
+                    data-testid="upload-avatar-btn"
+                    onClick={handleTriggerAvatarUpload}
+                    disabled={avatarUploading || avatarRemoving}
+                    title="Change profile picture"
+                    aria-label="Change profile picture"
                     style={{
-                      width: '96px',
-                      height: '96px',
+                      position: 'absolute',
+                      bottom: 0,
+                      right: 0,
+                      width: '32px',
+                      height: '32px',
                       borderRadius: '50%',
-                      backgroundColor: 'var(--ep-soft-accent)',
-                      color: 'var(--ep-primary)',
+                      backgroundColor: 'var(--ep-primary)',
+                      color: '#ffffff',
+                      border: '2px solid #ffffff',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '36px',
-                      fontWeight: 800,
-                      fontFamily: 'var(--ep-font-heading)',
-                      border: '3px solid #ffffff',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                      cursor: avatarUploading || avatarRemoving ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
+                      transition: 'var(--ep-transition)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!avatarUploading && !avatarRemoving) e.currentTarget.style.backgroundColor = 'var(--ep-primary-hover)';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!avatarUploading && !avatarRemoving) e.currentTarget.style.backgroundColor = 'var(--ep-primary)';
                     }}
                   >
-                    {profile.firstName
-                      ? `${profile.firstName.charAt(0)}${profile.lastName ? profile.lastName.charAt(0) : ''}`
-                      : 'U'}
-                  </div>
+                    {avatarUploading ? (
+                      <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                    ) : (
+                      <Camera size={15} />
+                    )}
+                  </button>
+
+                  {/* Avatar Remove Button (if picture exists) */}
+                  {profile.profilePictureUrl && (
+                    <button
+                      type="button"
+                      data-testid="remove-avatar-btn"
+                      onClick={handleRemoveAvatar}
+                      disabled={avatarUploading || avatarRemoving}
+                      title="Remove profile picture"
+                      aria-label="Remove profile picture"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        backgroundColor: '#FEF2F2',
+                        color: 'var(--ep-danger)',
+                        border: '2px solid #ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: avatarUploading || avatarRemoving ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
+                        transition: 'var(--ep-transition)',
+                      }}
+                    >
+                      {avatarRemoving ? (
+                        <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <Trash2 size={13} />
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {/* Identity Info & Authoritative Role Badge */}
@@ -701,27 +1054,32 @@ export function ProfilePage() {
                     <button
                       type="button"
                       data-testid="change-password-btn"
-                      disabled
-                      title="Coming in Phase 4"
+                      onClick={handleOpenPasswordModal}
                       style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
                         padding: '8px 16px',
                         borderRadius: 'var(--ep-radius-btn)',
                         fontSize: '13px',
                         fontWeight: 600,
                         backgroundColor: '#ffffff',
-                        color: 'var(--ep-text-secondary)',
+                        color: 'var(--ep-primary)',
                         border: '1px solid var(--ep-border)',
-                        cursor: 'not-allowed',
-                        opacity: 0.8,
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
                       }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
                     >
-                      {profile.hasPassword ? 'Change Password' : 'Set Password'}
+                      <KeyRound size={14} />
+                      <span>{profile.hasPassword ? 'Change Password' : 'Set Password'}</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Section 3: My Ticket Purchases Quick Access */}
+              {/* Section 3: Ticket Purchases & History (EP-26 Phase 5 & 6) */}
               <div
                 data-testid="profile-ticket-purchases-card"
                 style={{
@@ -730,63 +1088,268 @@ export function ProfilePage() {
                   border: '1px solid var(--ep-border)',
                   padding: '24px 28px',
                   boxShadow: 'var(--ep-shadow-card)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '16px',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    marginBottom: '20px',
+                    paddingBottom: '14px',
+                    borderBottom: '1px solid var(--ep-border)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '10px',
+                        backgroundColor: 'var(--ep-soft-accent)',
+                        color: 'var(--ep-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ticket size={20} />
+                    </div>
+                    <div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: '18px',
+                          fontWeight: 700,
+                          color: 'var(--ep-text-primary)',
+                          fontFamily: 'var(--ep-font-heading)',
+                        }}
+                      >
+                        Recent Ticket Purchases
+                      </h3>
+                      <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                        Review your recent bookings and tickets (owned authoritatively by Booking Service).
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    data-testid="view-all-tickets-btn"
+                    onClick={() => navigate('/my-bookings')}
                     style={{
-                      width: '42px',
-                      height: '42px',
-                      borderRadius: '10px',
-                      backgroundColor: 'var(--ep-soft-accent)',
-                      color: 'var(--ep-primary)',
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      backgroundColor: '#ffffff',
+                      color: 'var(--ep-primary)',
+                      border: '1px solid var(--ep-border)',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'var(--ep-transition)',
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
                   >
-                    <Ticket size={22} />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
-                      My Ticket Purchases
-                    </h3>
-                    <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
-                      View all ticket bookings, payment status, and digital admission passes.
-                    </p>
-                  </div>
+                    <span>View All Booked Tickets</span>
+                    <ChevronRight size={14} />
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  data-testid="view-all-tickets-btn"
-                  onClick={() => navigate('/my-bookings')}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 18px',
-                    backgroundColor: 'var(--ep-primary)',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: 'var(--ep-radius-btn)',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(255, 91, 0, 0.25)',
-                    transition: 'var(--ep-transition)',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-primary-hover)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-primary)')}
-                >
-                  <span>View Booked Tickets</span>
-                  <ChevronRight size={15} />
-                </button>
+                {/* Sub-State: Loading Bookings */}
+                {bookingsLoading && (
+                  <div
+                    data-testid="profile-bookings-loading"
+                    style={{
+                      padding: '32px 16px',
+                      textAlign: 'center',
+                      color: 'var(--ep-text-secondary)',
+                      fontSize: '14px',
+                    }}
+                  >
+                    <Loader2 size={22} style={{ animation: 'spin 1s linear infinite', color: 'var(--ep-primary)', margin: '0 auto 8px' }} />
+                    <div>Loading ticket purchase history...</div>
+                  </div>
+                )}
+
+                {/* Sub-State: Error Bookings */}
+                {!bookingsLoading && bookingsError && (
+                  <div
+                    data-testid="profile-bookings-error"
+                    style={{
+                      padding: '16px',
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991B1B', fontSize: '13px' }}>
+                      <AlertTriangle size={16} />
+                      <span>{bookingsError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={fetchRecentBookings}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #FECACA',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#991B1B',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {/* Sub-State: Empty Bookings */}
+                {!bookingsLoading && !bookingsError && recentBookings.length === 0 && (
+                  <div
+                    data-testid="profile-bookings-empty"
+                    style={{
+                      padding: '36px 16px',
+                      textAlign: 'center',
+                      backgroundColor: 'var(--ep-canvas)',
+                      borderRadius: '8px',
+                    }}
+                  >
+                    <Ticket size={28} style={{ color: 'var(--ep-text-secondary)', margin: '0 auto 10px', opacity: 0.6 }} />
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '4px' }}>
+                      You haven&apos;t purchased any tickets yet.
+                    </div>
+                    <p style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', margin: '0 0 16px' }}>
+                      Browse popular events and secure your admission passes today.
+                    </p>
+                    <button
+                      type="button"
+                      data-testid="explore-events-btn"
+                      onClick={() => navigate('/')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 18px',
+                        backgroundColor: 'var(--ep-primary)',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 'var(--ep-radius-btn)',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 6px rgba(255, 91, 0, 0.25)',
+                      }}
+                    >
+                      <span>Explore Events</span>
+                      <ArrowRight size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Sub-State: Recent Bookings List */}
+                {!bookingsLoading && !bookingsError && recentBookings.length > 0 && (
+                  <div data-testid="profile-recent-bookings-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {recentBookings.map((booking) => {
+                      const statusCfg = getBookingStatusBadgeConfig(booking.status);
+                      const StatusIcon = statusCfg.icon;
+
+                      return (
+                        <div
+                          key={booking.id}
+                          data-testid={`profile-booking-item-${booking.bookingReference}`}
+                          onClick={() => navigate(`/my-bookings/${booking.id}`)}
+                          style={{
+                            padding: '14px 16px',
+                            backgroundColor: 'var(--ep-canvas)',
+                            borderRadius: '8px',
+                            border: '1px solid var(--ep-border)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            cursor: 'pointer',
+                            transition: 'var(--ep-transition)',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
+                        >
+                          <div style={{ flex: 1, minWidth: '220px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                                {booking.eventName || booking.eventTitle || 'Event Admission'}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontFamily: 'monospace',
+                                  padding: '2px 6px',
+                                  backgroundColor: '#ffffff',
+                                  border: '1px solid var(--ep-border)',
+                                  borderRadius: '4px',
+                                  color: 'var(--ep-text-secondary)',
+                                }}
+                              >
+                                {booking.bookingReference}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
+                              {booking.eventDate && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Calendar size={12} color="var(--ep-primary)" />
+                                  <span>{formatEventDate(booking.eventDate)}</span>
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Ticket size={12} />
+                                <span>
+                                  {booking.items && booking.items.length > 0
+                                    ? booking.items.map((i) => `${i.ticketName} (${i.quantity})`).join(', ')
+                                    : `${booking.totalTickets} tickets`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '4px 10px',
+                                borderRadius: 'var(--ep-radius-pill)',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                backgroundColor: statusCfg.bg,
+                                color: statusCfg.color,
+                                border: `1px solid ${statusCfg.border}`,
+                              }}
+                            >
+                              <StatusIcon size={13} />
+                              <span>{statusCfg.label}</span>
+                            </div>
+
+                            <ChevronRight size={16} color="var(--ep-text-secondary)" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1057,6 +1620,298 @@ export function ProfilePage() {
                       </>
                     ) : (
                       <span>Save Phone</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== CHANGE PASSWORD MODAL ==================== */}
+        {passwordModalOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '16px',
+            }}
+          >
+            <div
+              data-testid="change-password-modal"
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: 'var(--ep-radius-card)',
+                width: '100%',
+                maxWidth: '480px',
+                padding: '28px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                    {profile?.hasPassword ? 'Change Password' : 'Set Account Password'}
+                  </h3>
+                  <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--ep-text-secondary)' }}>
+                    {profile?.hasPassword
+                      ? 'Enter your current password and choose a new secure password.'
+                      : 'Create a password for your account to enable standard email/password login.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClosePasswordModal}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ep-text-secondary)' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {passwordError && (
+                <div
+                  data-testid="change-password-error"
+                  style={{
+                    padding: '10px 14px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: '6px',
+                    color: '#991B1B',
+                    fontSize: '13px',
+                    marginBottom: '18px',
+                  }}
+                >
+                  {passwordError}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmitPassword}>
+                {/* Current Password Field (Only if user already has a password) */}
+                {profile?.hasPassword && (
+                  <div style={{ marginBottom: '18px' }}>
+                    <label
+                      htmlFor="current-password-input"
+                      style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}
+                    >
+                      Current Password
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        id="current-password-input"
+                        data-testid="current-password-input"
+                        type={showCurrentPassword ? 'text' : 'password'}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        required
+                        style={{
+                          width: '100%',
+                          padding: '10px 40px 10px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--ep-border)',
+                          fontSize: '14px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPassword((prev) => !prev)}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--ep-text-secondary)',
+                          padding: '4px',
+                        }}
+                      >
+                        {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* New Password Field */}
+                <div style={{ marginBottom: '18px' }}>
+                  <label
+                    htmlFor="new-password-input"
+                    style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}
+                  >
+                    New Password
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      id="new-password-input"
+                      data-testid="new-password-input"
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '10px 40px 10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--ep-border)',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((prev) => !prev)}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--ep-text-secondary)',
+                        padding: '4px',
+                      }}
+                    >
+                      {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+
+                  {/* Password Requirements Checklist */}
+                  <div
+                    data-testid="password-rules-checklist"
+                    style={{
+                      marginTop: '10px',
+                      padding: '10px 12px',
+                      backgroundColor: 'var(--ep-canvas)',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--ep-text-secondary)' }}>
+                      Password must meet:
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+                      <div style={{ color: passwordRules.minLength ? '#059669' : 'var(--ep-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>{passwordRules.minLength ? '✓' : '•'}</span> At least 8 characters
+                      </div>
+                      <div style={{ color: passwordRules.uppercase ? '#059669' : 'var(--ep-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>{passwordRules.uppercase ? '✓' : '•'}</span> One uppercase letter
+                      </div>
+                      <div style={{ color: passwordRules.lowercase ? '#059669' : 'var(--ep-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>{passwordRules.lowercase ? '✓' : '•'}</span> One lowercase letter
+                      </div>
+                      <div style={{ color: passwordRules.number ? '#059669' : 'var(--ep-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>{passwordRules.number ? '✓' : '•'}</span> One number
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Confirm Password Field */}
+                <div style={{ marginBottom: '24px' }}>
+                  <label
+                    htmlFor="confirm-password-input"
+                    style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}
+                  >
+                    Confirm New Password
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      id="confirm-password-input"
+                      data-testid="confirm-password-input"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '10px 40px 10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--ep-border)',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--ep-text-secondary)',
+                        padding: '4px',
+                      }}
+                    >
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  {confirmPassword && newPassword !== confirmPassword && (
+                    <div style={{ fontSize: '12px', color: '#DC2626', marginTop: '4px' }}>
+                      Passwords do not match.
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={handleClosePasswordModal}
+                    disabled={passwordSubmitting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid var(--ep-border)',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      color: 'var(--ep-text-primary)',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    data-testid="save-password-btn"
+                    disabled={passwordSubmitting || !passwordRules.allMet || newPassword !== confirmPassword}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 18px',
+                      backgroundColor: 'var(--ep-primary)',
+                      border: 'none',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: passwordSubmitting || !passwordRules.allMet || newPassword !== confirmPassword ? 'not-allowed' : 'pointer',
+                      color: '#ffffff',
+                      opacity: passwordSubmitting || !passwordRules.allMet || newPassword !== confirmPassword ? 0.6 : 1,
+                    }}
+                  >
+                    {passwordSubmitting ? (
+                      <>
+                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                        <span>Updating...</span>
+                      </>
+                    ) : (
+                      <span>Update Password</span>
                     )}
                   </button>
                 </div>

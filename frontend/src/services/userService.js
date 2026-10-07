@@ -41,8 +41,56 @@ export async function updateUserPhone(newPhoneNumber, token) {
   return apiClient.put('/api/users/me/phone', { newPhoneNumber }, { headers });
 }
 
+/**
+ * Change or add password for authenticated user (EP-26 Phase 4).
+ *
+ * @param {{ currentPassword?: string, newPassword: string, confirmPassword: string }} payload
+ * @param {string} [token] - Optional JWT token override.
+ * @returns {Promise<{ message: string }>}
+ */
+export async function changeUserPassword(payload, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.post('/api/users/me/change-password', payload, { headers });
+}
+
+/**
+ * Upload profile avatar image (EP-26 Phase 3).
+ *
+ * @param {File} file - Image file (JPEG, PNG, WebP, max 2MB).
+ * @param {string} [token] - Optional JWT token override.
+ * @returns {Promise<{ profilePictureUrl: string, message: string }>}
+ */
+export async function uploadUserAvatar(file, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  const formData = new FormData();
+  formData.append('avatar', file);
+
+  return apiClient.post('/api/users/me/avatar', formData, { headers });
+}
+
+/**
+ * Remove profile avatar image (EP-26 Phase 3).
+ *
+ * @param {string} [token] - Optional JWT token override.
+ * @returns {Promise<{ message: string }>}
+ */
+export async function removeUserAvatar(token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.delete('/api/users/me/avatar', { headers });
+}
+
 export default {
   getCurrentUserProfile,
   updateUserEmail,
   updateUserPhone,
+  changeUserPassword,
+  uploadUserAvatar,
+  removeUserAvatar,
 };
+
