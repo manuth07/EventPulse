@@ -18,6 +18,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
     public DbSet<OrganizerApplication> OrganizerApplications => Set<OrganizerApplication>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -70,6 +71,39 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
             // Index to support active-code lookup by user + expiry
             entity.HasIndex(e => new { e.UserId, e.ExpiresAt });
+        });
+
+        // -----------------------------------------------------------------------
+        // PasswordResetToken
+        // -----------------------------------------------------------------------
+        builder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.ToTable("PasswordResetTokens");
+            entity.HasKey(t => t.Id);
+
+            entity.Property(t => t.TokenHash)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(t => t.ExpiresAt)
+                .IsRequired();
+
+            entity.Property(t => t.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(t => t.User)
+                .WithMany(u => u.PasswordResetTokens)
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Index to quickly find all reset tokens for a given user
+            entity.HasIndex(t => t.UserId);
+
+            // Index to look up a token by hash
+            entity.HasIndex(t => t.TokenHash);
+
+            // Composite index to support active token lookup by user + expiry
+            entity.HasIndex(t => new { t.UserId, t.ExpiresAt });
         });
 
         // -----------------------------------------------------------------------
