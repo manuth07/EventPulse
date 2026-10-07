@@ -72,4 +72,64 @@ public class UsersController : ControllerBase
 
         return Ok(result.Response);
     }
+
+    /// <summary>
+    /// PUT /api/users/me/email
+    /// Protected endpoint — updates the authenticated user's email address.
+    /// User identity is derived strictly from the authenticated JWT claims.
+    /// </summary>
+    [HttpPut("me/email")]
+    public async Task<IActionResult> UpdateEmail([FromBody] UpdateEmailRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        var result = await _profileService.UpdateEmailAsync(userId, request.NewEmail);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
+
+    /// <summary>
+    /// PUT /api/users/me/phone
+    /// Protected endpoint — updates the authenticated user's phone number.
+    /// User identity is derived strictly from the authenticated JWT claims.
+    /// </summary>
+    [HttpPut("me/phone")]
+    public async Task<IActionResult> UpdatePhone([FromBody] UpdatePhoneRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        var result = await _profileService.UpdatePhoneAsync(userId, request.NewPhoneNumber);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
 }

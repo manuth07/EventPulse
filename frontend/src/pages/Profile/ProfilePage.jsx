@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getCurrentUserProfile } from '../../services/userService';
+import { getCurrentUserProfile, updateUserEmail, updateUserPhone } from '../../services/userService';
 import {
   User,
   Mail,
@@ -17,6 +17,9 @@ import {
   Ticket,
   ChevronRight,
   ShieldCheck,
+  Check,
+  X,
+  Edit2,
 } from 'lucide-react';
 
 function getRoleBadgeConfig(role) {
@@ -68,6 +71,19 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Edit Email Modal / Inline State
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
+  const [emailError, setEmailError] = useState(null);
+
+  // Edit Phone Modal / Inline State
+  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
+  const [newPhone, setNewPhone] = useState('');
+  const [phoneSubmitting, setPhoneSubmitting] = useState(false);
+  const [phoneError, setPhoneError] = useState(null);
 
   const fetchProfile = useCallback(async () => {
     setLoading(true);
@@ -92,6 +108,98 @@ export function ProfilePage() {
     fetchProfile();
   }, [fetchProfile]);
 
+  const handleOpenEmailModal = () => {
+    setNewEmail(profile?.email || '');
+    setEmailError(null);
+    setEmailModalOpen(true);
+  };
+
+  const handleCloseEmailModal = () => {
+    if (emailSubmitting) return;
+    setEmailModalOpen(false);
+    setEmailError(null);
+  };
+
+  const handleSubmitEmail = async (e) => {
+    e.preventDefault();
+    const trimmed = newEmail.trim();
+
+    if (!trimmed) {
+      setEmailError('Email address is required.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError('Please enter a valid email address.');
+      return;
+    }
+
+    setEmailSubmitting(true);
+    setEmailError(null);
+
+    try {
+      const res = await updateUserEmail(trimmed, accessToken);
+      setProfile((prev) => (prev ? { ...prev, email: res.email || trimmed } : null));
+      setToastMessage(res.message || 'Email address updated successfully.');
+      setEmailModalOpen(false);
+    } catch (err) {
+      console.error('Failed to update email:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to update email address. Please try again.';
+      setEmailError(msg);
+    } finally {
+      setEmailSubmitting(false);
+    }
+  };
+
+  const handleOpenPhoneModal = () => {
+    setNewPhone(profile?.phoneNumber || '');
+    setPhoneError(null);
+    setPhoneModalOpen(true);
+  };
+
+  const handleClosePhoneModal = () => {
+    if (phoneSubmitting) return;
+    setPhoneModalOpen(false);
+    setPhoneError(null);
+  };
+
+  const handleSubmitPhone = async (e) => {
+    e.preventDefault();
+    const trimmed = newPhone.trim();
+
+    if (!trimmed) {
+      setPhoneError('Phone number is required.');
+      return;
+    }
+    if (!/^\+?[0-9\s\-()]{7,20}$/.test(trimmed)) {
+      setPhoneError('Please enter a valid phone number (7-20 digits).');
+      return;
+    }
+
+    setPhoneSubmitting(true);
+    setPhoneError(null);
+
+    try {
+      const res = await updateUserPhone(trimmed, accessToken);
+      setProfile((prev) => (prev ? { ...prev, phoneNumber: res.phoneNumber || trimmed } : null));
+      setToastMessage(res.message || 'Phone number updated successfully.');
+      setPhoneModalOpen(false);
+    } catch (err) {
+      console.error('Failed to update phone number:', err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to update phone number. Please try again.';
+      setPhoneError(msg);
+    } finally {
+      setPhoneSubmitting(false);
+    }
+  };
+
   const roleConfig = profile ? getRoleBadgeConfig(profile.role) : null;
 
   return (
@@ -105,6 +213,39 @@ export function ProfilePage() {
         }}
       >
         <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%' }}>
+          {/* Toast Notification */}
+          {toastMessage && (
+            <div
+              data-testid="profile-toast"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 16px',
+                marginBottom: '20px',
+                backgroundColor: '#ECFDF5',
+                border: '1px solid #A7F3D0',
+                borderRadius: '8px',
+                color: '#065F46',
+                fontSize: '14px',
+                fontWeight: 500,
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Check size={18} color="#059669" />
+                <span>{toastMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToastMessage(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#065F46', padding: '2px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           {/* Page Title */}
           <div style={{ marginBottom: '28px' }}>
             <h1
@@ -373,21 +514,26 @@ export function ProfilePage() {
                       <button
                         type="button"
                         data-testid="edit-email-btn"
-                        disabled
-                        title="Coming in Phase 2"
+                        onClick={handleOpenEmailModal}
                         style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
                           padding: '6px 14px',
                           borderRadius: 'var(--ep-radius-btn)',
                           fontSize: '13px',
                           fontWeight: 600,
                           backgroundColor: '#ffffff',
-                          color: 'var(--ep-text-secondary)',
+                          color: 'var(--ep-primary)',
                           border: '1px solid var(--ep-border)',
-                          cursor: 'not-allowed',
-                          opacity: 0.8,
+                          cursor: 'pointer',
+                          transition: 'var(--ep-transition)',
                         }}
+                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
                       >
-                        Edit
+                        <Edit2 size={13} />
+                        <span>Edit</span>
                       </button>
                     </div>
                   </div>
@@ -418,21 +564,26 @@ export function ProfilePage() {
                       <button
                         type="button"
                         data-testid="edit-phone-btn"
-                        disabled
-                        title="Coming in Phase 2"
+                        onClick={handleOpenPhoneModal}
                         style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
                           padding: '6px 14px',
                           borderRadius: 'var(--ep-radius-btn)',
                           fontSize: '13px',
                           fontWeight: 600,
                           backgroundColor: '#ffffff',
-                          color: 'var(--ep-text-secondary)',
+                          color: 'var(--ep-primary)',
                           border: '1px solid var(--ep-border)',
-                          cursor: 'not-allowed',
-                          opacity: 0.8,
+                          cursor: 'pointer',
+                          transition: 'var(--ep-transition)',
                         }}
+                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
                       >
-                        Edit
+                        <Edit2 size={13} />
+                        <span>Edit</span>
                       </button>
                     </div>
                   </div>
@@ -640,6 +791,279 @@ export function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* ==================== EDIT EMAIL MODAL ==================== */}
+        {emailModalOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '16px',
+            }}
+          >
+            <div
+              data-testid="edit-email-modal"
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: 'var(--ep-radius-card)',
+                width: '100%',
+                maxWidth: '460px',
+                padding: '24px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                  Edit Email Address
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleCloseEmailModal}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ep-text-secondary)' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {emailError && (
+                <div
+                  data-testid="edit-email-error"
+                  style={{
+                    padding: '10px 12px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: '6px',
+                    color: '#991B1B',
+                    fontSize: '13px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  {emailError}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmitEmail}>
+                <div style={{ marginBottom: '20px' }}>
+                  <label
+                    htmlFor="profile-new-email-input"
+                    style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}
+                  >
+                    New Email Address
+                  </label>
+                  <input
+                    id="profile-new-email-input"
+                    data-testid="profile-new-email-input"
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--ep-border)',
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={handleCloseEmailModal}
+                    disabled={emailSubmitting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid var(--ep-border)',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      color: 'var(--ep-text-primary)',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    data-testid="save-email-btn"
+                    disabled={emailSubmitting}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 18px',
+                      backgroundColor: 'var(--ep-primary)',
+                      border: 'none',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: emailSubmitting ? 'not-allowed' : 'pointer',
+                      color: '#ffffff',
+                      opacity: emailSubmitting ? 0.75 : 1,
+                    }}
+                  >
+                    {emailSubmitting ? (
+                      <>
+                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save Email</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== EDIT PHONE MODAL ==================== */}
+        {phoneModalOpen && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: '16px',
+            }}
+          >
+            <div
+              data-testid="edit-phone-modal"
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: 'var(--ep-radius-card)',
+                width: '100%',
+                maxWidth: '460px',
+                padding: '24px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                  Edit Phone Number
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleClosePhoneModal}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ep-text-secondary)' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {phoneError && (
+                <div
+                  data-testid="edit-phone-error"
+                  style={{
+                    padding: '10px 12px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: '6px',
+                    color: '#991B1B',
+                    fontSize: '13px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  {phoneError}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmitPhone}>
+                <div style={{ marginBottom: '20px' }}>
+                  <label
+                    htmlFor="profile-new-phone-input"
+                    style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)', marginBottom: '6px' }}
+                  >
+                    Phone Number
+                  </label>
+                  <input
+                    id="profile-new-phone-input"
+                    data-testid="profile-new-phone-input"
+                    type="tel"
+                    placeholder="e.g. +94771234567"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--ep-border)',
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={handleClosePhoneModal}
+                    disabled={phoneSubmitting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid var(--ep-border)',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      color: 'var(--ep-text-primary)',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    data-testid="save-phone-btn"
+                    disabled={phoneSubmitting}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 18px',
+                      backgroundColor: 'var(--ep-primary)',
+                      border: 'none',
+                      borderRadius: 'var(--ep-radius-btn)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: phoneSubmitting ? 'not-allowed' : 'pointer',
+                      color: '#ffffff',
+                      opacity: phoneSubmitting ? 0.75 : 1,
+                    }}
+                  >
+                    {phoneSubmitting ? (
+                      <>
+                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save Phone</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

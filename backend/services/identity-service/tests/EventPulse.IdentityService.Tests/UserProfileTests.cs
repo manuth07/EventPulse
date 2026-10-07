@@ -165,4 +165,64 @@ public class UserProfileTests
         Assert.Equal(expectedRole, profile.Role);
         Assert.Contains(expectedRole, profile.Roles);
     }
+
+    [Fact]
+    public async Task UpdateEmail_WhenValidAndUnique_ReturnsOk()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        SetUserContext(userId);
+        var request = new UpdateEmailRequest { NewEmail = "newemail@eventpulse.com" };
+
+        _mockProfileService
+            .Setup(s => s.UpdateEmailAsync(userId, request.NewEmail))
+            .ReturnsAsync(ProfileResult.Success(new { email = request.NewEmail, message = "Updated" }));
+
+        // Act
+        var result = await _controller.UpdateEmail(request);
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(ok.Value);
+    }
+
+    [Fact]
+    public async Task UpdateEmail_WhenDuplicate_ReturnsConflict()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        SetUserContext(userId);
+        var request = new UpdateEmailRequest { NewEmail = "duplicate@eventpulse.com" };
+
+        _mockProfileService
+            .Setup(s => s.UpdateEmailAsync(userId, request.NewEmail))
+            .ReturnsAsync(ProfileResult.Conflict("DUPLICATE_EMAIL", "Email exists."));
+
+        // Act
+        var result = await _controller.UpdateEmail(request);
+
+        // Assert
+        var conflict = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdatePhone_WhenValid_ReturnsOk()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        SetUserContext(userId);
+        var request = new UpdatePhoneRequest { NewPhoneNumber = "+94771234567" };
+
+        _mockProfileService
+            .Setup(s => s.UpdatePhoneAsync(userId, request.NewPhoneNumber))
+            .ReturnsAsync(ProfileResult.Success(new { phoneNumber = "+94771234567", message = "Updated" }));
+
+        // Act
+        var result = await _controller.UpdatePhone(request);
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(ok.Value);
+    }
 }

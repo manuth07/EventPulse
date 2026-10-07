@@ -113,4 +113,85 @@ public class UserProfileService : IUserProfileService
             profileCompleted = user.ProfileCompleted
         });
     }
+
+    public async Task<ProfileResult> UpdateEmailAsync(Guid userId, string newEmail)
+    {
+        var normalizedNewEmail = newEmail.Trim();
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("UpdateEmail: user {UserId} not found.", userId);
+            return ProfileResult.NotFound();
+        }
+
+        // If user already has this email, return success without change
+        if (string.Equals(user.Email, normalizedNewEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            return ProfileResult.Success(new
+            {
+                email = user.Email,
+                message = "Email address is already up to date."
+            });
+        }
+
+        // Check for duplicate account with this email
+        var existingWithEmail = await _userManager.FindByEmailAsync(normalizedNewEmail);
+        if (existingWithEmail != null && existingWithEmail.Id != user.Id)
+        {
+            _logger.LogWarning("UpdateEmail: duplicate email {Email} attempted by user {UserId}.", normalizedNewEmail, userId);
+            return ProfileResult.Conflict("DUPLICATE_EMAIL", "An account with this email address already exists.");
+        }
+
+        user.Email = normalizedNewEmail;
+        user.UserName = normalizedNewEmail;
+        user.NormalizedEmail = _userManager.NormalizeEmail(normalizedNewEmail);
+        user.NormalizedUserName = _userManager.NormalizeName(normalizedNewEmail);
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            _logger.LogError("UpdateEmail: failed for user {UserId}: {Errors}",
+                userId, string.Join(", ", result.Errors.Select(e => e.Description)));
+            return ProfileResult.ServerError();
+        }
+
+        _logger.LogInformation("UpdateEmail: successfully updated email for user {UserId} to {Email}.", userId, normalizedNewEmail);
+
+        return ProfileResult.Success(new
+        {
+            email = user.Email,
+            message = "Email address updated successfully."
+        });
+    }
+
+    public async Task<ProfileResult> UpdatePhoneAsync(Guid userId, string newPhoneNumber)
+    {
+        var sanitizedPhone = newPhoneNumber.Trim().Replace(" ", "").Replace("-", "");
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("UpdatePhone: user {UserId} not found.", userId);
+            return ProfileResult.NotFound();
+        }
+
+        user.PhoneNumber = sanitizedPhone;
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            _logger.LogError("UpdatePhone: failed for user {UserId}: {Errors}",
+                userId, string.Join(", ", result.Errors.Select(e => e.Description)));
+            return ProfileResult.ServerError();
+        }
+
+        _logger.LogInformation("UpdatePhone: successfully updated phone for user {UserId}.", userId);
+
+        return ProfileResult.Success(new
+        {
+            phoneNumber = user.PhoneNumber,
+            message = "Phone number updated successfully."
+        });
+    }
 }
