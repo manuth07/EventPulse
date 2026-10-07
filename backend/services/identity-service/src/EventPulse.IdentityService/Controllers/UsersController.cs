@@ -168,9 +168,10 @@ public class UsersController : ControllerBase
     /// Protected endpoint — uploads/changes profile picture (EP-26 Phase 3).
     /// </summary>
     [HttpPost("me/avatar")]
-    public async Task<IActionResult> UploadAvatar(IFormFile file)
+    public async Task<IActionResult> UploadAvatar([FromForm(Name = "file")] IFormFile? file = null, [FromForm(Name = "avatar")] IFormFile? avatar = null)
     {
-        if (file == null || file.Length == 0)
+        var targetFile = file ?? avatar ?? (Request.HasFormContentType ? Request.Form.Files.FirstOrDefault() : null);
+        if (targetFile == null || targetFile.Length == 0)
         {
             return BadRequest(new { code = "INVALID_REQUEST", message = "No image file provided." });
         }
@@ -181,8 +182,8 @@ public class UsersController : ControllerBase
             return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
         }
 
-        using var stream = file.OpenReadStream();
-        var result = await _profileService.UpdateAvatarAsync(userId, stream, file.ContentType, file.FileName);
+        using var stream = targetFile.OpenReadStream();
+        var result = await _profileService.UpdateAvatarAsync(userId, stream, targetFile.ContentType, targetFile.FileName);
 
         if (!result.Succeeded)
         {

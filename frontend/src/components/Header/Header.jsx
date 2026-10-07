@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import { buildApiUrl } from '../../services/apiConfig';
 
 export function Header({ location = 'Colombo, LK' }) {
   const navigate = useNavigate();
@@ -209,7 +210,27 @@ export function Header({ location = 'Colombo, LK' }) {
                   if (e.key === 'Escape') setMenuOpen(false);
                 }}
               >
-                <User size={15} color="var(--ep-text-secondary)" />
+                {currentUser?.profilePictureUrl ? (
+                  <img
+                    src={
+                      currentUser.profilePictureUrl.startsWith('http://') || currentUser.profilePictureUrl.startsWith('https://')
+                        ? currentUser.profilePictureUrl
+                        : buildApiUrl(currentUser.profilePictureUrl)
+                    }
+                    alt={displayName}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                    }}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <User size={15} color="var(--ep-text-secondary)" />
+                )}
                 <span>{displayName}</span>
                 <ChevronDown
                   size={13}

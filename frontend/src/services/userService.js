@@ -68,6 +68,7 @@ export async function uploadUserAvatar(file, token) {
 
   const formData = new FormData();
   formData.append('avatar', file);
+  formData.append('file', file);
 
   return apiClient.post('/api/users/me/avatar', formData, { headers });
 }

@@ -184,7 +184,18 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAll");
-app.UseStaticFiles();
+
+var avatarsPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+if (!Directory.Exists(avatarsPath))
+{
+    Directory.CreateDirectory(avatarsPath);
+}
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(avatarsPath),
+    RequestPath = ""
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");

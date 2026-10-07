@@ -11,6 +11,7 @@ import {
   removeUserAvatar,
 } from '../../services/userService';
 import { getMyBookings } from '../../services/bookingService';
+import { buildApiUrl } from '../../services/apiConfig';
 import { checkPasswordRules } from '../../utils/resetPasswordValidation';
 import {
   User,
@@ -133,7 +134,7 @@ function getBookingStatusBadgeConfig(status) {
 }
 
 export function ProfilePage() {
-  const { accessToken } = useAuth();
+  const { accessToken, updateCurrentUser } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -181,6 +182,9 @@ export function ProfilePage() {
     try {
       const data = await getCurrentUserProfile(accessToken);
       setProfile(data);
+      if (typeof updateCurrentUser === 'function' && data?.profilePictureUrl !== undefined) {
+        updateCurrentUser({ profilePictureUrl: data.profilePictureUrl });
+      }
     } catch (err) {
       console.error('Failed to load profile:', err);
       const msg =
@@ -343,6 +347,9 @@ export function ProfilePage() {
     try {
       const res = await uploadUserAvatar(file, accessToken);
       setProfile((prev) => (prev ? { ...prev, profilePictureUrl: res.profilePictureUrl } : null));
+      if (typeof updateCurrentUser === 'function') {
+        updateCurrentUser({ profilePictureUrl: res.profilePictureUrl });
+      }
       setToastMessage(res.message || 'Profile picture updated successfully.');
     } catch (err) {
       console.error('Failed to upload avatar:', err);
@@ -366,6 +373,9 @@ export function ProfilePage() {
     try {
       const res = await removeUserAvatar(accessToken);
       setProfile((prev) => (prev ? { ...prev, profilePictureUrl: null } : null));
+      if (typeof updateCurrentUser === 'function') {
+        updateCurrentUser({ profilePictureUrl: null });
+      }
       setToastMessage(res.message || 'Profile picture removed.');
     } catch (err) {
       console.error('Failed to remove avatar:', err);
@@ -493,6 +503,39 @@ export function ProfilePage() {
                 type="button"
                 onClick={() => setToastMessage(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#065F46', padding: '2px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Avatar Error Banner */}
+          {avatarError && (
+            <div
+              data-testid="profile-avatar-error"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 16px',
+                marginBottom: '20px',
+                backgroundColor: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: '8px',
+                color: '#991B1B',
+                fontSize: '14px',
+                fontWeight: 500,
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={18} color="#DC2626" />
+                <span>{avatarError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAvatarError(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B', padding: '2px' }}
               >
                 <X size={16} />
               </button>
@@ -644,7 +687,11 @@ export function ProfilePage() {
                   {profile.profilePictureUrl ? (
                     <img
                       data-testid="profile-avatar-img"
-                      src={profile.profilePictureUrl}
+                      src={
+                        profile.profilePictureUrl.startsWith('http://') || profile.profilePictureUrl.startsWith('https://')
+                          ? profile.profilePictureUrl
+                          : buildApiUrl(profile.profilePictureUrl)
+                      }
                       alt={`${profile.firstName} ${profile.lastName}`}
                       style={{
                         width: '96px',
@@ -655,31 +702,40 @@ export function ProfilePage() {
                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
                         display: 'block',
                       }}
-                    />
-                  ) : (
-                    <div
-                      data-testid="profile-avatar"
-                      style={{
-                        width: '96px',
-                        height: '96px',
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--ep-soft-accent)',
-                        color: 'var(--ep-primary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '36px',
-                        fontWeight: 800,
-                        fontFamily: 'var(--ep-font-heading)',
-                        border: '3px solid #ffffff',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                      onError={(e) => {
+                        console.warn('Avatar image failed to load, falling back to initials:', e.target.src);
+                        // Temporarily set display none on failure so fallback renders
+                        e.target.style.display = 'none';
+                        const fallbackElem = document.getElementById('profile-avatar-fallback');
+                        if (fallbackElem) fallbackElem.style.display = 'flex';
                       }}
-                    >
-                      {profile.firstName
-                        ? `${profile.firstName.charAt(0)}${profile.lastName ? profile.lastName.charAt(0) : ''}`
-                        : 'U'}
-                    </div>
-                  )}
+                    />
+                  ) : null}
+
+                  {/* Fallback Initials (Rendered when no picture exists or image load fails) */}
+                  <div
+                    id="profile-avatar-fallback"
+                    data-testid="profile-avatar"
+                    style={{
+                      width: '96px',
+                      height: '96px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--ep-soft-accent)',
+                      color: 'var(--ep-primary)',
+                      display: profile.profilePictureUrl ? 'none' : 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '36px',
+                      fontWeight: 800,
+                      fontFamily: 'var(--ep-font-heading)',
+                      border: '3px solid #ffffff',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                    }}
+                  >
+                    {profile.firstName
+                      ? `${profile.firstName.charAt(0)}${profile.lastName ? profile.lastName.charAt(0) : ''}`
+                      : 'U'}
+                  </div>
 
                   {/* Avatar Upload Button */}
                   <button
