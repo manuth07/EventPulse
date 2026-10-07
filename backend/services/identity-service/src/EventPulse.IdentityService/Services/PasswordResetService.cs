@@ -18,6 +18,7 @@ public class PasswordResetService : IPasswordResetService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ApplicationDbContext _dbContext;
     private readonly IPasswordResetTokenService _tokenService;
+    private readonly IEmailSender _emailSender;
     private readonly IConfiguration _configuration;
     private readonly ILogger<PasswordResetService> _logger;
 
@@ -25,12 +26,14 @@ public class PasswordResetService : IPasswordResetService
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext dbContext,
         IPasswordResetTokenService tokenService,
+        IEmailSender emailSender,
         IConfiguration configuration,
         ILogger<PasswordResetService> logger)
     {
         _userManager = userManager;
         _dbContext = dbContext;
         _tokenService = tokenService;
+        _emailSender = emailSender;
         _configuration = configuration;
         _logger = logger;
     }
@@ -89,7 +92,26 @@ public class PasswordResetService : IPasswordResetService
 
         _logger.LogInformation("Password reset token generated and persisted for user {UserId}.", user.Id);
 
-        // Hook for Part 3: rawToken is held in internal service result to pass to email dispatcher
+        // Construct frontend reset URL without hardcoding localhost into production
+        var baseUrl = (_configuration["PasswordReset:FrontendBaseUrl"]
+            ?? _configuration["FRONTEND_BASE_URL"]
+            ?? _configuration["Frontend:BaseUrl"]
+            ?? "http://localhost:5173").TrimEnd('/');
+
+        var resetUrl = $"{baseUrl}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+
+        try
+        {
+            await _emailSender.SendPasswordResetEmailAsync(user.Email!, resetUrl, expiryMinutes);
+            _logger.LogInformation("Password reset email sent to user {UserId}.", user.Id);
+        }
+        catch (Exception ex)
+        {
+            // Log a safe operational error without leaking secrets, tokens, or provider internals
+            _logger.LogError(ex, "Failed to deliver password reset email for user {UserId}.", user.Id);
+            // Anti-enumeration: preserve uniform generic response to client even on provider error
+        }
+
         return RequestPasswordResetResult.GenericResponse(rawToken);
     }
 

@@ -16,6 +16,7 @@ public class PasswordResetServiceTests
     private readonly ApplicationDbContext _dbContext;
     private readonly Mock<UserManager<ApplicationUser>> _userManagerMock;
     private readonly PasswordResetTokenService _tokenService;
+    private readonly Mock<IEmailSender> _emailSenderMock;
     private readonly Mock<ILogger<PasswordResetService>> _loggerMock;
     private readonly IConfiguration _configuration;
     private readonly PasswordResetService _sut;
@@ -32,11 +33,13 @@ public class PasswordResetServiceTests
             userStoreMock.Object, null!, null!, null!, null!, null!, null!, null!, null!);
 
         _tokenService = new PasswordResetTokenService();
+        _emailSenderMock = new Mock<IEmailSender>();
         _loggerMock = new Mock<ILogger<PasswordResetService>>();
 
         var inMemorySettings = new Dictionary<string, string?>
         {
-            { "PasswordReset:TokenExpiryMinutes", "30" }
+            { "PasswordReset:TokenExpiryMinutes", "30" },
+            { "PasswordReset:FrontendBaseUrl", "http://localhost:5173" }
         };
         _configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(inMemorySettings)
@@ -46,6 +49,7 @@ public class PasswordResetServiceTests
             _userManagerMock.Object,
             _dbContext,
             _tokenService,
+            _emailSenderMock.Object,
             _configuration,
             _loggerMock.Object);
     }
@@ -76,6 +80,137 @@ public class PasswordResetServiceTests
         Assert.Equal(_tokenService.HashToken(result.RawToken!), storedToken.TokenHash);
         Assert.True(storedToken.ExpiresAt > DateTime.UtcNow);
         Assert.Null(storedToken.UsedAt);
+
+        _emailSenderMock.Verify(m => m.SendPasswordResetEmailAsync(
+            "john.doe@example.com",
+            It.Is<string>(url => url.Contains(result.RawToken!)),
+            30), Times.Once);
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_RegisteredUser_SendsEmailWithCorrectResetUrlAndExpiry()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "jane.smith@example.com",
+            UserName = "jane.smith@example.com",
+            IsActive = true
+        };
+
+        _userManagerMock.Setup(m => m.FindByEmailAsync("jane.smith@example.com"))
+            .ReturnsAsync(user);
+
+        string? capturedUrl = null;
+        int? capturedExpiry = null;
+        string? capturedRecipient = null;
+
+        _emailSenderMock.Setup(m => m.SendPasswordResetEmailAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>()))
+            .Callback<string, string, int>((to, url, expiry) =>
+            {
+                capturedRecipient = to;
+                capturedUrl = url;
+                capturedExpiry = expiry;
+            })
+            .Returns(Task.CompletedTask);
+
+        var result = await _sut.RequestPasswordResetAsync("jane.smith@example.com");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("jane.smith@example.com", capturedRecipient);
+        Assert.Equal(30, capturedExpiry);
+        Assert.NotNull(capturedUrl);
+        Assert.StartsWith("http://localhost:5173/reset-password?token=", capturedUrl);
+        Assert.Contains(Uri.EscapeDataString(result.RawToken!), capturedUrl);
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_CustomFrontendBaseUrl_UsesConfiguredBaseUrlInResetUrl()
+    {
+        var customSettings = new Dictionary<string, string?>
+        {
+            { "PasswordReset:TokenExpiryMinutes", "45" },
+            { "PasswordReset:FrontendBaseUrl", "https://eventpulse.app" }
+        };
+        var customConfig = new ConfigurationBuilder()
+            .AddInMemoryCollection(customSettings)
+            .Build();
+
+        var customSut = new PasswordResetService(
+            _userManagerMock.Object,
+            _dbContext,
+            _tokenService,
+            _emailSenderMock.Object,
+            customConfig,
+            _loggerMock.Object);
+
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "custom.url@example.com",
+            UserName = "custom.url@example.com",
+            IsActive = true
+        };
+
+        _userManagerMock.Setup(m => m.FindByEmailAsync("custom.url@example.com"))
+            .ReturnsAsync(user);
+
+        string? capturedUrl = null;
+        int? capturedExpiry = null;
+
+        _emailSenderMock.Setup(m => m.SendPasswordResetEmailAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>()))
+            .Callback<string, string, int>((_, url, expiry) =>
+            {
+                capturedUrl = url;
+                capturedExpiry = expiry;
+            })
+            .Returns(Task.CompletedTask);
+
+        var result = await customSut.RequestPasswordResetAsync("custom.url@example.com");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(45, capturedExpiry);
+        Assert.NotNull(capturedUrl);
+        Assert.StartsWith("https://eventpulse.app/reset-password?token=", capturedUrl);
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_EmailSenderThrows_SafelyLogsAndReturnsGenericResponseWithoutExposingError()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            Email = "smtp.failure@example.com",
+            UserName = "smtp.failure@example.com",
+            IsActive = true
+        };
+
+        _userManagerMock.Setup(m => m.FindByEmailAsync("smtp.failure@example.com"))
+            .ReturnsAsync(user);
+
+        _emailSenderMock.Setup(m => m.SendPasswordResetEmailAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>()))
+            .ThrowsAsync(new System.Net.Sockets.SocketException(10061));
+
+        // Must not throw or bubble SMTP exception up to caller
+        var result = await _sut.RequestPasswordResetAsync("smtp.failure@example.com");
+
+        // Uniform generic response preserved
+        Assert.True(result.Succeeded);
+        Assert.Equal("If an account exists for this email, a password reset link has been sent.", result.Message);
+        Assert.NotNull(result.RawToken);
+
+        // Token was still persisted in case retry/resend or service recovers
+        var storedToken = await _dbContext.PasswordResetTokens.FirstOrDefaultAsync(t => t.UserId == user.Id);
+        Assert.NotNull(storedToken);
     }
 
     [Fact]
@@ -92,6 +227,11 @@ public class PasswordResetServiceTests
 
         var tokenCount = await _dbContext.PasswordResetTokens.CountAsync();
         Assert.Equal(0, tokenCount);
+
+        _emailSenderMock.Verify(m => m.SendPasswordResetEmailAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<int>()), Times.Never);
     }
 
     [Fact]
@@ -116,6 +256,11 @@ public class PasswordResetServiceTests
 
         var tokenCount = await _dbContext.PasswordResetTokens.CountAsync();
         Assert.Equal(0, tokenCount);
+
+        _emailSenderMock.Verify(m => m.SendPasswordResetEmailAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<int>()), Times.Never);
     }
 
     [Fact]
