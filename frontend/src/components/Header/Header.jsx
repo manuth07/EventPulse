@@ -266,6 +266,48 @@ export function Header({ location = 'Colombo, LK' }) {
                     )}
                   </div>
 
+                  {/* My Profile Link (EP-26) */}
+                  <Link
+                    to="/profile"
+                    id="account-menu-profile"
+                    data-testid="account-menu-profile"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'none',
+                      borderBottom: '1px solid var(--ep-border)',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: 'var(--ep-text-primary)',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      transition: 'var(--ep-transition)',
+                      fontFamily: 'var(--ep-font-body)',
+                      textAlign: 'left',
+                      boxSizing: 'border-box',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--ep-soft-accent)';
+                      e.currentTarget.style.color = 'var(--ep-primary)';
+                      const svg = e.currentTarget.querySelector('svg');
+                      if (svg) svg.style.color = 'var(--ep-primary)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--ep-text-primary)';
+                      const svg = e.currentTarget.querySelector('svg');
+                      if (svg) svg.style.color = 'var(--ep-text-secondary)';
+                    }}
+                  >
+                    <User size={14} color="var(--ep-text-secondary)" />
+                    <span>My Profile</span>
+                  </Link>
+
                   {isOrganizer && (
                     <Link
                       to="/organizer"

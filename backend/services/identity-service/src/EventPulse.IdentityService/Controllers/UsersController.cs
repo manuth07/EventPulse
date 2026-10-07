@@ -19,6 +19,30 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// GET /api/users/me
+    /// Protected endpoint — returns the safe profile information for the authenticated user.
+    /// User identity is derived strictly from the authenticated JWT claims.
+    /// </summary>
+    [HttpGet("me")]
+    public async Task<IActionResult> GetCurrentUserProfile()
+    {
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        var result = await _profileService.GetProfileAsync(userId);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
+
+    /// <summary>
     /// PUT /api/users/me/profile
     /// Protected endpoint — completes the profile for a Google-created user.
     /// Collects PhoneNumber and CountryCode, then sets ProfileCompleted = true.

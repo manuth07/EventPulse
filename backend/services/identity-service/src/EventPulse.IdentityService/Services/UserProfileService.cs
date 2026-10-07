@@ -14,12 +14,17 @@ public class ProfileResult
 
     public static ProfileResult Success(object response) => new() { Succeeded = true, Response = response, StatusCode = 200 };
     public static ProfileResult NotFound() => new() { Succeeded = false, Code = "NOT_FOUND", Message = "User not found.", StatusCode = 404 };
+    public static ProfileResult BadRequest(string code, string message) => new() { Succeeded = false, Code = code, Message = message, StatusCode = 400 };
+    public static ProfileResult Conflict(string code, string message) => new() { Succeeded = false, Code = code, Message = message, StatusCode = 409 };
     public static ProfileResult ServerError() => new() { Succeeded = false, Code = "SERVER_ERROR", Message = "Profile update failed. Please try again.", StatusCode = 500 };
 }
 
 public interface IUserProfileService
 {
+    Task<ProfileResult> GetProfileAsync(Guid userId);
     Task<ProfileResult> CompleteProfileAsync(Guid userId, CompleteProfileRequest request);
+    Task<ProfileResult> UpdateEmailAsync(Guid userId, string newEmail);
+    Task<ProfileResult> UpdatePhoneAsync(Guid userId, string newPhoneNumber);
 }
 
 /// <summary>
@@ -35,6 +40,43 @@ public class UserProfileService : IUserProfileService
     {
         _userManager = userManager;
         _logger = logger;
+    }
+
+    public async Task<ProfileResult> GetProfileAsync(Guid userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("GetProfile: user {UserId} not found.", userId);
+            return ProfileResult.NotFound();
+        }
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var primaryRole = roles.Contains(AppRoles.Administrator)
+            ? AppRoles.Administrator
+            : roles.Contains(AppRoles.Organizer)
+            ? AppRoles.Organizer
+            : AppRoles.Customer;
+
+        var hasPassword = await _userManager.HasPasswordAsync(user);
+
+        var profile = new UserProfileResponse
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email ?? string.Empty,
+            PhoneNumber = user.PhoneNumber,
+            CountryCode = user.CountryCode,
+            ProfileCompleted = user.ProfileCompleted,
+            HasPassword = hasPassword,
+            Role = primaryRole,
+            Roles = roles.ToList(),
+            ProfilePictureUrl = null, // Handled in Phase 3
+            CreatedAt = user.CreatedAt
+        };
+
+        return ProfileResult.Success(profile);
     }
 
     public async Task<ProfileResult> CompleteProfileAsync(Guid userId, CompleteProfileRequest request)
