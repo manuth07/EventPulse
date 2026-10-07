@@ -225,4 +225,100 @@ public class UserProfileTests
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.NotNull(ok.Value);
     }
+
+    [Fact]
+    public async Task ChangePassword_WhenValid_ReturnsOk()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        SetUserContext(userId);
+        var request = new ChangePasswordRequest
+        {
+            CurrentPassword = "OldPassword123!",
+            NewPassword = "NewPassword123!",
+            ConfirmPassword = "NewPassword123!"
+        };
+
+        _mockProfileService
+            .Setup(s => s.ChangePasswordAsync(userId, request))
+            .ReturnsAsync(ProfileResult.Success(new { message = "Password changed successfully." }));
+
+        // Act
+        var result = await _controller.ChangePassword(request);
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(ok.Value);
+    }
+
+    [Fact]
+    public async Task ChangePassword_WhenCurrentPasswordIncorrect_ReturnsBadRequest()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        SetUserContext(userId);
+        var request = new ChangePasswordRequest
+        {
+            CurrentPassword = "WrongPassword123!",
+            NewPassword = "NewPassword123!",
+            ConfirmPassword = "NewPassword123!"
+        };
+
+        _mockProfileService
+            .Setup(s => s.ChangePasswordAsync(userId, request))
+            .ReturnsAsync(ProfileResult.BadRequest("INCORRECT_CURRENT_PASSWORD", "The current password provided is incorrect."));
+
+        // Act
+        var result = await _controller.ChangePassword(request);
+
+        // Assert
+        var badRequest = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status400BadRequest, badRequest.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadAvatar_WhenValidFile_ReturnsOk()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        SetUserContext(userId);
+
+        var fileMock = new Mock<IFormFile>();
+        var content = "fake image content";
+        var ms = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content));
+        fileMock.Setup(f => f.OpenReadStream()).Returns(ms);
+        fileMock.Setup(f => f.FileName).Returns("avatar.png");
+        fileMock.Setup(f => f.Length).Returns(ms.Length);
+        fileMock.Setup(f => f.ContentType).Returns("image/png");
+
+        _mockProfileService
+            .Setup(s => s.UpdateAvatarAsync(userId, It.IsAny<Stream>(), "image/png", "avatar.png"))
+            .ReturnsAsync(ProfileResult.Success(new { profilePictureUrl = "/avatars/test.png", message = "Updated" }));
+
+        // Act
+        var result = await _controller.UploadAvatar(fileMock.Object);
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(ok.Value);
+    }
+
+    [Fact]
+    public async Task RemoveAvatar_WhenAuthenticated_ReturnsOk()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        SetUserContext(userId);
+
+        _mockProfileService
+            .Setup(s => s.RemoveAvatarAsync(userId))
+            .ReturnsAsync(ProfileResult.Success(new { profilePictureUrl = (string?)null, message = "Removed" }));
+
+        // Act
+        var result = await _controller.RemoveAvatar();
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(ok.Value);
+    }
 }

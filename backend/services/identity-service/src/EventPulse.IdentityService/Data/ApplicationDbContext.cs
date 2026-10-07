@@ -40,6 +40,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(u => u.CountryCode)
                 .HasMaxLength(2);
 
+            entity.Property(u => u.ProfilePictureUrl)
+                .HasMaxLength(2048);
+
             entity.Property(u => u.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
 

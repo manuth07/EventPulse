@@ -18,3 +18,17 @@ public class UpdatePhoneRequest
     [RegularExpression(@"^\+?[0-9\s\-()]{7,20}$", ErrorMessage = "Please enter a valid phone number (7-20 digits).")]
     public string NewPhoneNumber { get; set; } = string.Empty;
 }
+
+/// <summary>Request body for POST /api/users/me/change-password (EP-26 Phase 4)</summary>
+public class ChangePasswordRequest
+{
+    /// <summary>Current password for verification (optional for Google-only users without password).</summary>
+    public string? CurrentPassword { get; set; }
+
+    [Required(ErrorMessage = "New password is required.")]
+    [MinLength(8, ErrorMessage = "Password must be at least 8 characters long.")]
+    public string NewPassword { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Password confirmation is required.")]
+    public string ConfirmPassword { get; set; } = string.Empty;
+}

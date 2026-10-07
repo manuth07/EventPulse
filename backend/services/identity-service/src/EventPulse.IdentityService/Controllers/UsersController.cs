@@ -132,4 +132,86 @@ public class UsersController : ControllerBase
 
         return Ok(result.Response);
     }
+
+    /// <summary>
+    /// POST /api/users/me/change-password
+    /// Protected endpoint — changes or adds password for authenticated user (EP-26 Phase 4).
+    /// User identity is derived strictly from the authenticated JWT claims.
+    /// </summary>
+    [HttpPost("me/change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        var result = await _profileService.ChangePasswordAsync(userId, request);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
+
+    /// <summary>
+    /// POST /api/users/me/avatar
+    /// Protected endpoint — uploads/changes profile picture (EP-26 Phase 3).
+    /// </summary>
+    [HttpPost("me/avatar")]
+    public async Task<IActionResult> UploadAvatar(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { code = "INVALID_REQUEST", message = "No image file provided." });
+        }
+
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        using var stream = file.OpenReadStream();
+        var result = await _profileService.UpdateAvatarAsync(userId, stream, file.ContentType, file.FileName);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
+
+    /// <summary>
+    /// DELETE /api/users/me/avatar
+    /// Protected endpoint — removes profile picture (EP-26 Phase 3).
+    /// </summary>
+    [HttpDelete("me/avatar")]
+    public async Task<IActionResult> RemoveAvatar()
+    {
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        var result = await _profileService.RemoveAvatarAsync(userId);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
 }

@@ -25,6 +25,9 @@ public interface IUserProfileService
     Task<ProfileResult> CompleteProfileAsync(Guid userId, CompleteProfileRequest request);
     Task<ProfileResult> UpdateEmailAsync(Guid userId, string newEmail);
     Task<ProfileResult> UpdatePhoneAsync(Guid userId, string newPhoneNumber);
+    Task<ProfileResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request);
+    Task<ProfileResult> UpdateAvatarAsync(Guid userId, Stream imageStream, string contentType, string fileName);
+    Task<ProfileResult> RemoveAvatarAsync(Guid userId);
 }
 
 /// <summary>
@@ -72,7 +75,7 @@ public class UserProfileService : IUserProfileService
             HasPassword = hasPassword,
             Role = primaryRole,
             Roles = roles.ToList(),
-            ProfilePictureUrl = null, // Handled in Phase 3
+            ProfilePictureUrl = user.ProfilePictureUrl,
             CreatedAt = user.CreatedAt
         };
 
@@ -192,6 +195,181 @@ public class UserProfileService : IUserProfileService
         {
             phoneNumber = user.PhoneNumber,
             message = "Phone number updated successfully."
+        });
+    }
+
+    public async Task<ProfileResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request)
+    {
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            return ProfileResult.BadRequest("PASSWORD_MISMATCH", "Passwords do not match.");
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("ChangePassword: user {UserId} not found.", userId);
+            return ProfileResult.NotFound();
+        }
+
+        var hasExistingPassword = await _userManager.HasPasswordAsync(user);
+
+        IdentityResult result;
+        if (hasExistingPassword)
+        {
+            if (string.IsNullOrWhiteSpace(request.CurrentPassword))
+            {
+                return ProfileResult.BadRequest("CURRENT_PASSWORD_REQUIRED", "Current password is required.");
+            }
+
+            result = await _userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        }
+        else
+        {
+            // Google-only account adding a password for the first time
+            result = await _userManager.AddPasswordAsync(user, request.NewPassword);
+        }
+
+        if (!result.Succeeded)
+        {
+            var isCurrentPasswordIncorrect = result.Errors.Any(e =>
+                e.Code.Contains("PasswordMismatch", StringComparison.OrdinalIgnoreCase) ||
+                e.Description.Contains("incorrect password", StringComparison.OrdinalIgnoreCase));
+
+            if (isCurrentPasswordIncorrect)
+            {
+                _logger.LogWarning("ChangePassword: incorrect current password for user {UserId}.", userId);
+                return ProfileResult.BadRequest("INCORRECT_CURRENT_PASSWORD", "The current password provided is incorrect.");
+            }
+
+            var errors = string.Join(" ", result.Errors.Select(e => e.Description));
+            _logger.LogWarning("ChangePassword: policy violation for user {UserId}: {Errors}", userId, errors);
+            return ProfileResult.BadRequest("PASSWORD_POLICY_VIOLATION", errors);
+        }
+
+        _logger.LogInformation("ChangePassword: password successfully updated for user {UserId}.", userId);
+
+        return ProfileResult.Success(new
+        {
+            message = "Password changed successfully."
+        });
+    }
+
+    public async Task<ProfileResult> UpdateAvatarAsync(Guid userId, Stream imageStream, string contentType, string fileName)
+    {
+        var allowedTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+        };
+
+        if (!allowedTypes.Contains(contentType))
+        {
+            return ProfileResult.BadRequest("INVALID_IMAGE_TYPE", "Only JPEG, PNG, and WebP images are allowed.");
+        }
+
+        const long maxSizeBytes = 2 * 1024 * 1024; // 2MB
+        if (imageStream.Length > maxSizeBytes)
+        {
+            return ProfileResult.BadRequest("FILE_TOO_LARGE", "Profile image size cannot exceed 2 MB.");
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("UpdateAvatar: user {UserId} not found.", userId);
+            return ProfileResult.NotFound();
+        }
+
+        // Determine extension
+        var ext = contentType.ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            _ => ".jpg"
+        };
+
+        // Save file locally in wwwroot/avatars
+        var avatarsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "avatars");
+        if (!Directory.Exists(avatarsDir))
+        {
+            Directory.CreateDirectory(avatarsDir);
+        }
+
+        var avatarFileName = $"{userId}_{Guid.NewGuid()}{ext}";
+        var filePath = Path.Combine(avatarsDir, avatarFileName);
+
+        imageStream.Position = 0;
+        using (var fileStream = new FileStream(filePath, FileMode.Create))
+        {
+            await imageStream.CopyToAsync(fileStream);
+        }
+
+        // Clean up old local avatar if it exists
+        if (!string.IsNullOrWhiteSpace(user.ProfilePictureUrl) && user.ProfilePictureUrl.StartsWith("/avatars/"))
+        {
+            var oldFileName = Path.GetFileName(user.ProfilePictureUrl);
+            var oldFilePath = Path.Combine(avatarsDir, oldFileName);
+            if (File.Exists(oldFilePath))
+            {
+                try { File.Delete(oldFilePath); } catch { /* best effort */ }
+            }
+        }
+
+        user.ProfilePictureUrl = $"/avatars/{avatarFileName}";
+        var result = await _userManager.UpdateAsync(user);
+
+        if (!result.Succeeded)
+        {
+            _logger.LogError("UpdateAvatar: failed to update user record {UserId}", userId);
+            return ProfileResult.ServerError();
+        }
+
+        _logger.LogInformation("UpdateAvatar: avatar successfully updated for user {UserId}.", userId);
+
+        return ProfileResult.Success(new
+        {
+            profilePictureUrl = user.ProfilePictureUrl,
+            message = "Profile photo updated successfully."
+        });
+    }
+
+    public async Task<ProfileResult> RemoveAvatarAsync(Guid userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("RemoveAvatar: user {UserId} not found.", userId);
+            return ProfileResult.NotFound();
+        }
+
+        if (!string.IsNullOrWhiteSpace(user.ProfilePictureUrl) && user.ProfilePictureUrl.StartsWith("/avatars/"))
+        {
+            var avatarsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "avatars");
+            var oldFileName = Path.GetFileName(user.ProfilePictureUrl);
+            var oldFilePath = Path.Combine(avatarsDir, oldFileName);
+            if (File.Exists(oldFilePath))
+            {
+                try { File.Delete(oldFilePath); } catch { /* best effort */ }
+            }
+        }
+
+        user.ProfilePictureUrl = null;
+        var result = await _userManager.UpdateAsync(user);
+
+        if (!result.Succeeded)
+        {
+            _logger.LogError("RemoveAvatar: failed to update user record {UserId}", userId);
+            return ProfileResult.ServerError();
+        }
+
+        _logger.LogInformation("RemoveAvatar: avatar removed for user {UserId}.", userId);
+
+        return ProfileResult.Success(new
+        {
+            profilePictureUrl = (string?)null,
+            message = "Profile photo removed successfully."
         });
     }
 }
