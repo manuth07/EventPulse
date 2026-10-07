@@ -1,0 +1,1 @@
+while ($true) { Write-Host "Starting stripe listen..."; stripe listen --forward-to localhost:7104/api/payments/webhook --events checkout.session.completed,payment_intent.payment_failed; Write-Host "Stripe listen exited. Restarting in 5 seconds..."; Start-Sleep -Seconds 5 }

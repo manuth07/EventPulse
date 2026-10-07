@@ -39,3 +39,7 @@ coverage-report/
 # Secrets
 secrets.json
 appsettings.Development.jsontests/performance-jmeter/*.jtl 
+
+# User uploaded avatars
+**/wwwroot/avatars/*
+!**/wwwroot/avatars/.gitkeep 

@@ -260,7 +260,26 @@ export function Login() {
             />
           </Field>
 
-          <Field label={<>Password <span style={{ color: 'var(--ep-danger)' }}>*</span></>} id="login-password" error={fieldErrors.password} style={{ marginBottom: '24px' }}>
+          <Field
+            label={<>Password <span style={{ color: 'var(--ep-danger)' }}>*</span></>}
+            id="login-password"
+            error={fieldErrors.password}
+            style={{ marginBottom: '24px' }}
+            rightAction={
+              <Link
+                to="/forgot-password"
+                data-testid="forgot-password-link"
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: 'var(--ep-primary)',
+                  textDecoration: 'none',
+                }}
+              >
+                Forgot password?
+              </Link>
+            }
+          >
             <div style={{ position: 'relative' }}>
               <input
                 id="login-password"
@@ -440,15 +459,23 @@ function AccountLinkView({ credential, onSuccess, onCancel }) {
   );
 }
 
-function Field({ label, id, error, children, style }) {
+function Field({ label, id, error, children, style, rightAction }) {
   return (
     <div style={style}>
-      <label htmlFor={id} style={{
-        display: 'block', fontSize: '13px', fontWeight: 500,
-        color: 'var(--ep-text-primary)', marginBottom: '6px',
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '6px',
       }}>
-        {label}
-      </label>
+        <label htmlFor={id} style={{
+          display: 'block', fontSize: '13px', fontWeight: 500,
+          color: 'var(--ep-text-primary)', margin: 0,
+        }}>
+          {label}
+        </label>
+        {rightAction}
+      </div>
       {children}
       {error && <p style={{ margin: '5px 0 0', fontSize: '12px', color: 'var(--ep-danger)' }}>{error}</p>}
     </div>

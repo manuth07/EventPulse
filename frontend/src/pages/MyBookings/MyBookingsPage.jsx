@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   X,
   Ban,
+  MapPin,
 } from 'lucide-react';
 
 const STATUS_TABS = [
@@ -44,6 +45,24 @@ function formatCurrency(amount) {
 
 function formatDate(dateString) {
   if (!dateString) return 'Date unavailable';
+  try {
+    const d = new Date(dateString);
+    const day = d.getDate();
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    const year = d.getFullYear();
+    const time = d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${day} ${month} ${year} · ${time}`;
+  } catch {
+    return dateString;
+  }
+}
+
+function formatEventDate(dateString) {
+  if (!dateString) return null;
   try {
     const d = new Date(dateString);
     const day = d.getDate();
@@ -371,15 +390,15 @@ export function MyBookingsPage() {
                   color: 'var(--ep-text-primary)',
                   letterSpacing: '-0.5px',
                   fontFamily: 'var(--ep-font-heading)',
-                }}>
-                  My Booking History
+                }} data-testid="my-bookings-page-title">
+                  My Booked Tickets
                 </h1>
                 <p style={{
                   margin: '4px 0 0',
                   fontSize: '14px',
                   color: 'var(--ep-text-secondary)',
                 }}>
-                  Track your reservations, review payment status, and view digital tickets.
+                  View your booked tickets history, track reservations, review payment status, and access digital tickets.
                 </p>
               </div>
             </div>
@@ -392,7 +411,7 @@ export function MyBookingsPage() {
             marginBottom: '24px',
             overflowX: 'auto',
             paddingBottom: '4px',
-          }}>
+          }} data-testid="status-filter-tabs">
             {STATUS_TABS.map((tab) => {
               const isActive = activeTab === tab.value;
               return (
@@ -400,6 +419,7 @@ export function MyBookingsPage() {
                   key={tab.value}
                   type="button"
                   id={`filter-tab-${tab.value}`}
+                  data-testid={`filter-tab-${tab.value}`}
                   onClick={() => handleTabChange(tab.value)}
                   style={{
                     padding: '8px 18px',
@@ -435,7 +455,7 @@ export function MyBookingsPage() {
 
           {/* Loading State */}
           {loading && (
-            <div style={{
+            <div data-testid="bookings-loading-state" style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -455,7 +475,7 @@ export function MyBookingsPage() {
 
           {/* Error State */}
           {!loading && error && (
-            <div style={{
+            <div data-testid="bookings-error-state" style={{
               padding: '32px 24px',
               backgroundColor: '#ffffff',
               borderRadius: 'var(--ep-radius-card)',
@@ -472,6 +492,8 @@ export function MyBookingsPage() {
               </p>
               <button
                 type="button"
+                id="retry-fetch-bookings"
+                data-testid="retry-fetch-bookings"
                 onClick={() => fetchBookings(currentPage, activeTab)}
                 style={{
                   display: 'inline-flex',
@@ -498,7 +520,7 @@ export function MyBookingsPage() {
 
           {/* Empty State */}
           {!loading && !error && data.items.length === 0 && (
-            <div style={{
+            <div data-testid="bookings-empty-state" style={{
               padding: '56px 24px',
               backgroundColor: '#ffffff',
               borderRadius: 'var(--ep-radius-card)',
@@ -541,6 +563,7 @@ export function MyBookingsPage() {
               </p>
               <Link
                 to="/"
+                data-testid="explore-events-btn"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -615,6 +638,7 @@ export function MyBookingsPage() {
                   <div
                     key={booking.id}
                     id={`booking-card-${booking.bookingReference}`}
+                    data-testid={`booking-card-${booking.bookingReference}`}
                     style={{
                       backgroundColor: '#ffffff',
                       borderRadius: 'var(--ep-radius-card)',
@@ -641,7 +665,7 @@ export function MyBookingsPage() {
                           color: 'var(--ep-text-primary)',
                           fontFamily: 'monospace',
                           letterSpacing: '0.5px',
-                        }}>
+                        }} data-testid={`booking-reference-${booking.bookingReference}`}>
                           {booking.bookingReference}
                         </span>
 
@@ -676,11 +700,61 @@ export function MyBookingsPage() {
                         border: `1px solid ${statusCfg.border}`,
                         fontSize: '12px',
                         fontWeight: 600,
-                      }}>
+                      }} data-testid={`booking-status-${booking.bookingReference}`}>
                         <StatusIcon size={14} />
                         <span>{statusCfg.label}</span>
                       </div>
                     </div>
+
+                    {/* Event Banner Row (if event information is present) */}
+                    {(booking.eventName || booking.eventTitle) && (
+                      <div style={{
+                        padding: '12px 0 4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Link
+                            to={`/my-bookings/${booking.id}`}
+                            data-testid={`booking-event-name-${booking.bookingReference}`}
+                            style={{
+                              fontSize: '16px',
+                              fontWeight: 700,
+                              color: 'var(--ep-text-primary)',
+                              fontFamily: 'var(--ep-font-heading)',
+                              textDecoration: 'none',
+                              transition: 'color 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ep-primary)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ep-text-primary)')}
+                          >
+                            {booking.eventName || booking.eventTitle}
+                          </Link>
+                        </div>
+                        {booking.eventDate && (
+                          <div
+                            data-testid={`booking-event-date-${booking.bookingReference}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              fontSize: '13px',
+                              color: 'var(--ep-primary)',
+                              fontWeight: 600,
+                              backgroundColor: 'var(--ep-soft-accent)',
+                              padding: '4px 10px',
+                              borderRadius: 'var(--ep-radius-pill)',
+                            }}
+                          >
+                            <Calendar size={13} color="var(--ep-primary)" />
+                            <span>Event: {formatEventDate(booking.eventDate)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Middle Details Grid */}
                     <div style={{
@@ -701,11 +775,18 @@ export function MyBookingsPage() {
 
                       <div>
                         <div style={{ fontSize: '11px', color: 'var(--ep-text-secondary)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>
-                          Tickets Reserved
+                          Ticket Types & Quantity
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--ep-text-primary)', fontWeight: 500 }}>
+                        <div
+                          data-testid={`booking-tickets-quantity-${booking.bookingReference}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--ep-text-primary)', fontWeight: 500 }}
+                        >
                           <Ticket size={14} color="var(--ep-text-secondary)" />
-                          <span>{booking.totalTickets} {booking.totalTickets === 1 ? 'ticket' : 'tickets'}</span>
+                          <span>
+                            {booking.items && booking.items.length > 0
+                              ? `${booking.items.map((i) => `${i.ticketName} (${i.quantity})`).join(', ')} · ${booking.totalTickets} total`
+                              : `${booking.totalTickets} ${booking.totalTickets === 1 ? 'ticket' : 'tickets'}`}
+                          </span>
                         </div>
                       </div>
 
@@ -713,7 +794,10 @@ export function MyBookingsPage() {
                         <div style={{ fontSize: '11px', color: 'var(--ep-text-secondary)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>
                           Total Amount
                         </div>
-                        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--ep-primary)', fontFamily: 'var(--ep-font-heading)' }}>
+                        <div
+                          data-testid={`booking-total-amount-${booking.bookingReference}`}
+                          style={{ fontSize: '16px', fontWeight: 800, color: 'var(--ep-primary)', fontFamily: 'var(--ep-font-heading)' }}
+                        >
                           {formatCurrency(booking.totalAmount)}
                         </div>
                       </div>
@@ -838,6 +922,7 @@ export function MyBookingsPage() {
                           <button
                             type="button"
                             id={`cancel-booking-${booking.bookingReference}`}
+                            data-testid={`cancel-booking-${booking.bookingReference}`}
                             onClick={() => handleOpenCancelModal(booking)}
                             style={{
                               display: 'inline-flex',
@@ -872,6 +957,7 @@ export function MyBookingsPage() {
                           <button
                             type="button"
                             id={`pay-now-${booking.bookingReference}`}
+                            data-testid={`pay-now-${booking.bookingReference}`}
                             onClick={() => handleResumePayment(booking.id)}
                             disabled={payingBookingId === booking.id}
                             style={{
@@ -915,10 +1001,43 @@ export function MyBookingsPage() {
                           </button>
                         )}
 
+                        {/* View Full Booking Detail (EP-354 Part 2) */}
+                        <Link
+                          to={`/my-bookings/${booking.id}`}
+                          id={`view-booking-detail-${booking.bookingReference}`}
+                          data-testid={`view-booking-detail-${booking.bookingReference}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            backgroundColor: '#ffffff',
+                            color: 'var(--ep-text-primary)',
+                            textDecoration: 'none',
+                            padding: '8px 14px',
+                            borderRadius: 'var(--ep-radius-btn)',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            border: '1px solid var(--ep-border)',
+                            transition: 'var(--ep-transition)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--ep-primary)';
+                            e.currentTarget.style.color = 'var(--ep-primary)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--ep-border)';
+                            e.currentTarget.style.color = 'var(--ep-text-primary)';
+                          }}
+                        >
+                          <Receipt size={14} />
+                          <span>View Details</span>
+                        </Link>
+
                         {isConfirmed && (
                           <Link
                             to={`/bookings/${booking.id}/tickets`}
                             id={`view-tickets-${booking.bookingReference}`}
+                            data-testid={`view-tickets-${booking.bookingReference}`}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -950,16 +1069,20 @@ export function MyBookingsPage() {
 
           {/* Pagination Controls */}
           {!loading && !error && data.totalPages > 1 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '16px',
-              marginTop: '32px',
-            }}>
+            <div
+              data-testid="bookings-pagination"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '16px',
+                marginTop: '32px',
+              }}
+            >
               <button
                 type="button"
                 id="pagination-prev"
+                data-testid="pagination-prev"
                 disabled={!data.hasPreviousPage}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 style={{
@@ -977,13 +1100,14 @@ export function MyBookingsPage() {
                 Previous
               </button>
 
-              <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', fontWeight: 500 }}>
+              <span data-testid="pagination-info" style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', fontWeight: 500 }}>
                 Page {data.page} of {data.totalPages}
               </span>
 
               <button
                 type="button"
                 id="pagination-next"
+                data-testid="pagination-next"
                 disabled={!data.hasNextPage}
                 onClick={() => setCurrentPage((p) => p + 1)}
                 style={{

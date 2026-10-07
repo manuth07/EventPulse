@@ -44,6 +44,14 @@ export function AuthProvider({ children }) {
     setCurrentUser(null);
   };
 
+  const updateCurrentUser = (partialUser) => {
+    setCurrentUser((prev) => {
+      const updated = { ...(prev || {}), ...(partialUser || {}) };
+      sessionStorage.setItem(USER_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const hasRole = (role) => {
     if (!currentUser || !Array.isArray(currentUser.roles)) return false;
     return currentUser.roles.includes(role);
@@ -60,6 +68,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: Boolean(accessToken) && !isTokenExpired(accessToken),
     login: loginUser,
     logout: logoutUser,
+    updateCurrentUser,
     hasRole,
     hasAnyRole,
   };

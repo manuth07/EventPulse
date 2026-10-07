@@ -14,17 +14,20 @@ public class AuthController : ControllerBase
     private readonly ILoginService _loginService;
     private readonly IGoogleAuthService _googleAuthService;
     private readonly ISetPasswordService _setPasswordService;
+    private readonly IPasswordResetService _passwordResetService;
 
     public AuthController(
         IRegistrationService registrationService,
         ILoginService loginService,
         IGoogleAuthService googleAuthService,
-        ISetPasswordService setPasswordService)
+        ISetPasswordService setPasswordService,
+        IPasswordResetService passwordResetService)
     {
         _registrationService = registrationService;
         _loginService = loginService;
         _googleAuthService = googleAuthService;
         _setPasswordService = setPasswordService;
+        _passwordResetService = passwordResetService;
     }
 
     /// <summary>
@@ -274,5 +277,132 @@ public class AuthController : ControllerBase
         }
 
         return Ok(new { message = "Password set successfully." });
+    }
+
+    /// <summary>
+    /// POST /api/auth/forgot-password (alias: POST /api/auth/request-password-reset)
+    /// Public endpoint — initiates the password reset workflow for the given email address.
+    /// Returns identical generic response regardless of whether the email exists to prevent enumeration.
+    /// </summary>
+    [HttpPost("forgot-password")]
+    [HttpPost("request-password-reset")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var result = await _passwordResetService.RequestPasswordResetAsync(request.Email);
+        return Ok(new ForgotPasswordResponse { Message = result.Message });
+    }
+
+    /// <summary>
+    /// POST /api/auth/validate-reset-token (alias: POST /api/auth/reset-password/validate)
+    /// Public endpoint — validates whether a reset token is valid, unexpired, and unconsumed.
+    /// Does not consume the token.
+    /// </summary>
+    [HttpPost("validate-reset-token")]
+    [HttpPost("reset-password/validate")]
+    public async Task<IActionResult> ValidateResetToken([FromBody] ValidateResetTokenRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var result = await _passwordResetService.ValidateResetTokenAsync(request.Token);
+        if (!result.IsValid)
+        {
+            return StatusCode(result.StatusCode, new ValidateResetTokenResponse
+            {
+                IsValid = false,
+                Code = result.Code,
+                Message = result.Message
+            });
+        }
+
+        return Ok(new ValidateResetTokenResponse
+        {
+            IsValid = true,
+            Message = result.Message
+        });
+    }
+
+    /// <summary>
+    /// GET /api/auth/validate-reset-token (alias: GET /api/auth/reset-password/validate)
+    /// Public endpoint — query-string version for frontend page checks (e.g., reset-password?token=...).
+    /// Does not consume the token.
+    /// </summary>
+    [HttpGet("validate-reset-token")]
+    [HttpGet("reset-password/validate")]
+    public async Task<IActionResult> ValidateResetTokenGet([FromQuery] string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return BadRequest(new ValidateResetTokenResponse
+            {
+                IsValid = false,
+                Code = "INVALID_REQUEST",
+                Message = "Reset token is required."
+            });
+        }
+
+        var result = await _passwordResetService.ValidateResetTokenAsync(token);
+        if (!result.IsValid)
+        {
+            return StatusCode(result.StatusCode, new ValidateResetTokenResponse
+            {
+                IsValid = false,
+                Code = result.Code,
+                Message = result.Message
+            });
+        }
+
+        return Ok(new ValidateResetTokenResponse
+        {
+            IsValid = true,
+            Message = result.Message
+        });
+    }
+
+    /// <summary>
+    /// POST /api/auth/reset-password (alias: POST /api/auth/password-reset)
+    /// Public endpoint — completes password reset using a valid, unconsumed token.
+    /// Hashes the new password, consumes the token, and updates user credentials.
+    /// </summary>
+    [HttpPost("reset-password")]
+    [HttpPost("password-reset")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var result = await _passwordResetService.ResetPasswordAsync(request);
+        if (!result.Succeeded)
+        {
+            if (result.Errors != null && result.Errors.Any())
+            {
+                return StatusCode(result.StatusCode, new
+                {
+                    code = result.Code,
+                    message = result.Message,
+                    errors = result.Errors
+                });
+            }
+
+            return StatusCode(result.StatusCode, new
+            {
+                code = result.Code,
+                message = result.Message
+            });
+        }
+
+        return Ok(new ResetPasswordResponse { Message = result.Message });
     }
 }

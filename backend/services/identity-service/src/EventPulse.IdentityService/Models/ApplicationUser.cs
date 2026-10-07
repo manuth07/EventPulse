@@ -32,6 +32,9 @@ public class ApplicationUser : IdentityUser<Guid>
     /// <summary>Whether the user has completed the onboarding profile step.</summary>
     public bool ProfileCompleted { get; set; } = false;
 
+    /// <summary>Relative or public URL/blob reference to profile picture.</summary>
+    public string? ProfilePictureUrl { get; set; }
+
     /// <summary>Whether the account is active. Inactive accounts cannot authenticate.</summary>
     public bool IsActive { get; set; } = true;
 
@@ -43,6 +46,8 @@ public class ApplicationUser : IdentityUser<Guid>
     // -----------------------------------------------------------------------
 
     public ICollection<EmailVerificationCode> EmailVerificationCodes { get; set; } = [];
+
+    public ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = [];
 
     public OrganizerApplication? OrganizerApplication { get; set; }
 }

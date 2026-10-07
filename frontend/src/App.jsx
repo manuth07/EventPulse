@@ -7,6 +7,8 @@ import { EventDetails } from './pages/EventDetails/EventDetails';
 import { Register } from './pages/Register/Register';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { Login } from './pages/Login/Login';
+import { ForgotPassword } from './pages/ForgotPassword/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword/ResetPassword';
 import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
@@ -24,6 +26,8 @@ import { PaymentSuccess } from './pages/PaymentSuccess/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel/PaymentCancel';
 import { Tickets } from './pages/Tickets/Tickets';
 import { MyBookingsPage } from './pages/MyBookings/MyBookingsPage';
+import { BookingDetailPage } from './pages/BookingDetail/BookingDetailPage';
+import { ProfilePage } from './pages/Profile/ProfilePage';
 import { WhoWeAre } from './pages/WhoWeAre/WhoWeAre';
 import { ContactUs } from './pages/ContactUs/ContactUs';
 
@@ -40,17 +44,27 @@ function App() {
             <Route path="/about" element={<WhoWeAre />} />
             <Route path="/contact" element={<ContactUs />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/request-password-reset" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/password-reset" element={<ResetPassword />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/complete-profile" element={<CompleteProfile />} />
             <Route path="/forbidden" element={<Forbidden />} />
             <Route path="/list-your-event" element={<ListYourEvent />} />
             <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
+            <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
             <Route path="/events/:id/tickets" element={<SelectTickets />} />
             <Route path="/payment-success" element={<PaymentSuccess />} />
             <Route path="/payment-cancel" element={<PaymentCancel />} />
             <Route path="/bookings/:bookingId/tickets" element={<RequireAuth><Tickets /></RequireAuth>} />
             <Route path="/my-bookings" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/my-bookings/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
+            <Route path="/my-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/my-tickets/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
+            <Route path="/booked-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/booked-tickets/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
 
             {/* Organizer Protected Routes */}
             <Route element={<RequireRole allowedRoles="Organizer" />}>
