@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using EventPulse.Contracts.Kafka;
 using EventPulse.EventService;
 using EventPulse.EventService.Configuration;
 using EventPulse.EventService.Data;
@@ -96,6 +97,11 @@ builder.Services.AddScoped<ITicketTypeService, TicketTypeService>();
 builder.Services.AddScoped<IEventUpdateRequestService, EventUpdateRequestService>();
 builder.Services.AddScoped<IEventCancellationRequestService, EventCancellationRequestService>();
 builder.Services.AddSingleton<IEventImageStorage, AzureBlobEventImageStorage>();
+
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+builder.Services.AddScoped<IEventOutboxWriter, EventOutboxWriter>();
+builder.Services.AddSingleton<IKafkaMessageProducer, KafkaMessageProducer>();
+builder.Services.AddHostedService<EventOutboxPublisherService>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>

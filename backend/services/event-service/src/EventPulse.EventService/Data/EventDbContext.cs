@@ -13,6 +13,7 @@ public class EventDbContext : DbContext
     public DbSet<TicketType> TicketTypes => Set<TicketType>();
     public DbSet<EventUpdateRequest> EventUpdateRequests => Set<EventUpdateRequest>();
     public DbSet<EventCancellationRequest> EventCancellationRequests => Set<EventCancellationRequest>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -209,6 +210,43 @@ public class EventDbContext : DbContext
             entity.HasIndex(r => r.EventId)
                 .IsUnique()
                 .HasFilter("\"Status\" = 'Pending'");
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+
+            entity.Property(o => o.EventId)
+                .IsRequired();
+
+            entity.HasIndex(o => o.EventId)
+                .IsUnique();
+
+            entity.Property(o => o.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.MessageKey)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Payload)
+                .IsRequired();
+
+            entity.Property(o => o.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(o => o.PublishedAtUtc);
+
+            entity.HasIndex(o => new { o.PublishedAtUtc, o.CreatedAtUtc });
+
+            entity.HasIndex(o => o.CreatedAtUtc)
+                .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc_Unpublished")
+                .HasFilter("\"PublishedAtUtc\" IS NULL");
         });
     }
 }
