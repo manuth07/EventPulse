@@ -101,6 +101,10 @@ public class EventDbContext : DbContext
             entity.Property(t => t.BookedQuantity)
                 .HasDefaultValue(0)
                 .IsRequired();
+
+            entity.Ignore(t => t.TotalQuantity);
+            entity.Ignore(t => t.SoldQuantity);
+            entity.Ignore(t => t.RemainingQuantity);
         });
 
         modelBuilder.Entity<EventUpdateRequest>(entity =>

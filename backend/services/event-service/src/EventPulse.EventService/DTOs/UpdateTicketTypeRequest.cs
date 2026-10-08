@@ -16,6 +16,21 @@ public class UpdateTicketTypeRequest
     [Range(0, 1_000_000)]
     public decimal Price { get; set; }
 
-    [Range(1, 100_000)]
+    [Range(1, 100_000, ErrorMessage = "Total quantity must be at least 1.")]
     public int Capacity { get; set; }
+
+    /// <summary>
+    /// Total quantity of tickets. Alias for Capacity (EP-399).
+    /// </summary>
+    public int? TotalQuantity
+    {
+        get => Capacity;
+        set
+        {
+            if (value.HasValue && Capacity == 0)
+            {
+                Capacity = value.Value;
+            }
+        }
+    }
 }

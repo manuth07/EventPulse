@@ -67,7 +67,7 @@ public class TicketTypeService : ITicketTypeService
             return (null, "Ticket price must be entered in whole LKR.", false, false, false);
 
         if (request.Capacity < 1)
-            return (null, "Capacity must be at least 1.", false, false, false);
+            return (null, "Total quantity must be at least 1.", false, false, false);
 
         var ticketType = new TicketType
         {
@@ -150,13 +150,16 @@ public class TicketTypeService : ITicketTypeService
 
         var result = ticketTypes.Select(t =>
         {
-            var available = hasPendingCancellation ? 0 : t.Capacity - t.BookedQuantity;
+            var remaining = Math.Clamp(t.Capacity - t.BookedQuantity, 0, t.Capacity);
+            var available = hasPendingCancellation ? 0 : remaining;
             return new PublicTicketTypeDto
             {
                 Id = t.Id,
                 Name = t.Name,
                 Price = t.Price,
-                AvailableQuantity = Math.Max(available, 0),
+                TotalQuantity = t.Capacity,
+                RemainingQuantity = remaining,
+                AvailableQuantity = available,
                 IsSoldOut = hasPendingCancellation || available <= 0,
             };
         }).ToList();
@@ -203,11 +206,11 @@ public class TicketTypeService : ITicketTypeService
             return (null, "Ticket price must be entered in whole LKR.", false, false);
 
         if (request.Capacity < 1)
-            return (null, "Capacity must be at least 1.", false, false);
+            return (null, "Total quantity must be at least 1.", false, false);
 
         if (request.Capacity < ticketType.BookedQuantity)
             return (null,
-                $"Capacity cannot be reduced below the number of already booked tickets ({ticketType.BookedQuantity}).",
+                $"Total quantity cannot be reduced below the quantity already sold ({ticketType.BookedQuantity}).",
                 false, false);
 
         // ---- Apply Update -------------------------------------------------
@@ -281,14 +284,22 @@ public class TicketTypeService : ITicketTypeService
         return (true, null, false, false);
     }
 
-    private static TicketTypeDto MapToDto(TicketType t) => new TicketTypeDto
+    private static TicketTypeDto MapToDto(TicketType t)
     {
-        Id = t.Id,
-        EventId = t.EventId,
-        Name = t.Name,
-        Price = t.Price,
-        Capacity = t.Capacity,
-        BookedQuantity = t.BookedQuantity,
-        CreatedAt = t.CreatedAt,
-    };
+        var remaining = Math.Clamp(t.Capacity - t.BookedQuantity, 0, t.Capacity);
+        return new TicketTypeDto
+        {
+            Id = t.Id,
+            EventId = t.EventId,
+            Name = t.Name,
+            Price = t.Price,
+            Capacity = t.Capacity,
+            TotalQuantity = t.Capacity,
+            BookedQuantity = t.BookedQuantity,
+            SoldQuantity = t.BookedQuantity,
+            RemainingQuantity = remaining,
+            AvailableQuantity = remaining,
+            CreatedAt = t.CreatedAt,
+        };
+    }
 }
