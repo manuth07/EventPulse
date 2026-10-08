@@ -31,6 +31,15 @@ export function Header({ location = 'Colombo, LK' }) {
   const isOrganizer = hasRole('Organizer');
   const isAdmin = hasRole('Administrator');
 
+  // Primary display role label for dropdown
+  const primaryRoleLabel = isAdmin
+    ? (isOrganizer ? 'Administrator & Organizer' : 'Administrator')
+    : isOrganizer
+    ? 'Organizer'
+    : isAuthenticated
+    ? 'Customer'
+    : null;
+
   const { accessToken } = useAuth();
   const getEffectiveToken = useCallback(() => {
     return accessToken || sessionStorage.getItem('ep_access_token');
