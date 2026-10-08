@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar, Bell, CheckCircle2, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { buildApiUrl } from '../../services/apiConfig';
+import { getAdminNotifications, getAdminNotificationsUnreadCount, markAdminNotificationRead } from '../../services/eventService';
 
 export function Header({ location = 'Colombo, LK' }) {
   const navigate = useNavigate();
@@ -12,6 +13,14 @@ export function Header({ location = 'Colombo, LK' }) {
   const { cartCount } = useCart();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+
+  // Administrator Notifications State (EP-151 / EP-32)
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifError, setNotifError] = useState(null);
+  const notifRef = useRef(null);
 
   const displayName = currentUser?.firstName
     ? `${currentUser.firstName} ${currentUser.lastName ? currentUser.lastName.charAt(0) + '.' : ''}`
@@ -31,16 +40,67 @@ export function Header({ location = 'Colombo, LK' }) {
     ? 'Customer'
     : null;
 
-  // Close menu when clicking outside
+  const { accessToken } = useAuth();
+  const getEffectiveToken = useCallback(() => {
+    return accessToken || sessionStorage.getItem('ep_access_token');
+  }, [accessToken]);
+
+  const fetchAdminNotifications = useCallback(async () => {
+    if (!isAdmin) return;
+    const token = getEffectiveToken();
+    if (!token) return;
+
+    try {
+      const [list, count] = await Promise.all([
+        getAdminNotifications(token).catch(() => []),
+        getAdminNotificationsUnreadCount(token).catch(() => 0),
+      ]);
+      setNotifications(Array.isArray(list) ? list : []);
+      setUnreadCount(typeof count === 'number' ? count : 0);
+      setNotifError(null);
+    } catch (err) {
+      setNotifError(err.message || 'Failed to load notifications');
+    }
+  }, [isAdmin, getEffectiveToken]);
+
+  // Load notifications for admin on mount and on route changes
+  useEffect(() => {
+    if (isAdmin) {
+      fetchAdminNotifications();
+    }
+  }, [isAdmin, routerLocation.pathname, fetchAdminNotifications]);
+
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false);
       }
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleNotificationClick = async (notif) => {
+    setNotifOpen(false);
+    const token = getEffectiveToken();
+    if (token && !notif.IsRead && !notif.isRead) {
+      try {
+        await markAdminNotificationRead(notif.id || notif.Id, token);
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === notif.id ? { ...n, isRead: true, IsRead: true } : n))
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      } catch (err) {
+        console.warn('Failed to mark notification read:', err);
+      }
+    }
+    // Navigate to pending events page with reviewId parameter
+    navigate(`/admin/events/pending?reviewId=${notif.eventId || notif.EventId}`);
+  };
 
   const handleLogout = () => {
     setMenuOpen(false);
@@ -181,6 +241,216 @@ export function Header({ location = 'Colombo, LK' }) {
               </span>
             )}
           </Link>
+
+          {/* Administrator Notifications Bell Indicator (EP-151 / EP-32) */}
+          {isAdmin && (
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                id="admin-notification-bell"
+                data-testid="admin-notification-bell"
+                aria-haspopup="true"
+                aria-expanded={notifOpen}
+                aria-label={`Admin notifications. ${unreadCount} unread.`}
+                onClick={() => setNotifOpen((o) => !o)}
+                style={{
+                  position: 'relative',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '8px',
+                  borderRadius: 'var(--ep-radius-pill)',
+                  color: 'var(--ep-text-primary)',
+                  backgroundColor: notifOpen ? 'var(--ep-canvas)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'var(--ep-transition)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-canvas)')}
+                onMouseLeave={(e) => {
+                  if (!notifOpen) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <Bell size={20} color="var(--ep-text-primary)" />
+                {unreadCount > 0 && (
+                  <span
+                    id="admin-notification-badge"
+                    data-testid="admin-notification-badge"
+                    style={{
+                      position: 'absolute',
+                      top: '-2px',
+                      right: '-4px',
+                      backgroundColor: 'var(--ep-primary)',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      minWidth: '18px',
+                      height: '18px',
+                      borderRadius: '9px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0 4px',
+                      lineHeight: 1,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    }}
+                  >
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown Drawer */}
+              {notifOpen && (
+                <div
+                  role="region"
+                  aria-labelledby="admin-notification-bell"
+                  data-testid="admin-notification-dropdown"
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    right: 0,
+                    width: '340px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid var(--ep-border)',
+                    borderRadius: 'var(--ep-radius-card)',
+                    boxShadow: 'var(--ep-shadow-hover)',
+                    overflow: 'hidden',
+                    zIndex: 200,
+                  }}
+                >
+                  <div style={{
+                    padding: '12px 16px',
+                    borderBottom: '1px solid var(--ep-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: 'var(--ep-canvas)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Bell size={15} color="var(--ep-primary)" />
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                        Event Review Notifications
+                      </span>
+                    </div>
+                    {unreadCount > 0 && (
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: 'var(--ep-primary)',
+                        backgroundColor: '#FFF0E6',
+                        padding: '2px 8px',
+                        borderRadius: 'var(--ep-radius-pill)',
+                      }}>
+                        {unreadCount} new
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div
+                        data-testid="admin-notification-empty"
+                        style={{
+                          padding: '32px 16px',
+                          textAlign: 'center',
+                          color: 'var(--ep-text-secondary)',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <CheckCircle2 size={24} color="#34C759" style={{ margin: '0 auto 8px auto' }} />
+                        <p style={{ margin: 0, fontWeight: 500 }}>No event submissions waiting for review.</p>
+                      </div>
+                    ) : (
+                      notifications.slice(0, 6).map((item) => {
+                        const isPending = (item.reviewStatus || item.ReviewStatus || '').toLowerCase() === 'pending';
+                        return (
+                          <div
+                            key={item.id || item.Id}
+                            data-testid={`admin-notification-item-${item.id || item.Id}`}
+                            onClick={() => handleNotificationClick(item)}
+                            style={{
+                              padding: '12px 16px',
+                              borderBottom: '1px solid var(--ep-border)',
+                              cursor: 'pointer',
+                              backgroundColor: item.isRead || item.IsRead ? '#ffffff' : '#FFF9F5',
+                              transition: 'var(--ep-transition)',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ep-canvas)')}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = item.isRead || item.IsRead ? '#ffffff' : '#FFF9F5';
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                              <span style={{
+                                fontSize: '13px',
+                                fontWeight: item.isRead || item.IsRead ? 600 : 700,
+                                color: 'var(--ep-text-primary)',
+                              }}>
+                                {item.eventTitle || item.EventTitle || 'New Event'}
+                              </span>
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                padding: '2px 6px',
+                                borderRadius: 'var(--ep-radius-pill)',
+                                textTransform: 'uppercase',
+                                backgroundColor: isPending ? '#FFF0E6' : '#E8F5E9',
+                                color: isPending ? 'var(--ep-primary)' : '#2E7D32',
+                              }}>
+                                {item.reviewStatus || item.ReviewStatus || 'Pending'}
+                              </span>
+                            </div>
+                            <p style={{
+                              fontSize: '12px',
+                              color: 'var(--ep-text-secondary)',
+                              margin: '0 0 6px 0',
+                              lineHeight: 1.4,
+                            }}>
+                              {item.message || item.Message || 'New event submitted for review.'}
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--ep-text-secondary)' }}>
+                              <Clock size={12} />
+                              <span>
+                                {item.submittedAtUtc || item.SubmittedAtUtc
+                                  ? new Date(item.submittedAtUtc || item.SubmittedAtUtc).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })
+                                  : 'Recently'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div style={{
+                    padding: '8px 16px',
+                    textAlign: 'center',
+                    backgroundColor: 'var(--ep-canvas)',
+                    borderTop: '1px solid var(--ep-border)',
+                  }}>
+                    <Link
+                      to="/admin/events/pending"
+                      onClick={() => setNotifOpen(false)}
+                      style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--ep-primary)',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      View all pending events →
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {isAuthenticated ? (
             /* ---- Account menu (all roles) ---- */

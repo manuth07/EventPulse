@@ -39,7 +39,9 @@ $RequiredTopics = @(
     "payment-failed-dlq",
     "booking-refund-requested",
     "payment-refunded",
-    "booking-created"
+    "booking-created",
+    "event-submitted",
+    "event-submitted-dlq"
 )
 
 # 3. Create topics idempotently

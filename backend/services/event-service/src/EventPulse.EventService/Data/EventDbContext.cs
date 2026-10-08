@@ -13,6 +13,9 @@ public class EventDbContext : DbContext
     public DbSet<TicketType> TicketTypes => Set<TicketType>();
     public DbSet<EventUpdateRequest> EventUpdateRequests => Set<EventUpdateRequest>();
     public DbSet<EventCancellationRequest> EventCancellationRequests => Set<EventCancellationRequest>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<ProcessedIntegrationEvent> ProcessedIntegrationEvents => Set<ProcessedIntegrationEvent>();
+    public DbSet<AdminNotification> AdminNotifications => Set<AdminNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -209,6 +212,111 @@ public class EventDbContext : DbContext
             entity.HasIndex(r => r.EventId)
                 .IsUnique()
                 .HasFilter("\"Status\" = 'Pending'");
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+
+            entity.Property(o => o.EventId)
+                .IsRequired();
+
+            entity.HasIndex(o => o.EventId)
+                .IsUnique();
+
+            entity.Property(o => o.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.MessageKey)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Payload)
+                .IsRequired();
+
+            entity.Property(o => o.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(o => o.PublishedAtUtc);
+
+            entity.HasIndex(o => new { o.PublishedAtUtc, o.CreatedAtUtc });
+
+            entity.HasIndex(o => o.CreatedAtUtc)
+                .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc_Unpublished")
+                .HasFilter("\"PublishedAtUtc\" IS NULL");
+        });
+
+        modelBuilder.Entity<ProcessedIntegrationEvent>(entity =>
+        {
+            entity.HasKey(e => e.EventId);
+
+            entity.Property(e => e.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.ProcessedAtUtc)
+                .IsRequired();
+        });
+
+        modelBuilder.Entity<AdminNotification>(entity =>
+        {
+            entity.HasKey(n => n.Id);
+
+            entity.Property(n => n.EventMessageId)
+                .IsRequired();
+
+            entity.HasIndex(n => n.EventMessageId)
+                .IsUnique();
+
+            entity.Property(n => n.EventId)
+                .IsRequired();
+
+            entity.HasIndex(n => n.EventId);
+
+            entity.Property(n => n.EventTitle)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(n => n.OrganizerId)
+                .IsRequired();
+
+            entity.Property(n => n.Message)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(n => n.NavigationTarget)
+                .IsRequired()
+                .HasMaxLength(250);
+
+            entity.Property(n => n.SubmittedAtUtc)
+                .IsRequired();
+
+            entity.Property(n => n.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(n => n.IsRead)
+                .IsRequired()
+                .HasDefaultValue(false);
+
+            entity.Property(n => n.ReadAtUtc)
+                .IsRequired(false);
+
+            entity.HasIndex(n => n.CreatedAtUtc);
+            entity.HasIndex(n => n.IsRead);
+
+            entity.HasOne(n => n.Event)
+                .WithMany()
+                .HasForeignKey(n => n.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

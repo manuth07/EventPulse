@@ -882,3 +882,90 @@ export async function getEventCategories() {
 
   return response.json();
 }
+
+/**
+ * Retrieves administrator event submission notifications (EP-150 / EP-151 / EP-32).
+ * Admin endpoint: GET /api/events/admin/notifications
+ * @param {string} token - Administrator JWT access token
+ * @returns {Promise<Array<AdminNotificationDto>>}
+ */
+export async function getAdminNotifications(token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/notifications`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load admin notifications (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Retrieves unread administrator notification count (EP-150 / EP-151 / EP-32).
+ * Admin endpoint: GET /api/events/admin/notifications/unread-count
+ * @param {string} token - Administrator JWT access token
+ * @returns {Promise<number>}
+ */
+export async function getAdminNotificationsUnreadCount(token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/notifications/unread-count`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to load unread notification count (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
+/**
+ * Marks an administrator notification as read (EP-150 / EP-151 / EP-32).
+ * Admin endpoint: PUT /api/events/admin/notifications/{id}/read
+ * @param {string} id - Notification ID
+ * @param {string} token - Administrator JWT access token
+ * @returns {Promise<void>}
+ */
+export async function markAdminNotificationRead(id, token) {
+  const response = await fetch(`${getApiBaseUrl()}/api/events/admin/notifications/${id}/read`, {
+    method: 'PUT',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let errorMsg = `Failed to mark notification as read (${response.status})`;
+    try {
+      const data = await response.json();
+      if (data.message) errorMsg = data.message;
+    } catch (e) { /* not JSON */ }
+    const error = new Error(errorMsg);
+    error.status = response.status;
+    throw error;
+  }
+}
+
