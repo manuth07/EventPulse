@@ -20,13 +20,14 @@ public class PaymentFailedEventHandlerTests
         return new BookingDbContext(options);
     }
 
-    private static (PaymentFailedEventHandler handler, Mock<IBookingPaymentFailureService> failureServiceMock, Mock<ILogger<PaymentFailedEventHandler>> loggerMock)
+    private static (PaymentFailedEventHandler handler, Mock<IBookingPaymentFailureService> failureServiceMock, Mock<IEventAvailabilityClient> eventClientMock, Mock<ILogger<PaymentFailedEventHandler>> loggerMock)
         CreateHandler(BookingDbContext context)
     {
         var failureServiceMock = new Mock<IBookingPaymentFailureService>();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
         var loggerMock = new Mock<ILogger<PaymentFailedEventHandler>>();
-        var handler = new PaymentFailedEventHandler(context, failureServiceMock.Object, loggerMock.Object);
-        return (handler, failureServiceMock, loggerMock);
+        var handler = new PaymentFailedEventHandler(context, failureServiceMock.Object, eventClientMock.Object, loggerMock.Object);
+        return (handler, failureServiceMock, eventClientMock, loggerMock);
     }
 
     [Fact]
@@ -34,7 +35,7 @@ public class PaymentFailedEventHandlerTests
     {
         // Arrange
         using var context = CreateInMemoryDbContext();
-        var (handler, failureServiceMock, _) = CreateHandler(context);
+        var (handler, failureServiceMock, _, _) = CreateHandler(context);
 
         var bookingId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
@@ -77,7 +78,7 @@ public class PaymentFailedEventHandlerTests
     {
         // Arrange
         using var context = CreateInMemoryDbContext();
-        var (handler, failureServiceMock, _) = CreateHandler(context);
+        var (handler, failureServiceMock, _, _) = CreateHandler(context);
 
         var eventId = Guid.NewGuid();
         var bookingId = Guid.NewGuid();
@@ -115,7 +116,7 @@ public class PaymentFailedEventHandlerTests
     {
         // Arrange
         using var context = CreateInMemoryDbContext();
-        var (handler, failureServiceMock, loggerMock) = CreateHandler(context);
+        var (handler, failureServiceMock, _, loggerMock) = CreateHandler(context);
 
         var bookingId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
@@ -162,7 +163,7 @@ public class PaymentFailedEventHandlerTests
     {
         // Arrange
         using var context = CreateInMemoryDbContext();
-        var (handler, failureServiceMock, _) = CreateHandler(context);
+        var (handler, failureServiceMock, _, _) = CreateHandler(context);
 
         var bookingId = Guid.NewGuid();
         var eventId = Guid.NewGuid();

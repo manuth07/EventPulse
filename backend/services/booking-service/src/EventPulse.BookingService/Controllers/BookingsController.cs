@@ -292,6 +292,20 @@ public class BookingsController : ControllerBase
             Items = bookingItems
         };
 
+        // EP-401: Place temporary inventory hold in EventService before saving booking to prevent concurrent overselling
+        var reserveResult = await _eventClient.ReserveInventoryAsync(
+            request.EventId,
+            booking.Id,
+            request.Items.Select(i => new ReserveInventoryItemDto { TicketTypeId = i.TicketTypeId, Quantity = i.Quantity }),
+            holdDurationMinutes: 15,
+            cancellationToken);
+
+        if (!reserveResult.Success)
+        {
+            return StatusCode(reserveResult.StatusCode == 409 ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest,
+                new { code = "INSUFFICIENT_INVENTORY", message = reserveResult.ErrorMessage ?? "Not enough tickets available." });
+        }
+
         using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace EventPulse.BookingService.Services;
 
@@ -46,6 +47,134 @@ public class EventServiceAvailabilityClient : IEventAvailabilityClient
         {
             _logger?.LogError(ex, "Failed to fetch event summary for Event {EventId}", eventId);
             return null;
+        }
+    }
+
+    public async Task<ClientInventoryResult> ReserveInventoryAsync(
+        Guid eventId,
+        Guid bookingId,
+        IEnumerable<ReserveInventoryItemDto> items,
+        int holdDurationMinutes = 15,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var payload = new
+            {
+                bookingId,
+                holdDurationMinutes,
+                items = items.Select(i => new { ticketTypeId = i.TicketTypeId, quantity = i.Quantity })
+            };
+
+            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/inventory/reserve", payload, cancellationToken);
+            if (response.IsSuccessStatusCode)
+                return ClientInventoryResult.Ok();
+
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            string message = "Failed to reserve inventory.";
+            try
+            {
+                using var doc = JsonDocument.Parse(errorBody);
+                if (doc.RootElement.TryGetProperty("message", out var msgProp))
+                {
+                    message = msgProp.GetString() ?? message;
+                }
+            }
+            catch { }
+
+            return ClientInventoryResult.Fail(message, (int)response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error calling EventService reserve inventory for Event {EventId}, Booking {BookingId}", eventId, bookingId);
+            return ClientInventoryResult.Fail($"Network error reserving inventory: {ex.Message}", 500);
+        }
+    }
+
+    public async Task<ClientInventoryResult> CommitInventoryAsync(
+        Guid eventId,
+        Guid bookingId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var payload = new { bookingId };
+            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/inventory/commit", payload, cancellationToken);
+            if (response.IsSuccessStatusCode)
+                return ClientInventoryResult.Ok();
+
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            string message = "Failed to commit inventory.";
+            try
+            {
+                using var doc = JsonDocument.Parse(errorBody);
+                if (doc.RootElement.TryGetProperty("message", out var msgProp))
+                {
+                    message = msgProp.GetString() ?? message;
+                }
+            }
+            catch { }
+
+            return ClientInventoryResult.Fail(message, (int)response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error calling EventService commit inventory for Event {EventId}, Booking {BookingId}", eventId, bookingId);
+            return ClientInventoryResult.Fail($"Network error committing inventory: {ex.Message}", 500);
+        }
+    }
+
+    public async Task<ClientInventoryResult> ReleaseInventoryAsync(
+        Guid eventId,
+        Guid bookingId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var payload = new { bookingId };
+            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/inventory/release", payload, cancellationToken);
+            if (response.IsSuccessStatusCode)
+                return ClientInventoryResult.Ok();
+
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            return ClientInventoryResult.Fail(errorBody, (int)response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error calling EventService release inventory for Event {EventId}, Booking {BookingId}", eventId, bookingId);
+            return ClientInventoryResult.Fail($"Network error releasing inventory: {ex.Message}", 500);
+        }
+    }
+
+    public async Task<ClientInventoryResult> RestoreInventoryAsync(
+        Guid eventId,
+        Guid bookingId,
+        string cancellationKey,
+        IEnumerable<ReserveInventoryItemDto> items,
+        Guid? ticketId = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var payload = new
+            {
+                bookingId,
+                cancellationKey,
+                ticketId,
+                items = items.Select(i => new { ticketTypeId = i.TicketTypeId, quantity = i.Quantity })
+            };
+
+            var response = await _httpClient.PostAsJsonAsync($"/api/events/{eventId}/inventory/restore", payload, cancellationToken);
+            if (response.IsSuccessStatusCode)
+                return ClientInventoryResult.Ok();
+
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            return ClientInventoryResult.Fail(errorBody, (int)response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error calling EventService restore inventory for Event {EventId}, Booking {BookingId}", eventId, bookingId);
+            return ClientInventoryResult.Fail($"Network error restoring inventory: {ex.Message}", 500);
         }
     }
 }

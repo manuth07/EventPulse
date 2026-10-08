@@ -61,7 +61,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         var request = new CancelBookingRequest { Reason = "Unable to attend" };
 
@@ -113,7 +113,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act
         var result = await service.CancelBookingAsync(bookingId, anotherCustomerId, null, CancellationToken.None);
@@ -149,7 +149,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act
         var result = await service.CancelBookingAsync(bookingId, customerId, null, CancellationToken.None);
@@ -191,7 +191,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act - Cancel only ticket1
         var result = await service.CancelSingleTicketAsync(ticket1Id, customerId, "Guest cannot come", CancellationToken.None);
@@ -254,7 +254,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act - Cancel the only remaining valid ticket
         var result = await service.CancelSingleTicketAsync(ticket1Id, customerId, "Cancelling last ticket", CancellationToken.None);
@@ -304,7 +304,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act
         var result = await service.CancelSingleTicketAsync(ticketId, anotherCustomerId, null, CancellationToken.None);
@@ -342,7 +342,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act
         var result = await service.CancelSingleTicketAsync(ticketId, customerId, null, CancellationToken.None);
@@ -377,7 +377,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act
         var result = await service.CancelBookingAsync(bookingId, customerId, new CancelBookingRequest { Reason = "Emergency" }, CancellationToken.None);
@@ -434,7 +434,7 @@ public class BookingCancellationServiceTests
         await context.SaveChangesAsync();
 
         var eventPublisherMock = new Mock<IBookingEventPublisher>();
-        var service = new BookingCancellationService(context, eventPublisherMock.Object, NullLogger<BookingCancellationService>.Instance);
+        var service = new BookingCancellationService(context, eventPublisherMock.Object, new Mock<IEventAvailabilityClient>().Object, NullLogger<BookingCancellationService>.Instance);
 
         // Act
         var result = await service.CancelSingleTicketAsync(ticketId, customerId, "VIP cancel", CancellationToken.None);

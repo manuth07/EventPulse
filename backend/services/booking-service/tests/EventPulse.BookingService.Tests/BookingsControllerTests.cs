@@ -35,6 +35,10 @@ public class BookingsControllerTests
         ClaimsPrincipal? user = null,
         Mock<IBookingCancellationService>? cancellationServiceMock = null)
     {
+        eventClientMock
+            .Setup(x => x.ReserveInventoryAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<IEnumerable<ReserveInventoryItemDto>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ClientInventoryResult.Ok());
+
         var loggerMock = new Mock<ILogger<BookingsController>>();
         var historyService = bookingHistoryServiceMock ?? new Mock<IBookingHistoryService>();
         var cancellationService = cancellationServiceMock ?? new Mock<IBookingCancellationService>();

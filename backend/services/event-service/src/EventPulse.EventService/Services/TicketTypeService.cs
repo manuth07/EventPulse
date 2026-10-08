@@ -174,10 +174,22 @@ public class TicketTypeService : ITicketTypeService
         var hasPendingCancellation = await _context.EventCancellationRequests
             .AnyAsync(r => r.EventId == eventId && r.Status == EventCancellationRequestStatus.Pending, cancellationToken);
 
+        var now = DateTimeOffset.UtcNow;
+        var ticketTypeIds = ticketTypes.Select(t => t.Id).ToList();
+        var activeHolds = await _context.InventoryReservations
+            .Where(r => r.EventId == eventId &&
+                        ticketTypeIds.Contains(r.TicketTypeId) &&
+                        r.Status == InventoryReservationStatus.Active &&
+                        r.ExpiresAtUtc > now)
+            .GroupBy(r => r.TicketTypeId)
+            .Select(g => new { TicketTypeId = g.Key, ReservedQty = g.Sum(r => r.Quantity) })
+            .ToDictionaryAsync(g => g.TicketTypeId, g => g.ReservedQty, cancellationToken);
+
         var result = ticketTypes.Select(t =>
         {
             var remaining = Math.Clamp(t.Capacity - t.BookedQuantity, 0, t.Capacity);
-            var available = hasPendingCancellation ? 0 : remaining;
+            var reserved = activeHolds.GetValueOrDefault(t.Id, 0);
+            var available = hasPendingCancellation ? 0 : Math.Max(0, remaining - reserved);
             return new PublicTicketTypeDto
             {
                 Id = t.Id,

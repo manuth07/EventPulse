@@ -16,6 +16,8 @@ public class EventDbContext : DbContext
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<ProcessedIntegrationEvent> ProcessedIntegrationEvents => Set<ProcessedIntegrationEvent>();
     public DbSet<AdminNotification> AdminNotifications => Set<AdminNotification>();
+    public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
+    public DbSet<InventoryRestoration> InventoryRestorations => Set<InventoryRestoration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -322,6 +324,79 @@ public class EventDbContext : DbContext
                 .HasForeignKey(n => n.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<InventoryReservation>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.BookingId)
+                .IsRequired();
+
+            entity.Property(r => r.EventId)
+                .IsRequired();
+
+            entity.Property(r => r.TicketTypeId)
+                .IsRequired();
+
+            entity.Property(r => r.Quantity)
+                .IsRequired();
+
+            entity.Property(r => r.Status)
+                .HasConversion<string>()
+                .IsRequired();
+
+            entity.Property(r => r.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(r => r.ExpiresAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(r => r.BookingId);
+            entity.HasIndex(r => r.TicketTypeId);
+            entity.HasIndex(r => new { r.TicketTypeId, r.Status });
+            entity.HasIndex(r => r.ExpiresAtUtc);
+
+            entity.HasOne(r => r.TicketType)
+                .WithMany()
+                .HasForeignKey(r => r.TicketTypeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryRestoration>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.CancellationKey)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(r => r.BookingId)
+                .IsRequired();
+
+            entity.Property(r => r.EventId)
+                .IsRequired();
+
+            entity.Property(r => r.TicketTypeId)
+                .IsRequired();
+
+            entity.Property(r => r.RestoredQuantity)
+                .IsRequired();
+
+            entity.Property(r => r.RestoredAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(r => r.CancellationKey)
+                .IsUnique();
+
+            entity.HasIndex(r => r.BookingId);
+            entity.HasIndex(r => r.TicketTypeId);
+
+            entity.HasOne(r => r.TicketType)
+                .WithMany()
+                .HasForeignKey(r => r.TicketTypeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }
+
 

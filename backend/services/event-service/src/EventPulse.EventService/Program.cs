@@ -98,6 +98,7 @@ builder.Services.AddScoped<ITicketTypeService, TicketTypeService>();
 builder.Services.AddScoped<IEventUpdateRequestService, EventUpdateRequestService>();
 builder.Services.AddScoped<IEventCancellationRequestService, EventCancellationRequestService>();
 builder.Services.AddScoped<IAdminNotificationService, AdminNotificationService>();
+builder.Services.AddScoped<IEventInventoryService, EventInventoryService>();
 builder.Services.AddSingleton<IEventImageStorage, AzureBlobEventImageStorage>();
 
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));

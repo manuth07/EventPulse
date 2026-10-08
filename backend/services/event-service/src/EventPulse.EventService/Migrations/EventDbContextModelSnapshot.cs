@@ -269,6 +269,88 @@ namespace EventPulse.EventService.Migrations
                     b.ToTable("EventUpdateRequests");
                 });
 
+            modelBuilder.Entity("EventPulse.EventService.Models.InventoryReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TicketTypeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("TicketTypeId");
+
+                    b.HasIndex("TicketTypeId", "Status");
+
+                    b.ToTable("InventoryReservations");
+                });
+
+            modelBuilder.Entity("EventPulse.EventService.Models.InventoryRestoration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancellationKey")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("RestoredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RestoredQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("TicketId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TicketTypeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("CancellationKey")
+                        .IsUnique();
+
+                    b.HasIndex("TicketTypeId");
+
+                    b.ToTable("InventoryRestorations");
+                });
+
             modelBuilder.Entity("EventPulse.EventService.Models.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -417,6 +499,28 @@ namespace EventPulse.EventService.Migrations
                         .IsRequired();
 
                     b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("EventPulse.EventService.Models.InventoryReservation", b =>
+                {
+                    b.HasOne("EventPulse.EventService.Models.TicketType", "TicketType")
+                        .WithMany()
+                        .HasForeignKey("TicketTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TicketType");
+                });
+
+            modelBuilder.Entity("EventPulse.EventService.Models.InventoryRestoration", b =>
+                {
+                    b.HasOne("EventPulse.EventService.Models.TicketType", "TicketType")
+                        .WithMany()
+                        .HasForeignKey("TicketTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TicketType");
                 });
 
             modelBuilder.Entity("EventPulse.EventService.Models.TicketType", b =>
