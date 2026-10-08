@@ -124,6 +124,32 @@ public class TicketTypeService : ITicketTypeService
     }
 
     /// <inheritdoc/>
+    public async Task<(TicketTypeDto? Result, bool IsNotFound, bool IsForbidden)> GetByIdAsync(
+        Guid eventId,
+        Guid ticketTypeId,
+        Guid organizerId,
+        CancellationToken cancellationToken = default)
+    {
+        var ticketType = await _context.TicketTypes
+            .Include(t => t.Event)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, cancellationToken);
+
+        if (ticketType == null || ticketType.Event == null)
+            return (null, true, false);
+
+        if (ticketType.Event.OrganizerId != organizerId)
+        {
+            _logger?.LogWarning(
+                "GetTicketTypeById forbidden: TicketType {TicketTypeId} belongs to Event owned by {ActualOrganizer}, request by {RequesterId}",
+                ticketTypeId, ticketType.Event.OrganizerId, organizerId);
+            return (null, false, true);
+        }
+
+        return (MapToDto(ticketType), false, false);
+    }
+
+    /// <inheritdoc/>
     public async Task<(IReadOnlyList<PublicTicketTypeDto>? Result, bool IsNotFound)> GetPublicByEventIdAsync(
         Guid eventId,
         CancellationToken cancellationToken = default)
