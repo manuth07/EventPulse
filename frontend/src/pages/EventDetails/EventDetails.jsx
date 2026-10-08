@@ -6,6 +6,11 @@ import { fetchEventById } from '../../services/eventService';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { getPublicTicketTypes, getStartingPrice } from '../../services/ticketTypeService';
 import { normalizeCategory } from '../../data/eventConstants';
+import {
+  formatAvailabilityText,
+  isTicketSoldOut,
+  isLowAvailability,
+} from '../../utils/ticketAvailabilityHelper';
 
 function formatDate(dateString) {
   if (!dateString) return 'Date TBA';
@@ -29,6 +34,8 @@ export function EventDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [startingPrice, setStartingPrice] = useState(null);
+  const [ticketTypes, setTicketTypes] = useState([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
 
   const loadEventDetails = async () => {
     setLoading(true);
@@ -50,12 +57,21 @@ export function EventDetails() {
 
   useEffect(() => {
     if (!event?.id) return;
+    setTicketsLoading(true);
     getPublicTicketTypes(event.id)
       .then((data) => {
-        const computed = getStartingPrice(data);
+        const typesList = Array.isArray(data) ? data : [];
+        setTicketTypes(typesList);
+        const computed = getStartingPrice(typesList);
         setStartingPrice(computed !== null ? computed : (event.price ?? null));
       })
-      .catch(() => setStartingPrice(event.price ?? null));
+      .catch(() => {
+        setTicketTypes([]);
+        setStartingPrice(event.price ?? null);
+      })
+      .finally(() => {
+        setTicketsLoading(false);
+      });
   }, [event]);
 
   const heroImage = event?.coverUrl || event?.imageUrl;
@@ -297,14 +313,97 @@ export function EventDetails() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    className="ep-btn-primary w-100"
-                    style={{ padding: '14px', fontSize: '15px' }}
-                    onClick={() => navigate(`/events/${event.id}/tickets`)}
-                  >
-                    Get Tickets
-                  </button>
+                  {/* Ticket Types Availability Breakdown */}
+                  {ticketTypes.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <div className="ep-caption" style={{ color: 'var(--ep-text-secondary)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Availability
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} data-testid="ticket-availability-list">
+                        {ticketTypes.map((t) => {
+                          const soldOut = isTicketSoldOut(t);
+                          const lowStock = isLowAvailability(t);
+                          const availText = formatAvailabilityText(t);
+
+                          return (
+                            <div
+                              key={t.id}
+                              data-testid={`ticket-type-item-${t.id}`}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--ep-border)',
+                                backgroundColor: soldOut ? '#FAFAFA' : '#FFFFFF',
+                                opacity: soldOut ? 0.65 : 1,
+                              }}
+                            >
+                              <div style={{ minWidth: 0, paddingRight: '8px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ep-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {t.name}
+                                </div>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--ep-text-secondary)' }}>
+                                  {formatPrice(t.price)}
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <span
+                                  data-testid={`ticket-availability-${t.id}`}
+                                  style={{
+                                    display: 'inline-block',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    backgroundColor: soldOut
+                                      ? '#FDE8E8'
+                                      : lowStock
+                                      ? '#FFF4E5'
+                                      : 'var(--ep-soft-accent, #FFF0E6)',
+                                    color: soldOut
+                                      ? 'var(--ep-danger, #C62828)'
+                                      : lowStock
+                                      ? '#D97706'
+                                      : 'var(--ep-primary, #FF5B00)',
+                                  }}
+                                >
+                                  {availText}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {(() => {
+                    const isAllSoldOut = ticketTypes.length > 0 && ticketTypes.every((t) => isTicketSoldOut(t));
+                    return (
+                      <button
+                        type="button"
+                        data-testid="get-tickets-btn"
+                        className="ep-btn-primary w-100"
+                        style={{
+                          padding: '14px',
+                          fontSize: '15px',
+                          opacity: isAllSoldOut ? 0.6 : 1,
+                          cursor: isAllSoldOut ? 'not-allowed' : 'pointer',
+                        }}
+                        disabled={isAllSoldOut}
+                        onClick={() => {
+                          if (!isAllSoldOut) {
+                            navigate(`/events/${event.id}/tickets`);
+                          }
+                        }}
+                      >
+                        {isAllSoldOut ? 'Sold Out' : 'Get Tickets'}
+                      </button>
+                    );
+                  })()}
 
                   <p className="ep-caption text-center mt-3 mb-0" style={{ color: 'var(--ep-text-secondary)' }}>
                     Guaranteed entry • Instant confirmation
