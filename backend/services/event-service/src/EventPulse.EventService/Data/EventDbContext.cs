@@ -15,6 +15,7 @@ public class EventDbContext : DbContext
     public DbSet<EventCancellationRequest> EventCancellationRequests => Set<EventCancellationRequest>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<ProcessedIntegrationEvent> ProcessedIntegrationEvents => Set<ProcessedIntegrationEvent>();
+    public DbSet<AdminNotification> AdminNotifications => Set<AdminNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -264,6 +265,58 @@ public class EventDbContext : DbContext
 
             entity.Property(e => e.ProcessedAtUtc)
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<AdminNotification>(entity =>
+        {
+            entity.HasKey(n => n.Id);
+
+            entity.Property(n => n.EventMessageId)
+                .IsRequired();
+
+            entity.HasIndex(n => n.EventMessageId)
+                .IsUnique();
+
+            entity.Property(n => n.EventId)
+                .IsRequired();
+
+            entity.HasIndex(n => n.EventId);
+
+            entity.Property(n => n.EventTitle)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(n => n.OrganizerId)
+                .IsRequired();
+
+            entity.Property(n => n.Message)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(n => n.NavigationTarget)
+                .IsRequired()
+                .HasMaxLength(250);
+
+            entity.Property(n => n.SubmittedAtUtc)
+                .IsRequired();
+
+            entity.Property(n => n.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(n => n.IsRead)
+                .IsRequired()
+                .HasDefaultValue(false);
+
+            entity.Property(n => n.ReadAtUtc)
+                .IsRequired(false);
+
+            entity.HasIndex(n => n.CreatedAtUtc);
+            entity.HasIndex(n => n.IsRead);
+
+            entity.HasOne(n => n.Event)
+                .WithMany()
+                .HasForeignKey(n => n.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

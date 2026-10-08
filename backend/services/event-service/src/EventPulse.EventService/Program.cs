@@ -97,13 +97,14 @@ builder.Services.AddScoped<IEventReviewService, EventReviewService>();
 builder.Services.AddScoped<ITicketTypeService, TicketTypeService>();
 builder.Services.AddScoped<IEventUpdateRequestService, EventUpdateRequestService>();
 builder.Services.AddScoped<IEventCancellationRequestService, EventCancellationRequestService>();
+builder.Services.AddScoped<IAdminNotificationService, AdminNotificationService>();
 builder.Services.AddSingleton<IEventImageStorage, AzureBlobEventImageStorage>();
 
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
 builder.Services.AddScoped<IEventOutboxWriter, EventOutboxWriter>();
 builder.Services.AddSingleton<IKafkaMessageProducer, KafkaMessageProducer>();
 builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
-builder.Services.AddScoped<IEventSubmittedNotificationHandler, LoggingEventSubmittedNotificationHandler>();
+builder.Services.AddScoped<IEventSubmittedNotificationHandler, EventSubmittedNotificationHandler>();
 builder.Services.AddScoped<IKafkaEventSubmittedDispatcher, KafkaEventSubmittedDispatcher>();
 builder.Services.AddHostedService<EventOutboxPublisherService>();
 builder.Services.AddHostedService<KafkaEventSubmittedConsumer>();
