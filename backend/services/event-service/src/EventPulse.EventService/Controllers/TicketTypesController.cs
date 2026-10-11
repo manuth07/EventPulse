@@ -75,7 +75,10 @@ public class TicketTypesController : ControllerBase
         if (error != null)
             return BadRequest(new { code = "VALIDATION_ERROR", message = error });
 
-        return CreatedAtAction(nameof(GetTicketTypes), new { eventId = guidId }, result);
+        if (result == null)
+            return StatusCode(500, new { code = "SERVER_ERROR", message = "Failed to create ticket type." });
+
+        return CreatedAtAction(nameof(GetTicketTypeById), new { eventId = guidId, ticketTypeId = result.Id }, result);
     }
 
     /// <summary>
@@ -109,6 +112,45 @@ public class TicketTypesController : ControllerBase
 
         if (isForbidden)
             return StatusCode(403, new { code = "FORBIDDEN", message = "You do not have permission to view ticket types for this event." });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// GET /api/events/{eventId}/ticket-types/{ticketTypeId}
+    /// EP-400 — Returns a single ticket type for the event, for the owning organizer.
+    /// Includes ticket type ID, name, total quantity, and remaining quantity.
+    /// </summary>
+    [HttpGet("{ticketTypeId}")]
+    [Authorize(Policy = AppPolicies.OrganizerOnly)]
+    public async Task<IActionResult> GetTicketTypeById(
+        string eventId,
+        string ticketTypeId,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(eventId, out var eventGuidId) || !Guid.TryParse(ticketTypeId, out var ticketTypeGuidId))
+            return NotFound();
+
+        var organizerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(organizerIdStr, out var organizerId))
+        {
+            _logger?.LogWarning("GetTicketTypeById: Could not parse OrganizerId from JWT sub claim.");
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        if (_ticketTypeService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Ticket type service is not configured." });
+
+        var (result, isNotFound, isForbidden) =
+            await _ticketTypeService.GetByIdAsync(eventGuidId, ticketTypeGuidId, organizerId, cancellationToken);
+
+        if (isNotFound)
+            return NotFound(new { code = "NOT_FOUND", message = "Ticket type not found." });
+
+        if (isForbidden)
+            return StatusCode(403, new { code = "FORBIDDEN", message = "You do not have permission to view this ticket type." });
 
         return Ok(result);
     }
@@ -186,6 +228,37 @@ public class TicketTypesController : ControllerBase
             return NotFound(new { code = "NOT_FOUND", message = "Event not found or not available." });
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// GET /api/events/{eventId}/ticket-types/{ticketTypeId}/public
+    /// EP-400 — Public endpoint for visitors to view a specific ticket type's availability
+    /// for a Published event. No JWT required.
+    /// Exposes identification, price, total quantity, remaining quantity, and sold-out status.
+    /// Does not expose private organizer or sales data.
+    /// </summary>
+    [HttpGet("{ticketTypeId}/public")]
+    public async Task<IActionResult> GetPublicTicketTypeById(
+        string eventId,
+        string ticketTypeId,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(eventId, out var eventGuidId) || !Guid.TryParse(ticketTypeId, out var ticketTypeGuidId))
+            return NotFound();
+
+        if (_ticketTypeService is null)
+            return StatusCode(500, new { code = "SERVICE_UNAVAILABLE", message = "Ticket type service is not configured." });
+
+        var (result, isNotFound) = await _ticketTypeService.GetPublicByEventIdAsync(eventGuidId, cancellationToken);
+
+        if (isNotFound || result is null)
+            return NotFound(new { code = "NOT_FOUND", message = "Event not found or not available." });
+
+        var ticketType = result.FirstOrDefault(t => t.Id == ticketTypeGuidId);
+        if (ticketType is null)
+            return NotFound(new { code = "NOT_FOUND", message = "Ticket type not found." });
+
+        return Ok(ticketType);
     }
     /// <summary>
     /// DELETE /api/events/{eventId}/ticket-types/{ticketTypeId}

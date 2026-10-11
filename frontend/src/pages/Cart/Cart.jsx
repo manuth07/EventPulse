@@ -136,7 +136,27 @@ export function Cart() {
         throw new Error('Unable to redirect to Stripe checkout. Please try again.');
       }
     } catch (err) {
-      setActionError(err.message || 'Checkout failed. Please try again.');
+      const conflict = err.data || err.conflictData;
+      const isInventoryConflict = err.status === 409 && (
+        conflict?.code === 'INSUFFICIENT_INVENTORY' ||
+        conflict?.Code === 'INSUFFICIENT_INVENTORY' ||
+        err.message?.toLowerCase().includes('not enough') ||
+        err.message?.toLowerCase().includes('inventory') ||
+        err.message?.toLowerCase().includes('available')
+      );
+
+      if (isInventoryConflict) {
+        setActionError('One or more tickets in your cart are no longer available in the requested quantity due to high demand. Please adjust your ticket selection.');
+        if (refreshCart) {
+          try {
+            await refreshCart();
+          } catch (rErr) {
+            console.warn('Failed to refresh cart after inventory conflict:', rErr);
+          }
+        }
+      } else {
+        setActionError(err.message || 'Checkout failed. Please try again.');
+      }
       setIsRedirectingToPayment(false);
       setActionLoading(false);
     }

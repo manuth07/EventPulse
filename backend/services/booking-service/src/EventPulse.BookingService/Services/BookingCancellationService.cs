@@ -10,15 +10,18 @@ public class BookingCancellationService : IBookingCancellationService
 {
     private readonly BookingDbContext _dbContext;
     private readonly IBookingEventPublisher _eventPublisher;
+    private readonly IEventAvailabilityClient _eventAvailabilityClient;
     private readonly ILogger<BookingCancellationService> _logger;
 
     public BookingCancellationService(
         BookingDbContext dbContext,
         IBookingEventPublisher eventPublisher,
+        IEventAvailabilityClient eventAvailabilityClient,
         ILogger<BookingCancellationService> logger)
     {
         _dbContext = dbContext;
         _eventPublisher = eventPublisher;
+        _eventAvailabilityClient = eventAvailabilityClient;
         _logger = logger;
     }
 
@@ -86,6 +89,30 @@ public class BookingCancellationService : IBookingCancellationService
         }
 
         await _dbContext.SaveChangesAsync(ct);
+
+        // EP-401: Restore inventory if booking was confirmed (sold), or release reservation if pending payment
+        if (previousStatus == BookingStatus.Confirmed.ToString())
+        {
+            var cancellationKey = $"booking-{booking.Id}-cancelled";
+            var itemsToRestore = booking.Items
+                .Select(i => new ReserveInventoryItemDto { TicketTypeId = i.TicketTypeId, Quantity = i.Quantity })
+                .ToList();
+
+            await _eventAvailabilityClient.RestoreInventoryAsync(
+                booking.EventId,
+                booking.Id,
+                cancellationKey,
+                itemsToRestore,
+                ticketId: null,
+                ct);
+        }
+        else if (previousStatus == BookingStatus.PendingPayment.ToString())
+        {
+            await _eventAvailabilityClient.ReleaseInventoryAsync(
+                booking.EventId,
+                booking.Id,
+                ct);
+        }
 
         // Publish outbound domain event to release capacity and notify downstream services
         // Note: Capacity restoration is handled asynchronously via Kafka event emission (topic: booking-cancelled).
@@ -197,6 +224,24 @@ public class BookingCancellationService : IBookingCancellationService
         }
 
         await _dbContext.SaveChangesAsync(ct);
+
+        // EP-401: Restore inventory if parent booking was Confirmed
+        if (parentWasConfirmed)
+        {
+            var cancellationKey = $"ticket-{ticket.Id}-cancelled";
+            var itemToRestore = new List<ReserveInventoryItemDto>
+            {
+                new() { TicketTypeId = ticket.TicketTypeId, Quantity = 1 }
+            };
+
+            await _eventAvailabilityClient.RestoreInventoryAsync(
+                ticket.EventId,
+                ticket.Booking.Id,
+                cancellationKey,
+                itemToRestore,
+                ticketId: ticket.Id,
+                ct);
+        }
 
         // Emit TicketCancelledEvent for inventory/capacity restoration
         var cancelledEvent = new TicketCancelledEvent

@@ -6,7 +6,13 @@ import { useCart } from '../../context/CartContext';
 import { fetchEventById } from '../../services/eventService';
 import { getPublicTicketTypes } from '../../services/ticketTypeService';
 import { formatPrice } from '../../utils/currencyFormatter';
-import { ArrowLeft, Ticket, AlertCircle, ShoppingCart, Minus, Plus } from 'lucide-react';
+import {
+  calculateRemainingQuantity,
+  isTicketSoldOut,
+  formatAvailabilityText,
+  isLowAvailability,
+} from '../../utils/ticketAvailabilityHelper';
+import { ArrowLeft, Ticket, AlertCircle, ShoppingCart, Minus, Plus, RefreshCw } from 'lucide-react';
 
 function formatDateShort(dateString) {
   if (!dateString) return 'Date TBA';
@@ -100,6 +106,11 @@ export function SelectTickets() {
   const cartCount = selectedItems.reduce((sum, t) => sum + t.qty, 0);
 
   const handleAdd = (ticketTypeId) => {
+    const ticket = ticketTypes.find((t) => t.id === ticketTypeId);
+    if (!ticket || isTicketSoldOut(ticket)) return;
+    const remaining = calculateRemainingQuantity(ticket);
+    if (remaining <= 0) return;
+
     if (cart && cart.eventId && cart.eventId !== id && Array.isArray(cart.items) && cart.items.length > 0) {
       setConflictModal({
         currentEventTitle: cart.eventTitle || 'another event',
@@ -113,6 +124,11 @@ export function SelectTickets() {
   };
 
   const handleStep = (ticketTypeId, delta, max) => {
+    const ticket = ticketTypes.find((t) => t.id === ticketTypeId);
+    const maxAvailable = ticket ? calculateRemainingQuantity(ticket) : (max ?? 0);
+
+    if (delta > 0 && maxAvailable <= 0) return;
+
     if (delta > 0 && cart && cart.eventId && cart.eventId !== id && Array.isArray(cart.items) && cart.items.length > 0) {
       setConflictModal({
         currentEventTitle: cart.eventTitle || 'another event',
@@ -124,7 +140,7 @@ export function SelectTickets() {
     }
     setQuantities((prev) => {
       const current = prev[ticketTypeId] || 0;
-      const next = Math.max(0, Math.min(current + delta, max));
+      const next = Math.max(0, Math.min(current + delta, maxAvailable));
       return { ...prev, [ticketTypeId]: next };
     });
   };
@@ -175,13 +191,44 @@ export function SelectTickets() {
       navigate('/cart');
     } catch (err) {
       const conflict = err.data || err.conflictData;
-      if (err.status === 409 || conflict?.code === 'EVENT_CONFLICT' || conflict?.Code === 'EVENT_CONFLICT') {
+      const isEventConflict = conflict?.code === 'EVENT_CONFLICT' || conflict?.Code === 'EVENT_CONFLICT';
+      const isInventoryConflict = err.status === 409 && (
+        conflict?.code === 'INSUFFICIENT_INVENTORY' ||
+        conflict?.Code === 'INSUFFICIENT_INVENTORY' ||
+        err.message?.toLowerCase().includes('not enough') ||
+        err.message?.toLowerCase().includes('inventory') ||
+        err.message?.toLowerCase().includes('available')
+      );
+
+      if (isEventConflict) {
         setConflictModal({
           currentEventTitle: conflict?.currentEventTitle || conflict?.CurrentEventTitle || cart?.eventTitle || 'another event',
           currentEventId: conflict?.currentEventId || conflict?.CurrentEventId || cart?.eventId,
           attemptedEventId: id,
           pendingAction: null,
         });
+      } else if (isInventoryConflict) {
+        setSubmitError('The selected tickets are no longer available in the requested quantity due to high demand. Authoritative availability has been refreshed.');
+        try {
+          const refreshedTicketData = await getPublicTicketTypes(id);
+          const freshList = Array.isArray(refreshedTicketData) ? refreshedTicketData : [];
+          setTicketTypes(freshList);
+
+          // Clamp quantities to newly refreshed available inventory
+          setQuantities((prev) => {
+            const next = {};
+            for (const t of freshList) {
+              const rem = calculateRemainingQuantity(t);
+              const requested = prev[t.id] || 0;
+              if (requested > 0 && rem > 0) {
+                next[t.id] = Math.min(requested, rem);
+              }
+            }
+            return next;
+          });
+        } catch (refreshErr) {
+          console.warn('Failed to refresh ticket availability after conflict:', refreshErr);
+        }
       } else {
         setSubmitError(err.message || 'Failed to add tickets to cart.');
       }
@@ -354,9 +401,15 @@ export function SelectTickets() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {sortedTicketTypes.map((t) => {
                   const qty = quantities[t.id] || 0;
+                  const soldOut = isTicketSoldOut(t);
+                  const lowStock = isLowAvailability(t);
+                  const availText = formatAvailabilityText(t);
+                  const remaining = calculateRemainingQuantity(t);
+
                   return (
                     <div
                       key={t.id}
+                      data-testid={`ticket-card-${t.id}`}
                       className="ep-card"
                       style={{
                         padding: '18px 20px',
@@ -367,22 +420,40 @@ export function SelectTickets() {
                         gap: '16px',
                         flexWrap: 'nowrap',
                         textAlign: 'left',
-                        opacity: t.isSoldOut ? 0.55 : 1,
+                        opacity: soldOut ? 0.6 : 1,
+                        backgroundColor: soldOut ? '#FAFAFA' : '#FFFFFF',
                       }}
                     >
                       <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0, textAlign: 'left' }}>
                         <div style={{
-                          width: '40px', height: '40px', borderRadius: '10px', backgroundColor: 'var(--ep-soft-accent)',
+                          width: '40px', height: '40px', borderRadius: '10px',
+                          backgroundColor: soldOut ? '#F3F4F6' : 'var(--ep-soft-accent)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                         }}>
-                          <Ticket size={18} color="var(--ep-primary)" />
+                          <Ticket size={18} color={soldOut ? 'var(--ep-text-secondary)' : 'var(--ep-primary)'} />
                         </div>
                         <div style={{ minWidth: 0, textAlign: 'left' }}>
-                          <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ep-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div
+                            data-testid={`ticket-name-${t.id}`}
+                            style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ep-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                          >
                             {t.name}
                           </div>
-                          <div style={{ fontSize: '12px', color: 'var(--ep-text-secondary)' }}>
-                            {t.isSoldOut ? 'Sold Out' : 'Seated'}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
+                            <span
+                              data-testid={`ticket-availability-${t.id}`}
+                              style={{
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                color: soldOut
+                                  ? 'var(--ep-danger, #C62828)'
+                                  : lowStock
+                                  ? '#D97706'
+                                  : 'var(--ep-primary, #FF5B00)',
+                              }}
+                            >
+                              {availText}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -394,10 +465,29 @@ export function SelectTickets() {
                         </div>
                       </div>
 
-                      {!t.isSoldOut && (
+                      {soldOut ? (
+                        <div style={{ flexShrink: 0 }}>
+                          <span
+                            data-testid={`ticket-sold-out-badge-${t.id}`}
+                            style={{
+                              display: 'inline-block',
+                              padding: '8px 16px',
+                              fontSize: '13px',
+                              fontWeight: 700,
+                              borderRadius: '8px',
+                              backgroundColor: '#FDE8E8',
+                              color: 'var(--ep-danger, #C62828)',
+                              border: '1px solid #FCA5A5',
+                            }}
+                          >
+                            Sold Out
+                          </span>
+                        </div>
+                      ) : (
                         qty === 0 ? (
                           <button
                             type="button"
+                            data-testid={`ticket-add-btn-${t.id}`}
                             onClick={() => handleAdd(t.id)}
                             className="ep-btn-primary"
                             style={{ fontSize: '13px', padding: '10px 22px', flexShrink: 0 }}
@@ -408,18 +498,36 @@ export function SelectTickets() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                             <button
                               type="button"
-                              onClick={() => handleStep(t.id, -1, t.availableQuantity)}
+                              data-testid={`ticket-qty-minus-${t.id}`}
+                              onClick={() => handleStep(t.id, -1, remaining)}
                               style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid var(--ep-border)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ep-primary)' }}
                             >
                               <Minus size={14} />
                             </button>
-                            <span style={{ minWidth: '28px', textAlign: 'center', fontSize: '15px', fontWeight: 700, border: '1px solid var(--ep-border)', borderRadius: '8px', padding: '4px 8px' }}>
+                            <span
+                              data-testid={`ticket-qty-value-${t.id}`}
+                              style={{ minWidth: '28px', textAlign: 'center', fontSize: '15px', fontWeight: 700, border: '1px solid var(--ep-border)', borderRadius: '8px', padding: '4px 8px' }}
+                            >
                               {qty}
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleStep(t.id, 1, t.availableQuantity)}
-                              style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid var(--ep-border)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ep-primary)' }}
+                              data-testid={`ticket-qty-plus-${t.id}`}
+                              disabled={qty >= remaining}
+                              onClick={() => handleStep(t.id, 1, remaining)}
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                border: '1px solid var(--ep-border)',
+                                background: '#fff',
+                                cursor: qty >= remaining ? 'not-allowed' : 'pointer',
+                                opacity: qty >= remaining ? 0.4 : 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'var(--ep-primary)',
+                              }}
                             >
                               <Plus size={14} />
                             </button>

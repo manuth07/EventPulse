@@ -168,6 +168,18 @@ foreach ($svc in $Services) {
     Write-Host "  Started [$($svc.Name)] — job #$($job.Id)" -ForegroundColor $svc.Color
 }
 
+# ── Optional: Stripe Webhook Forwarder ────────────────────────────────────────
+if (Get-Command stripe -ErrorAction SilentlyContinue) {
+    $stripeJob = Start-Job -Name "StripeListener" -ScriptBlock {
+        while ($true) {
+            stripe listen --forward-to localhost:7104/api/payments/webhook --events checkout.session.completed,payment_intent.payment_failed 2>&1
+            Start-Sleep -Seconds 3
+        }
+    }
+    $Jobs += @{ Job = $stripeJob; Service = @{ Name = "StripeListener"; Color = "DarkYellow" } }
+    Write-Host "  Started [StripeListener] — forwarding to http://localhost:7104/api/payments/webhook" -ForegroundColor DarkYellow
+}
+
 Write-Host ""
 
 # ── Stream all job output in one terminal loop ────────────────────────────────
@@ -228,6 +240,7 @@ finally {
 
     # Ensure all child dotnet / EventPulse processes are cleanly terminated
     Stop-EventPulseProcesses -Ports @(7000, 7101, 7102, 7103, 7104)
+    Get-Process -Name "stripe" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
     Write-Host "  Done. All services stopped." -ForegroundColor DarkGray
     Write-Host ""

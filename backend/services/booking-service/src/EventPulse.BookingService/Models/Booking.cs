@@ -2,7 +2,7 @@ namespace EventPulse.BookingService.Models;
 
 public class Booking
 {
-    public Guid Id { get; set; }
+    public Guid Id { get; set; } = Guid.NewGuid();
     public string BookingReference { get; set; } = string.Empty;
     public Guid CustomerId { get; set; }
     public Guid EventId { get; set; }

@@ -67,7 +67,7 @@ public class TicketTypeService : ITicketTypeService
             return (null, "Ticket price must be entered in whole LKR.", false, false, false);
 
         if (request.Capacity < 1)
-            return (null, "Capacity must be at least 1.", false, false, false);
+            return (null, "Total quantity must be at least 1.", false, false, false);
 
         var ticketType = new TicketType
         {
@@ -124,6 +124,32 @@ public class TicketTypeService : ITicketTypeService
     }
 
     /// <inheritdoc/>
+    public async Task<(TicketTypeDto? Result, bool IsNotFound, bool IsForbidden)> GetByIdAsync(
+        Guid eventId,
+        Guid ticketTypeId,
+        Guid organizerId,
+        CancellationToken cancellationToken = default)
+    {
+        var ticketType = await _context.TicketTypes
+            .Include(t => t.Event)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, cancellationToken);
+
+        if (ticketType == null || ticketType.Event == null)
+            return (null, true, false);
+
+        if (ticketType.Event.OrganizerId != organizerId)
+        {
+            _logger?.LogWarning(
+                "GetTicketTypeById forbidden: TicketType {TicketTypeId} belongs to Event owned by {ActualOrganizer}, request by {RequesterId}",
+                ticketTypeId, ticketType.Event.OrganizerId, organizerId);
+            return (null, false, true);
+        }
+
+        return (MapToDto(ticketType), false, false);
+    }
+
+    /// <inheritdoc/>
     public async Task<(IReadOnlyList<PublicTicketTypeDto>? Result, bool IsNotFound)> GetPublicByEventIdAsync(
         Guid eventId,
         CancellationToken cancellationToken = default)
@@ -148,15 +174,30 @@ public class TicketTypeService : ITicketTypeService
         var hasPendingCancellation = await _context.EventCancellationRequests
             .AnyAsync(r => r.EventId == eventId && r.Status == EventCancellationRequestStatus.Pending, cancellationToken);
 
+        var now = DateTimeOffset.UtcNow;
+        var ticketTypeIds = ticketTypes.Select(t => t.Id).ToList();
+        var activeHolds = await _context.InventoryReservations
+            .Where(r => r.EventId == eventId &&
+                        ticketTypeIds.Contains(r.TicketTypeId) &&
+                        r.Status == InventoryReservationStatus.Active &&
+                        r.ExpiresAtUtc > now)
+            .GroupBy(r => r.TicketTypeId)
+            .Select(g => new { TicketTypeId = g.Key, ReservedQty = g.Sum(r => r.Quantity) })
+            .ToDictionaryAsync(g => g.TicketTypeId, g => g.ReservedQty, cancellationToken);
+
         var result = ticketTypes.Select(t =>
         {
-            var available = hasPendingCancellation ? 0 : t.Capacity - t.BookedQuantity;
+            var remaining = Math.Clamp(t.Capacity - t.BookedQuantity, 0, t.Capacity);
+            var reserved = activeHolds.GetValueOrDefault(t.Id, 0);
+            var available = hasPendingCancellation ? 0 : Math.Max(0, remaining - reserved);
             return new PublicTicketTypeDto
             {
                 Id = t.Id,
                 Name = t.Name,
                 Price = t.Price,
-                AvailableQuantity = Math.Max(available, 0),
+                TotalQuantity = t.Capacity,
+                RemainingQuantity = remaining,
+                AvailableQuantity = available,
                 IsSoldOut = hasPendingCancellation || available <= 0,
             };
         }).ToList();
@@ -203,11 +244,11 @@ public class TicketTypeService : ITicketTypeService
             return (null, "Ticket price must be entered in whole LKR.", false, false);
 
         if (request.Capacity < 1)
-            return (null, "Capacity must be at least 1.", false, false);
+            return (null, "Total quantity must be at least 1.", false, false);
 
         if (request.Capacity < ticketType.BookedQuantity)
             return (null,
-                $"Capacity cannot be reduced below the number of already booked tickets ({ticketType.BookedQuantity}).",
+                $"Total quantity cannot be reduced below the quantity already sold ({ticketType.BookedQuantity}).",
                 false, false);
 
         // ---- Apply Update -------------------------------------------------
@@ -281,14 +322,22 @@ public class TicketTypeService : ITicketTypeService
         return (true, null, false, false);
     }
 
-    private static TicketTypeDto MapToDto(TicketType t) => new TicketTypeDto
+    private static TicketTypeDto MapToDto(TicketType t)
     {
-        Id = t.Id,
-        EventId = t.EventId,
-        Name = t.Name,
-        Price = t.Price,
-        Capacity = t.Capacity,
-        BookedQuantity = t.BookedQuantity,
-        CreatedAt = t.CreatedAt,
-    };
+        var remaining = Math.Clamp(t.Capacity - t.BookedQuantity, 0, t.Capacity);
+        return new TicketTypeDto
+        {
+            Id = t.Id,
+            EventId = t.EventId,
+            Name = t.Name,
+            Price = t.Price,
+            Capacity = t.Capacity,
+            TotalQuantity = t.Capacity,
+            BookedQuantity = t.BookedQuantity,
+            SoldQuantity = t.BookedQuantity,
+            RemainingQuantity = remaining,
+            AvailableQuantity = remaining,
+            CreatedAt = t.CreatedAt,
+        };
+    }
 }

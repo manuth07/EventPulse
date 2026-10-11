@@ -13,17 +13,23 @@ public class PaymentSucceededEventHandler : IPaymentSucceededEventHandler
     private readonly BookingDbContext _dbContext;
     private readonly IBookingConfirmationService _bookingConfirmationService;
     private readonly ITicketGenerationService _ticketGenerationService;
+    private readonly IEventAvailabilityClient _eventAvailabilityClient;
+    private readonly IBookingEventPublisher _eventPublisher;
     private readonly ILogger<PaymentSucceededEventHandler> _logger;
 
     public PaymentSucceededEventHandler(
         BookingDbContext dbContext,
         IBookingConfirmationService bookingConfirmationService,
         ITicketGenerationService ticketGenerationService,
+        IEventAvailabilityClient eventAvailabilityClient,
+        IBookingEventPublisher eventPublisher,
         ILogger<PaymentSucceededEventHandler> logger)
     {
         _dbContext = dbContext;
         _bookingConfirmationService = bookingConfirmationService;
         _ticketGenerationService = ticketGenerationService;
+        _eventAvailabilityClient = eventAvailabilityClient;
+        _eventPublisher = eventPublisher;
         _logger = logger;
     }
 
@@ -43,6 +49,42 @@ public class PaymentSucceededEventHandler : IPaymentSucceededEventHandler
                 "PaymentSucceededEvent {EventId} for Booking {BookingId} has already been processed. Skipping duplicate.",
                 paymentEvent.EventId, paymentEvent.BookingId);
             return;
+        }
+
+        // EP-401: Commit reserved inventory in EventService
+        // If inventory commit fails, do NOT confirm booking or issue tickets.
+        // Instead, transition/record failure and emit BookingRefundRequestedEvent to compensate via refund.
+        var booking = await _dbContext.Bookings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == paymentEvent.BookingId, cancellationToken);
+
+        if (booking != null)
+        {
+            var commitResult = await _eventAvailabilityClient.CommitInventoryAsync(
+                booking.EventId,
+                paymentEvent.BookingId,
+                cancellationToken);
+
+            if (!commitResult.Success)
+            {
+                _logger.LogError(
+                    "CRITICAL: Failed to commit inventory for Booking {BookingId} after payment success! Error: {Error}. Triggering refund compensation.",
+                    paymentEvent.BookingId, commitResult.ErrorMessage);
+
+                var refundEvent = new EventPulse.Contracts.Kafka.Events.BookingRefundRequestedEvent(
+                    RefundRequestId: Guid.NewGuid(),
+                    BookingId: booking.Id,
+                    BookingReference: booking.BookingReference,
+                    CustomerId: booking.CustomerId,
+                    EventId: booking.EventId,
+                    RefundAmount: booking.TotalAmount,
+                    Reason: "Inventory commit failed after payment: " + commitResult.ErrorMessage,
+                    RequestedAt: DateTimeOffset.UtcNow
+                );
+
+                await _eventPublisher.PublishBookingRefundRequestedAsync(refundEvent, cancellationToken);
+                return;
+            }
         }
 
         // 2. Confirm booking after payment
