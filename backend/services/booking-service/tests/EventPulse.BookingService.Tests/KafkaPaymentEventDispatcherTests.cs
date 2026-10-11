@@ -14,6 +14,7 @@ public class KafkaPaymentEventDispatcherTests
 {
     private readonly Mock<IPaymentSucceededEventHandler> _succeededHandlerMock;
     private readonly Mock<IPaymentFailedEventHandler> _failedHandlerMock;
+    private readonly Mock<IPaymentRefundedEventHandler> _refundedHandlerMock;
     private readonly Mock<ILogger<KafkaPaymentEventDispatcher>> _loggerMock;
     private readonly KafkaOptions _kafkaOptions;
     private readonly IOptions<KafkaOptions> _options;
@@ -22,6 +23,7 @@ public class KafkaPaymentEventDispatcherTests
     {
         _succeededHandlerMock = new Mock<IPaymentSucceededEventHandler>();
         _failedHandlerMock = new Mock<IPaymentFailedEventHandler>();
+        _refundedHandlerMock = new Mock<IPaymentRefundedEventHandler>();
         _loggerMock = new Mock<ILogger<KafkaPaymentEventDispatcher>>();
         _kafkaOptions = new KafkaOptions
         {
@@ -30,7 +32,8 @@ public class KafkaPaymentEventDispatcherTests
             Topics = new KafkaTopicOptions
             {
                 PaymentSucceeded = "payment-succeeded",
-                PaymentFailed = "payment-failed"
+                PaymentFailed = "payment-failed",
+                PaymentRefunded = "payment-refunded"
             }
         };
         _options = Options.Create(_kafkaOptions);
@@ -42,6 +45,7 @@ public class KafkaPaymentEventDispatcherTests
             _options,
             _succeededHandlerMock.Object,
             _failedHandlerMock.Object,
+            _refundedHandlerMock.Object,
             _loggerMock.Object);
     }
 
@@ -309,5 +313,31 @@ public class KafkaPaymentEventDispatcherTests
         Assert.True(result.IsRetryable);
         Assert.Contains("Database connection timeout", result.FailureReason);
         Assert.Equal("TimeoutException", result.ExceptionType);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_ValidPaymentRefundedEvent_InvokesCorrectHandlerAndReturnsSuccess()
+    {
+        // Arrange
+        var dispatcher = CreateDispatcher();
+        var refundId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var validJson = JsonSerializer.Serialize(new EventPulse.Contracts.Kafka.Events.PaymentRefundedEvent(
+            refundId,
+            Guid.NewGuid(),
+            bookingId,
+            75.00m,
+            "Completed",
+            DateTimeOffset.UtcNow
+        ));
+
+        // Act
+        var result = await dispatcher.DispatchAsync("payment-refunded", "booking-" + bookingId, validJson, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        _refundedHandlerMock.Verify(h => h.HandleAsync(
+            It.Is<EventPulse.Contracts.Kafka.Events.PaymentRefundedEvent>(e => e.RefundId == refundId && e.BookingId == bookingId && e.Amount == 75.00m),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

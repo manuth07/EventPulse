@@ -124,6 +124,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ICancellationEligibilityChecker, CancellationEligibilityChecker>();
 builder.Services.AddScoped<IBookingCancellationService, BookingCancellationService>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
+builder.Services.AddScoped<ISalesReportingService, SalesReportingService>();
 
 // ---------------------------------------------------------------------------
 // Kafka Event Consumers & Handlers
@@ -132,6 +133,7 @@ builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaO
 builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
 builder.Services.AddScoped<IPaymentSucceededEventHandler, PaymentSucceededEventHandler>();
 builder.Services.AddScoped<IPaymentFailedEventHandler, PaymentFailedEventHandler>();
+builder.Services.AddScoped<IPaymentRefundedEventHandler, PaymentRefundedEventHandler>();
 builder.Services.AddScoped<IKafkaPaymentEventDispatcher, KafkaPaymentEventDispatcher>();
 builder.Services.AddHostedService<KafkaPaymentEventConsumer>();
 builder.Services.AddHostedService<EventPulse.BookingService.BackgroundServices.ExpiredBookingCleanupWorker>();

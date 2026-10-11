@@ -15,6 +15,7 @@ public class PaymentSucceededEventHandler : IPaymentSucceededEventHandler
     private readonly ITicketGenerationService _ticketGenerationService;
     private readonly IEventAvailabilityClient _eventAvailabilityClient;
     private readonly IBookingEventPublisher _eventPublisher;
+    private readonly ISalesReportingService _salesReportingService;
     private readonly ILogger<PaymentSucceededEventHandler> _logger;
 
     public PaymentSucceededEventHandler(
@@ -23,6 +24,7 @@ public class PaymentSucceededEventHandler : IPaymentSucceededEventHandler
         ITicketGenerationService ticketGenerationService,
         IEventAvailabilityClient eventAvailabilityClient,
         IBookingEventPublisher eventPublisher,
+        ISalesReportingService salesReportingService,
         ILogger<PaymentSucceededEventHandler> logger)
     {
         _dbContext = dbContext;
@@ -30,6 +32,7 @@ public class PaymentSucceededEventHandler : IPaymentSucceededEventHandler
         _ticketGenerationService = ticketGenerationService;
         _eventAvailabilityClient = eventAvailabilityClient;
         _eventPublisher = eventPublisher;
+        _salesReportingService = salesReportingService;
         _logger = logger;
     }
 
@@ -131,7 +134,10 @@ public class PaymentSucceededEventHandler : IPaymentSucceededEventHandler
             "Generated/verified {GeneratedCount} new ticket(s) (Total: {TotalCount}) for Booking {BookingId}",
             ticketResult.GeneratedCount, ticketResult.TotalTicketCount, paymentEvent.BookingId);
 
-        // 4. Record event in Inbox to prevent future duplicate processing
+        // 4. EP-383: Generate authoritative sales report record upon payment confirmation
+        await _salesReportingService.GenerateSalesReportOnPurchaseAsync(paymentEvent, cancellationToken);
+
+        // 5. Record event in Inbox to prevent future duplicate processing
         try
         {
             _dbContext.ProcessedIntegrationEvents.Add(new ProcessedIntegrationEvent

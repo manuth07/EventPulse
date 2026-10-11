@@ -19,6 +19,7 @@ public class EventSummaryInfo
     public DateTime EventDate { get; set; }
     public string? ImageUrl { get; set; }
     public string? Status { get; set; }
+    public Guid OrganizerId { get; set; }
 }
 
 public class ReserveInventoryItemDto
