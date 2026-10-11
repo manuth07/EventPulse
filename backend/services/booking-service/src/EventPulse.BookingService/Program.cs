@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using EventPulse.BookingService;
 using EventPulse.BookingService.Consumers;
 using EventPulse.BookingService.Data;
 using EventPulse.BookingService.Events;
@@ -111,7 +112,10 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AppPolicies.OrganizerOnly, policy => policy.RequireRole("Organizer"));
+});
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IBookingReferenceGenerator, BookingReferenceGenerator>();
 builder.Services.AddScoped<IBookingConfirmationService, BookingConfirmationService>();
@@ -125,6 +129,7 @@ builder.Services.AddScoped<ICancellationEligibilityChecker, CancellationEligibil
 builder.Services.AddScoped<IBookingCancellationService, BookingCancellationService>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
 builder.Services.AddScoped<ISalesReportingService, SalesReportingService>();
+builder.Services.AddScoped<IOrganizerSalesAnalyticsService, OrganizerSalesAnalyticsService>();
 
 // ---------------------------------------------------------------------------
 // Kafka Event Consumers & Handlers

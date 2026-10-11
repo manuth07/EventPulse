@@ -264,6 +264,72 @@ public class EventsController : ControllerBase
         return Ok(details);
     }
 
+    /// <summary>
+    /// GET /api/events/internal/{id}
+    /// Internal service-to-service endpoint for resolving event details regardless of public status.
+    /// </summary>
+    [HttpGet("internal/{id}")]
+    public async Task<ActionResult<EventDetailsDto>> GetEventInternalById(string id)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        var eventItem = await _context.Events
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == guidId);
+
+        if (eventItem == null)
+            return NotFound();
+
+        var details = new EventDetailsDto
+        {
+            Id = eventItem.Id,
+            Title = eventItem.Title,
+            Description = eventItem.Description,
+            Venue = eventItem.Venue,
+            EventDate = eventItem.EventDate,
+            Price = eventItem.Price,
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
+            OrganizerId = eventItem.OrganizerId,
+            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage?.GetPublicUrl(eventItem.CoverBlobName)
+        };
+
+        return Ok(details);
+    }
+
+    /// <summary>
+    /// GET /api/events/internal/organizer/{organizerId}
+    /// Internal service-to-service endpoint for retrieving all events owned by an organizer.
+    /// </summary>
+    [HttpGet("internal/organizer/{organizerId:guid}")]
+    public async Task<ActionResult<IReadOnlyList<EventDetailsDto>>> GetEventsByOrganizerInternal(Guid organizerId)
+    {
+        var events = await _context.Events
+            .AsNoTracking()
+            .Where(e => e.OrganizerId == organizerId)
+            .OrderByDescending(e => e.EventDate)
+            .ToListAsync();
+
+        var dtos = events.Select(eventItem => new EventDetailsDto
+        {
+            Id = eventItem.Id,
+            Title = eventItem.Title,
+            Description = eventItem.Description,
+            Venue = eventItem.Venue,
+            EventDate = eventItem.EventDate,
+            Price = eventItem.Price,
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
+            OrganizerId = eventItem.OrganizerId,
+            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage?.GetPublicUrl(eventItem.CoverBlobName)
+        }).ToList();
+
+        return Ok(dtos);
+    }
+
     // =========================================================================
     // EP-96 — ORGANIZER ENDPOINTS
     // Require: Organizer role (OrganizerOnly policy)

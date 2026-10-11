@@ -37,7 +37,14 @@ public class EventServiceAvailabilityClient : IEventAvailabilityClient
     {
         try
         {
-            var response = await _httpClient.GetAsync($"/api/events/{eventId}", cancellationToken);
+            // Try internal endpoint first (returns event regardless of public lifecycle status)
+            var response = await _httpClient.GetAsync($"/api/events/internal/{eventId}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                // Fallback to public endpoint
+                response = await _httpClient.GetAsync($"/api/events/{eventId}", cancellationToken);
+            }
+
             if (!response.IsSuccessStatusCode)
                 return null;
 
@@ -47,6 +54,24 @@ public class EventServiceAvailabilityClient : IEventAvailabilityClient
         {
             _logger?.LogError(ex, "Failed to fetch event summary for Event {EventId}", eventId);
             return null;
+        }
+    }
+
+    public async Task<IReadOnlyList<EventSummaryInfo>> GetOrganizerEventsAsync(Guid organizerId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/events/internal/organizer/{organizerId}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return Array.Empty<EventSummaryInfo>();
+
+            var events = await response.Content.ReadFromJsonAsync<List<EventSummaryInfo>>(cancellationToken: cancellationToken);
+            return events ?? (IReadOnlyList<EventSummaryInfo>)Array.Empty<EventSummaryInfo>();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to fetch events for Organizer {OrganizerId}", organizerId);
+            return Array.Empty<EventSummaryInfo>();
         }
     }
 
