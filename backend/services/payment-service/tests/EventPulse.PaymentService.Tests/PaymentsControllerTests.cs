@@ -44,7 +44,7 @@ public class PaymentsControllerTests
             .Build();
     }
 
-    private PaymentsController CreateController(PaymentDbContext dbContext, Guid? customerId = null, string? token = null, string? requestBody = null, string? signatureHeader = null)
+    private PaymentsController CreateController(PaymentDbContext dbContext, Guid? customerId = null, string? token = null, string? requestBody = null, string? signatureHeader = null, string? role = null)
     {
         var kafkaOptions = Microsoft.Extensions.Options.Options.Create(new KafkaOptions());
         var writerLogger = new Mock<ILogger<OutboxWriter>>();
@@ -64,6 +64,11 @@ public class PaymentsControllerTests
         {
             claims.Add(new Claim(ClaimTypes.NameIdentifier, customerId.Value.ToString()));
             claims.Add(new Claim("sub", customerId.Value.ToString()));
+        }
+
+        if (!string.IsNullOrEmpty(role))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, role));
         }
 
         var identity = new ClaimsIdentity(claims, "TestAuth");
@@ -489,5 +494,565 @@ public class PaymentsControllerTests
         // Assert
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequestResult.Value);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task CreateCheckoutSession_WhenBookingReferenceIsMissing_ReturnsBadRequest(string? missingRef)
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var token = "test_bearer_token";
+
+        var bookingSummary = new BookingSummaryDto
+        {
+            Id = bookingId,
+            BookingReference = missingRef!,
+            CustomerId = customerId,
+            TotalAmount = 100.0m,
+            Status = "PendingPayment"
+        };
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bookingSummary);
+
+        var controller = CreateController(db, customerId: customerId, token: token);
+
+        // Act
+        var result = await controller.CreateCheckoutSession(
+            new CreateCheckoutSessionRequest { BookingId = bookingId },
+            CancellationToken.None);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.NotNull(badRequestResult.Value);
+        var paymentsInDb = await db.Payments.ToListAsync();
+        Assert.Empty(paymentsInDb);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WhenBookingIdIsEmpty_ReturnsBadRequest()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var token = "test_bearer_token";
+
+        var bookingSummary = new BookingSummaryDto
+        {
+            Id = Guid.Empty,
+            BookingReference = "EP-2026-EMPTY",
+            CustomerId = customerId,
+            TotalAmount = 100.0m,
+            Status = "PendingPayment"
+        };
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bookingSummary);
+
+        var controller = CreateController(db, customerId: customerId, token: token);
+
+        // Act
+        var result = await controller.CreateCheckoutSession(
+            new CreateCheckoutSessionRequest { BookingId = bookingId },
+            CancellationToken.None);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.NotNull(badRequestResult.Value);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WhenBookingAlreadyHasSucceededPayment_ReturnsBadRequest()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var token = "test_bearer_token";
+
+        // Pre-existing Succeeded payment in DB
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-2026-PAID",
+            CustomerId = customerId,
+            Amount = 1500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            CompletedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var bookingSummary = new BookingSummaryDto
+        {
+            Id = bookingId,
+            BookingReference = "EP-2026-PAID",
+            CustomerId = customerId,
+            TotalAmount = 1500m,
+            Status = "PendingPayment"
+        };
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bookingSummary);
+
+        var controller = CreateController(db, customerId: customerId, token: token);
+
+        // Act
+        var result = await controller.CreateCheckoutSession(
+            new CreateCheckoutSessionRequest { BookingId = bookingId },
+            CancellationToken.None);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.NotNull(badRequestResult.Value);
+
+        // Ensure no new duplicate payment was created
+        var totalPayments = await db.Payments.CountAsync(p => p.BookingId == bookingId);
+        Assert.Equal(1, totalPayments);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WhenRetryingFailedPayment_CreatesNewAttemptAssociatedWithSameBooking()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var bookingRef = "EP-2026-RETRY-OK";
+        var token = "valid_jwt";
+
+        // Previous attempt that failed
+        var failedPayment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = bookingRef,
+            CustomerId = customerId,
+            Amount = 2500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Failed,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-29)
+        };
+        db.Payments.Add(failedPayment);
+        await db.SaveChangesAsync();
+
+        var bookingSummary = new BookingSummaryDto(bookingId, bookingRef, customerId, 2500m, "PaymentFailed");
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bookingSummary);
+
+        _stripeServiceMock
+            .Setup(s => s.CreateSessionAsync(It.IsAny<Payment>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StripeSessionResult("cs_retry_success_456", "https://checkout.stripe.com/pay/cs_retry_success_456"));
+
+        var controller = CreateController(db, customerId, token);
+
+        // Act
+        var result = await controller.CreateCheckoutSession(new CreateCheckoutSessionRequest { BookingId = bookingId }, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<CheckoutSessionResponse>(okResult.Value);
+        Assert.NotEqual(failedPayment.Id, response.PaymentId);
+        Assert.Equal(bookingId, response.BookingId);
+        Assert.Equal(bookingRef, response.BookingReference);
+
+        var payments = await db.Payments.Where(p => p.BookingId == bookingId).OrderBy(p => p.CreatedAt).ToListAsync();
+        Assert.Equal(2, payments.Count);
+
+        // Verify First attempt
+        Assert.Equal(failedPayment.Id, payments[0].Id);
+        Assert.Equal(PaymentStatus.Failed, payments[0].Status);
+        Assert.Equal(bookingId, payments[0].BookingId);
+        Assert.Equal(bookingRef, payments[0].BookingReference);
+        Assert.Equal(customerId, payments[0].CustomerId);
+
+        // Verify Second attempt (retry)
+        Assert.Equal(response.PaymentId, payments[1].Id);
+        Assert.Equal(PaymentStatus.Pending, payments[1].Status);
+        Assert.Equal(bookingId, payments[1].BookingId);
+        Assert.Equal(bookingRef, payments[1].BookingReference);
+        Assert.Equal(customerId, payments[1].CustomerId);
+        Assert.Equal(2500m, payments[1].Amount);
+        Assert.Equal("cs_retry_success_456", payments[1].StripeSessionId);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutSession_WhenRetryingWhilePending_ReusesExistingPendingPaymentWithoutDuplicates()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var bookingRef = "EP-2026-REUSE-PENDING";
+        var token = "valid_jwt";
+
+        // Existing pending payment
+        var existingPending = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = bookingRef,
+            CustomerId = customerId,
+            Amount = 1000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Pending,
+            StripeSessionId = "cs_old_session",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-10)
+        };
+        db.Payments.Add(existingPending);
+        await db.SaveChangesAsync();
+
+        var bookingSummary = new BookingSummaryDto(bookingId, bookingRef, customerId, 1000m, "PendingPayment");
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingSummaryAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(bookingSummary);
+
+        _stripeServiceMock
+            .Setup(s => s.CreateSessionAsync(It.IsAny<Payment>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StripeSessionResult("cs_new_session", "https://checkout.stripe.com/pay/cs_new_session"));
+
+        var controller = CreateController(db, customerId, token);
+
+        // Act
+        var result = await controller.CreateCheckoutSession(new CreateCheckoutSessionRequest { BookingId = bookingId }, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<CheckoutSessionResponse>(okResult.Value);
+        Assert.Equal(existingPending.Id, response.PaymentId);
+
+        var payments = await db.Payments.Where(p => p.BookingId == bookingId).ToListAsync();
+        Assert.Single(payments);
+        Assert.Equal(existingPending.Id, payments[0].Id);
+        Assert.Equal("cs_new_session", payments[0].StripeSessionId);
+        Assert.Equal(PaymentStatus.Pending, payments[0].Status);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WhenPaymentsExist_ReturnsAllPaymentsForBooking()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var bookingRef = "EP-2026-HISTORY-1";
+
+        var p1 = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = bookingRef,
+            CustomerId = customerId,
+            Amount = 3000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Failed,
+            CreatedAt = DateTimeOffset.UtcNow.AddHours(-1),
+            CompletedAt = DateTimeOffset.UtcNow.AddHours(-1).AddMinutes(2)
+        };
+
+        var p2 = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = bookingRef,
+            CustomerId = customerId,
+            Amount = 3000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            StripeSessionId = "cs_history_succeeded",
+            StripePaymentIntentId = "pi_history_succeeded",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-28)
+        };
+
+        db.Payments.AddRange(p1, p2);
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(bookingId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var list = Assert.IsType<List<PaymentDto>>(okResult.Value);
+        Assert.Equal(2, list.Count);
+
+        // Ordered by CreatedAt descending
+        Assert.Equal(p2.Id, list[0].Id);
+        Assert.Equal(bookingId, list[0].BookingId);
+        Assert.Equal(bookingRef, list[0].BookingReference);
+        Assert.Equal(customerId, list[0].CustomerId);
+        Assert.Equal(3000m, list[0].Amount);
+        Assert.Equal("lkr", list[0].Currency);
+        Assert.Equal("Succeeded", list[0].Status);
+        Assert.Equal("cs_history_succeeded", list[0].StripeSessionId);
+        Assert.Equal("pi_history_succeeded", list[0].StripePaymentIntentId);
+        Assert.NotNull(list[0].CompletedAt);
+
+        Assert.Equal(p1.Id, list[1].Id);
+        Assert.Equal("Failed", list[1].Status);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WhenCustomerMismatches_ReturnsForbidden()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var ownerId = Guid.NewGuid();
+        var requesterId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-2026-FORBIDDEN",
+            CustomerId = ownerId,
+            Amount = 1000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: requesterId);
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(bookingId, CancellationToken.None);
+
+        // Assert
+        var statusResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, statusResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WhenAdminRequests_ReturnsOkRegardlessOfCustomerId()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var ownerId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-2026-ADMIN",
+            CustomerId = ownerId,
+            Amount = 1000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: adminId, role: "Administrator");
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(bookingId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var list = Assert.IsType<List<PaymentDto>>(okResult.Value);
+        Assert.Single(list);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WhenNoPaymentsExist_ReturnsNotFound()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var controller = CreateController(db, customerId: Guid.NewGuid());
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.NotNull(notFoundResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WhenExists_ReturnsPaymentDetails()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "EP-2026-SINGLE",
+            CustomerId = customerId,
+            Amount = 1800m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            CompletedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetPaymentById(paymentId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var dto = Assert.IsType<PaymentDto>(okResult.Value);
+        Assert.Equal(paymentId, dto.Id);
+        Assert.Equal(bookingId, dto.BookingId);
+        Assert.Equal("EP-2026-SINGLE", dto.BookingReference);
+        Assert.Equal(customerId, dto.CustomerId);
+        Assert.Equal(1800m, dto.Amount);
+        Assert.Equal("Succeeded", dto.Status);
+    }
+
+    [Fact]
+    public async Task StripeWebhook_CheckoutSessionCompleted_WhenNotFoundBySessionId_FallbackLinksByBookingId()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var paymentId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var bookingRef = "EP-2026-FALLBACK-OK";
+
+        var payment = new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = bookingRef,
+            CustomerId = Guid.NewGuid(),
+            Amount = 1400m,
+            Currency = "lkr",
+            StripeSessionId = "cs_different_session_id",
+            Status = PaymentStatus.Pending
+        };
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+
+        var jsonPayload = $$"""
+        {
+          "id": "evt_test_fallback",
+          "object": "event",
+          "api_version": "2023-10-16",
+          "created": 1700000000,
+          "data": {
+            "object": {
+              "id": "cs_webhook_session_unknown",
+              "object": "checkout.session",
+              "payment_intent": "pi_fallback_success",
+              "metadata": {
+                "BookingId": "{{bookingId}}",
+                "BookingReference": "{{bookingRef}}"
+              }
+            }
+          },
+          "livemode": false,
+          "pending_webhooks": 1,
+          "request": {
+            "id": "req_123",
+            "idempotency_key": null
+          },
+          "type": "checkout.session.completed"
+        }
+        """;
+
+        var signature = GenerateStripeSignature(jsonPayload, WebhookSecret);
+        var controller = CreateController(db, requestBody: jsonPayload, signatureHeader: signature);
+
+        // Act
+        var result = await controller.StripeWebhook(CancellationToken.None);
+
+        // Assert
+        Assert.IsType<OkResult>(result);
+
+        var updatedPayment = await db.Payments.FindAsync(paymentId);
+        Assert.NotNull(updatedPayment);
+        Assert.Equal(PaymentStatus.Succeeded, updatedPayment.Status);
+        Assert.Equal("pi_fallback_success", updatedPayment.StripePaymentIntentId);
+        Assert.NotNull(updatedPayment.CompletedAt);
+    }
+
+    [Fact]
+    public async Task StripeWebhook_WhenPaymentBookingReferenceEmpty_RepairsBookingReferenceFromMetadata()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var paymentId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var sessionId = "cs_test_repair_ref";
+
+        var payment = new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "",
+            CustomerId = Guid.NewGuid(),
+            Amount = 1400m,
+            Currency = "lkr",
+            StripeSessionId = sessionId,
+            Status = PaymentStatus.Pending
+        };
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+
+        var jsonPayload = $$"""
+        {
+          "id": "evt_test_repair",
+          "object": "event",
+          "api_version": "2023-10-16",
+          "created": 1700000000,
+          "data": {
+            "object": {
+              "id": "{{sessionId}}",
+              "object": "checkout.session",
+              "payment_intent": "pi_repair_success",
+              "metadata": {
+                "PaymentId": "{{paymentId}}",
+                "BookingId": "{{bookingId}}",
+                "BookingReference": "EP-2026-REPAIRED"
+              }
+            }
+          },
+          "livemode": false,
+          "pending_webhooks": 1,
+          "request": {
+            "id": "req_123",
+            "idempotency_key": null
+          },
+          "type": "checkout.session.completed"
+        }
+        """;
+
+        var signature = GenerateStripeSignature(jsonPayload, WebhookSecret);
+        var controller = CreateController(db, requestBody: jsonPayload, signatureHeader: signature);
+
+        // Act
+        var result = await controller.StripeWebhook(CancellationToken.None);
+
+        // Assert
+        Assert.IsType<OkResult>(result);
+
+        var updatedPayment = await db.Payments.FindAsync(paymentId);
+        Assert.NotNull(updatedPayment);
+        Assert.Equal(PaymentStatus.Succeeded, updatedPayment.Status);
+        Assert.Equal("EP-2026-REPAIRED", updatedPayment.BookingReference);
     }
 }

@@ -88,6 +88,24 @@ public class PaymentsController : ControllerBase
             });
         }
 
+        if (string.IsNullOrWhiteSpace(bookingSummary.BookingReference))
+        {
+            return BadRequest(new
+            {
+                code = "MISSING_BOOKING_REFERENCE",
+                message = "Booking reference is missing or invalid."
+            });
+        }
+
+        if (bookingSummary.Id == Guid.Empty)
+        {
+            return BadRequest(new
+            {
+                code = "INVALID_BOOKING_ID",
+                message = "Booking ID is missing or invalid."
+            });
+        }
+
         if (!string.Equals(bookingSummary.Status, "PendingPayment", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(bookingSummary.Status, "PaymentFailed", StringComparison.OrdinalIgnoreCase))
         {
@@ -98,7 +116,20 @@ public class PaymentsController : ControllerBase
             });
         }
 
+        var existingSucceededPayment = await _dbContext.Payments
+            .FirstOrDefaultAsync(p => p.BookingId == bookingSummary.Id && p.Status == PaymentStatus.Succeeded, cancellationToken);
+
+        if (existingSucceededPayment != null)
+        {
+            return BadRequest(new
+            {
+                code = "BOOKING_ALREADY_PAID",
+                message = "A successful payment already exists for this booking."
+            });
+        }
+
         var payment = await _dbContext.Payments
+            .OrderByDescending(p => p.CreatedAt)
             .FirstOrDefaultAsync(p => p.BookingId == bookingSummary.Id && p.Status == PaymentStatus.Pending, cancellationToken);
 
         if (payment == null)
@@ -145,6 +176,7 @@ public class PaymentsController : ControllerBase
         {
             _logger.LogError(ex, "Failed to create Stripe Checkout Session for Payment {PaymentId}", payment.Id);
             payment.Status = PaymentStatus.Failed;
+            payment.CompletedAt = DateTimeOffset.UtcNow;
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             return StatusCode(StatusCodes.Status502BadGateway, new
@@ -153,6 +185,102 @@ public class PaymentsController : ControllerBase
                 message = "Failed to initialize Stripe checkout session. Please try again later."
             });
         }
+    }
+
+    [HttpGet("by-booking/{bookingId:guid}")]
+    public async Task<IActionResult> GetPaymentsByBooking([FromRoute] Guid bookingId, CancellationToken cancellationToken)
+    {
+        if (bookingId == Guid.Empty)
+        {
+            return BadRequest(new { code = "INVALID_BOOKING_ID", message = "Invalid booking ID." });
+        }
+
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        var payments = await _dbContext.Payments
+            .Where(p => p.BookingId == bookingId)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        if (payments.Count == 0)
+        {
+            return NotFound(new { code = "PAYMENT_NOT_FOUND", message = "No payment records found for this booking." });
+        }
+
+        if (payments.Any(p => p.CustomerId != customerId) && !User.IsInRole("Administrator"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                code = "FORBIDDEN",
+                message = "You are not authorized to view payments for this booking."
+            });
+        }
+
+        var result = payments.Select(p => new PaymentDto
+        {
+            Id = p.Id,
+            BookingId = p.BookingId,
+            BookingReference = p.BookingReference,
+            CustomerId = p.CustomerId,
+            Amount = p.Amount,
+            Currency = p.Currency,
+            Status = p.Status.ToString(),
+            StripeSessionId = p.StripeSessionId,
+            StripePaymentIntentId = p.StripePaymentIntentId,
+            CreatedAt = p.CreatedAt,
+            CompletedAt = p.CompletedAt
+        }).ToList();
+
+        return Ok(result);
+    }
+
+    [HttpGet("{paymentId:guid}")]
+    public async Task<IActionResult> GetPaymentById([FromRoute] Guid paymentId, CancellationToken cancellationToken)
+    {
+        if (paymentId == Guid.Empty)
+        {
+            return BadRequest(new { code = "INVALID_PAYMENT_ID", message = "Invalid payment ID." });
+        }
+
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        var payment = await _dbContext.Payments
+            .FirstOrDefaultAsync(p => p.Id == paymentId, cancellationToken);
+
+        if (payment == null)
+        {
+            return NotFound(new { code = "PAYMENT_NOT_FOUND", message = "Payment not found." });
+        }
+
+        if (payment.CustomerId != customerId && !User.IsInRole("Administrator"))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                code = "FORBIDDEN",
+                message = "You are not authorized to view this payment."
+            });
+        }
+
+        return Ok(new PaymentDto
+        {
+            Id = payment.Id,
+            BookingId = payment.BookingId,
+            BookingReference = payment.BookingReference,
+            CustomerId = payment.CustomerId,
+            Amount = payment.Amount,
+            Currency = payment.Currency,
+            Status = payment.Status.ToString(),
+            StripeSessionId = payment.StripeSessionId,
+            StripePaymentIntentId = payment.StripePaymentIntentId,
+            CreatedAt = payment.CreatedAt,
+            CompletedAt = payment.CompletedAt
+        });
     }
 
     [HttpPost("webhook")]
@@ -186,14 +314,34 @@ public class PaymentsController : ControllerBase
             if (stripeEvent.Data.Object is Stripe.Checkout.Session session)
             {
                 Guid.TryParse(session.Metadata?.GetValueOrDefault("PaymentId"), out var paymentIdFromMeta);
+                Guid.TryParse(session.Metadata?.GetValueOrDefault("BookingId"), out var bookingIdFromMeta);
 
                 var payment = await _dbContext.Payments
                     .FirstOrDefaultAsync(p => p.StripeSessionId == session.Id || (paymentIdFromMeta != Guid.Empty && p.Id == paymentIdFromMeta), cancellationToken);
+
+                // Fallback: If not found by SessionId or PaymentId, find pending payment by BookingId from metadata
+                if (payment == null && bookingIdFromMeta != Guid.Empty)
+                {
+                    payment = await _dbContext.Payments
+                        .OrderByDescending(p => p.CreatedAt)
+                        .FirstOrDefaultAsync(p => p.BookingId == bookingIdFromMeta && p.Status == PaymentStatus.Pending, cancellationToken);
+                }
 
                 if (payment == null)
                 {
                     _logger.LogWarning("Payment record not found for Stripe checkout session {SessionId}", session.Id);
                     return Ok();
+                }
+
+                // Repair/ensure booking reference association from metadata if missing
+                if (string.IsNullOrWhiteSpace(payment.BookingReference) && session.Metadata != null && session.Metadata.TryGetValue("BookingReference", out var metaRef) && !string.IsNullOrWhiteSpace(metaRef))
+                {
+                    payment.BookingReference = metaRef;
+                }
+
+                if (payment.BookingId == Guid.Empty && bookingIdFromMeta != Guid.Empty)
+                {
+                    payment.BookingId = bookingIdFromMeta;
                 }
 
                 if (payment.Status == PaymentStatus.Succeeded)
@@ -231,14 +379,34 @@ public class PaymentsController : ControllerBase
             {
                 var failureReason = intent.LastPaymentError?.Message ?? "Payment declined";
                 Guid.TryParse(intent.Metadata?.GetValueOrDefault("PaymentId"), out var paymentIdFromMeta);
+                Guid.TryParse(intent.Metadata?.GetValueOrDefault("BookingId"), out var bookingIdFromMeta);
 
                 var payment = await _dbContext.Payments
                     .FirstOrDefaultAsync(p => (p.StripePaymentIntentId != null && p.StripePaymentIntentId == intent.Id) || (paymentIdFromMeta != Guid.Empty && p.Id == paymentIdFromMeta), cancellationToken);
+
+                // Fallback: If not found by PaymentIntentId or PaymentId, find pending payment by BookingId from metadata
+                if (payment == null && bookingIdFromMeta != Guid.Empty)
+                {
+                    payment = await _dbContext.Payments
+                        .OrderByDescending(p => p.CreatedAt)
+                        .FirstOrDefaultAsync(p => p.BookingId == bookingIdFromMeta && p.Status == PaymentStatus.Pending, cancellationToken);
+                }
 
                 if (payment == null)
                 {
                     _logger.LogWarning("Payment record not found for Stripe PaymentIntent {PaymentIntentId}", intent.Id);
                     return Ok();
+                }
+
+                // Repair/ensure booking reference association from metadata if missing
+                if (string.IsNullOrWhiteSpace(payment.BookingReference) && intent.Metadata != null && intent.Metadata.TryGetValue("BookingReference", out var metaRef) && !string.IsNullOrWhiteSpace(metaRef))
+                {
+                    payment.BookingReference = metaRef;
+                }
+
+                if (payment.BookingId == Guid.Empty && bookingIdFromMeta != Guid.Empty)
+                {
+                    payment.BookingId = bookingIdFromMeta;
                 }
 
                 if (payment.Status == PaymentStatus.Failed)
@@ -249,6 +417,7 @@ public class PaymentsController : ControllerBase
 
                 payment.StripePaymentIntentId = intent.Id ?? payment.StripePaymentIntentId;
                 payment.Status = PaymentStatus.Failed;
+                payment.CompletedAt = DateTimeOffset.UtcNow;
 
                 var eventId = Guid.NewGuid();
                 var evt = new PaymentFailedEvent
