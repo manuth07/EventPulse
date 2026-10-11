@@ -23,6 +23,7 @@ public class BookingsController : ControllerBase
     private readonly ICartService _cartService;
     private readonly IBookingHistoryService _bookingHistoryService;
     private readonly IBookingCancellationService _cancellationService;
+    private readonly ICancellationEligibilityChecker _eligibilityChecker;
 
     public BookingsController(
         BookingDbContext dbContext,
@@ -32,7 +33,8 @@ public class BookingsController : ControllerBase
         ILogger<BookingsController> logger,
         ICartService cartService,
         IBookingHistoryService bookingHistoryService,
-        IBookingCancellationService cancellationService)
+        IBookingCancellationService cancellationService,
+        ICancellationEligibilityChecker? eligibilityChecker = null)
     {
         _dbContext = dbContext;
         _eventClient = eventClient;
@@ -42,6 +44,10 @@ public class BookingsController : ControllerBase
         _cartService = cartService;
         _bookingHistoryService = bookingHistoryService;
         _cancellationService = cancellationService;
+        _eligibilityChecker = eligibilityChecker ?? new CancellationEligibilityChecker(
+            dbContext,
+            eventClient,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CancellationEligibilityChecker>.Instance);
     }
 
     private bool TryGetCustomerId(out Guid customerId)
@@ -370,6 +376,38 @@ public class BookingsController : ControllerBase
         };
 
         return CreatedAtAction(nameof(CreateBooking), new { id = booking.Id }, responseDto);
+    }
+
+    /// <summary>
+    /// Checks cancellation eligibility for the authenticated customer's booking (EP-362).
+    /// </summary>
+    [HttpGet("{id:guid}/cancellation-eligibility")]
+    [ProducesResponseType(typeof(CancellationEligibilityResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CheckCancellationEligibility(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        var result = await _eligibilityChecker.EvaluateEligibilityAsync(id, customerId, cancellationToken);
+        if (result.ReasonCode == CancellationReasonCodes.BookingNotFound ||
+            result.ReasonCode == CancellationReasonCodes.Unauthorized)
+        {
+            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
+        }
+
+        return Ok(new CancellationEligibilityResponseDto(
+            result.IsEligible,
+            result.ReasonCode,
+            result.Explanation,
+            result.CutoffUtc,
+            result.TimeRemaining
+        ));
     }
 
     /// <summary>

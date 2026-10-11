@@ -13,16 +13,23 @@ public class BookingCancellationService : IBookingCancellationService
     private readonly IEventAvailabilityClient _eventAvailabilityClient;
     private readonly ILogger<BookingCancellationService> _logger;
 
+    private readonly ICancellationEligibilityChecker _eligibilityChecker;
+
     public BookingCancellationService(
         BookingDbContext dbContext,
         IBookingEventPublisher eventPublisher,
         IEventAvailabilityClient eventAvailabilityClient,
-        ILogger<BookingCancellationService> logger)
+        ILogger<BookingCancellationService> logger,
+        ICancellationEligibilityChecker? eligibilityChecker = null)
     {
         _dbContext = dbContext;
         _eventPublisher = eventPublisher;
         _eventAvailabilityClient = eventAvailabilityClient;
         _logger = logger;
+        _eligibilityChecker = eligibilityChecker ?? new CancellationEligibilityChecker(
+            dbContext,
+            eventAvailabilityClient,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CancellationEligibilityChecker>.Instance);
     }
 
     public async Task<(bool IsEligible, string? Reason, Booking? Booking)> EvaluateCancellationEligibilityAsync(
@@ -35,22 +42,12 @@ public class BookingCancellationService : IBookingCancellationService
             .Include(b => b.Tickets)
             .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
-        if (booking == null || booking.CustomerId != customerId)
+        var eligibility = await _eligibilityChecker.EvaluateEligibilityAsync(bookingId, customerId, ct);
+        if (!eligibility.IsEligible)
         {
-            _logger.LogWarning("Cancellation eligibility failed for BookingId {BookingId}, CustomerId {CustomerId}: Booking not found or access denied.", bookingId, customerId);
-            return (false, "Booking not found or access denied", null);
-        }
-
-        if (booking.Status == BookingStatus.Cancelled)
-        {
-            _logger.LogInformation("Cancellation eligibility failed for BookingId {BookingId}: Booking is already cancelled.", bookingId);
-            return (false, "Booking is already cancelled", booking);
-        }
-
-        if (booking.Status == BookingStatus.PaymentFailed)
-        {
-            _logger.LogInformation("Cancellation eligibility failed for BookingId {BookingId}: Cannot cancel a failed payment booking.", bookingId);
-            return (false, "Cannot cancel a failed payment booking", booking);
+            _logger.LogInformation("Cancellation eligibility failed for BookingId {BookingId}: {Reason} ({ReasonCode})",
+                bookingId, eligibility.Explanation, eligibility.ReasonCode);
+            return (false, eligibility.Explanation ?? eligibility.ReasonCode, booking);
         }
 
         return (true, null, booking);

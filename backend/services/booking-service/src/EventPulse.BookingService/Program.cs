@@ -120,6 +120,8 @@ builder.Services.AddScoped<ITicketCodeGenerator, TicketCodeGenerator>();
 builder.Services.AddScoped<IValidationTokenGenerator, ValidationTokenGenerator>();
 builder.Services.AddScoped<ITicketGenerationService, TicketGenerationService>();
 builder.Services.AddScoped<IBookingHistoryService, BookingHistoryService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<ICancellationEligibilityChecker, CancellationEligibilityChecker>();
 builder.Services.AddScoped<IBookingCancellationService, BookingCancellationService>();
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
 
