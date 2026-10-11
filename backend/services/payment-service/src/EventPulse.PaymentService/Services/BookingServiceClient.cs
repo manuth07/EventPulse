@@ -45,4 +45,39 @@ public class BookingServiceClient : IBookingServiceClient
             return null;
         }
     }
+
+    public async Task<string?> GetBookingEventNameAsync(Guid bookingId, string? bearerToken = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/bookings/{bookingId}");
+            if (!string.IsNullOrWhiteSpace(bearerToken))
+            {
+                var cleanToken = bearerToken.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? bearerToken["Bearer ".Length..].Trim()
+                    : bearerToken.Trim();
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", cleanToken);
+            }
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            if (doc.RootElement.TryGetProperty("eventName", out var prop) || doc.RootElement.TryGetProperty("EventName", out prop))
+            {
+                return prop.GetString();
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve event name from BookingService for booking {BookingId}", bookingId);
+            return null;
+        }
+    }
 }

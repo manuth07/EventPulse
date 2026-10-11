@@ -915,7 +915,7 @@ public class PaymentsControllerTests
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
-        var dto = Assert.IsType<PaymentDto>(okResult.Value);
+        var dto = Assert.IsType<CustomerPaymentDetailDto>(okResult.Value);
         Assert.Equal(paymentId, dto.Id);
         Assert.Equal(bookingId, dto.BookingId);
         Assert.Equal("EP-2026-SINGLE", dto.BookingReference);
@@ -1054,5 +1054,447 @@ public class PaymentsControllerTests
         Assert.NotNull(updatedPayment);
         Assert.Equal(PaymentStatus.Succeeded, updatedPayment.Status);
         Assert.Equal("EP-2026-REPAIRED", updatedPayment.BookingReference);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_WhenUnauthenticated_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var controller = CreateController(db, customerId: null); // No customerId claim
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.NotNull(unauthorizedResult.Value);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_WhenEmpty_ReturnsOkWithEmptyCollection()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.NotNull(pagedResult.Items);
+        Assert.Empty(pagedResult.Items);
+        Assert.Equal(0, pagedResult.TotalCount);
+        Assert.Equal(1, pagedResult.Page);
+        Assert.Equal(10, pagedResult.PageSize);
+        Assert.False(pagedResult.HasNextPage);
+        Assert.False(pagedResult.HasPreviousPage);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_ReturnsOnlyAuthenticatedCustomerPayments_OrderedByMostRecent()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var otherCustomerId = Guid.NewGuid();
+
+        // Customer's older payment
+        var p1 = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-MINE-1",
+            CustomerId = customerId,
+            Amount = 1000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Failed,
+            CreatedAt = DateTimeOffset.UtcNow.AddHours(-2)
+        };
+
+        // Customer's newer payment
+        var p2 = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-MINE-2",
+            CustomerId = customerId,
+            Amount = 2500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-9)
+        };
+
+        // Another customer's payment
+        var pOther = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-OTHER",
+            CustomerId = otherCustomerId,
+            Amount = 9999m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5)
+        };
+
+        db.Payments.AddRange(p1, p2, pOther);
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.Equal(2, pagedResult.TotalCount);
+        Assert.Equal(2, pagedResult.Items.Count);
+
+        // Most recent first: p2 then p1
+        Assert.Equal(p2.Id, pagedResult.Items[0].Id);
+        Assert.Equal("EP-2026-MINE-2", pagedResult.Items[0].BookingReference);
+        Assert.Equal(2500m, pagedResult.Items[0].Amount);
+        Assert.Equal("Succeeded", pagedResult.Items[0].Status);
+
+        Assert.Equal(p1.Id, pagedResult.Items[1].Id);
+        Assert.Equal("EP-2026-MINE-1", pagedResult.Items[1].BookingReference);
+        Assert.Equal(1000m, pagedResult.Items[1].Amount);
+        Assert.Equal("Failed", pagedResult.Items[1].Status);
+
+        // Ensure other customer's payment is strictly excluded
+        Assert.DoesNotContain(pagedResult.Items, i => i.BookingReference == "EP-2026-OTHER");
+    }
+
+    [Fact]
+    public async Task GetMyPayments_SupportsPagination_CorrectPageAndPageSize()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+
+        for (int i = 1; i <= 5; i++)
+        {
+            db.Payments.Add(new Payment
+            {
+                Id = Guid.NewGuid(),
+                BookingId = Guid.NewGuid(),
+                BookingReference = $"EP-2026-PAGE-{i}",
+                CustomerId = customerId,
+                Amount = i * 100m,
+                Currency = "lkr",
+                Status = PaymentStatus.Succeeded,
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-i)
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act - Request Page 1 with pageSize 2
+        var resultPage1 = await controller.GetMyPayments(new PaymentHistoryQueryParameters { Page = 1, PageSize = 2 }, CancellationToken.None);
+        var okPage1 = Assert.IsType<OkObjectResult>(resultPage1);
+        var page1 = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okPage1.Value);
+
+        // Assert Page 1
+        Assert.Equal(5, page1.TotalCount);
+        Assert.Equal(2, page1.Items.Count);
+        Assert.Equal(1, page1.Page);
+        Assert.Equal(2, page1.PageSize);
+        Assert.Equal(3, page1.TotalPages);
+        Assert.True(page1.HasNextPage);
+        Assert.False(page1.HasPreviousPage);
+
+        // Act - Request Page 3 with pageSize 2
+        var resultPage3 = await controller.GetMyPayments(new PaymentHistoryQueryParameters { Page = 3, PageSize = 2 }, CancellationToken.None);
+        var okPage3 = Assert.IsType<OkObjectResult>(resultPage3);
+        var page3 = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okPage3.Value);
+
+        // Assert Page 3
+        Assert.Single(page3.Items);
+        Assert.Equal(3, page3.Page);
+        Assert.False(page3.HasNextPage);
+        Assert.True(page3.HasPreviousPage);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_WithStatusFilter_ReturnsOnlyMatchingStatus()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-SUCC",
+            CustomerId = customerId,
+            Amount = 100m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-FAIL",
+            CustomerId = customerId,
+            Amount = 100m,
+            Currency = "lkr",
+            Status = PaymentStatus.Failed
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters { Status = "Succeeded" }, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.Single(pagedResult.Items);
+        Assert.Equal("EP-2026-SUCC", pagedResult.Items[0].BookingReference);
+        Assert.Equal("Succeeded", pagedResult.Items[0].Status);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_WithMultipleAttemptsForOneBooking_ReturnsAllAttempts()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var bookingRef = "EP-2026-MULTI-ATTEMPT";
+
+        // Attempt 1: Failed
+        var attempt1 = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = bookingRef,
+            CustomerId = customerId,
+            Amount = 4500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Failed,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-20)
+        };
+
+        // Attempt 2: Succeeded (retry)
+        var attempt2 = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = bookingRef,
+            CustomerId = customerId,
+            Amount = 4500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-4)
+        };
+
+        db.Payments.AddRange(attempt1, attempt2);
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.Equal(2, pagedResult.Items.Count);
+
+        // Both attempts belong to the same booking
+        Assert.All(pagedResult.Items, i => Assert.Equal(bookingId, i.BookingId));
+        Assert.All(pagedResult.Items, i => Assert.Equal(bookingRef, i.BookingReference));
+
+        // Ordered by most recent: attempt2 first
+        Assert.Equal(attempt2.Id, pagedResult.Items[0].Id);
+        Assert.Equal("Succeeded", pagedResult.Items[0].Status);
+
+        Assert.Equal(attempt1.Id, pagedResult.Items[1].Id);
+        Assert.Equal("Failed", pagedResult.Items[1].Status);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_EnrichesWithEventName_WhenAvailableFromBookingService()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var token = "valid_jwt_token";
+
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-2026-EVENT-ENRICH",
+            CustomerId = customerId,
+            Amount = 3500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingEventNameAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Tech Music Festival 2026");
+
+        var controller = CreateController(db, customerId: customerId, token: token);
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.Single(pagedResult.Items);
+        Assert.Equal("Tech Music Festival 2026", pagedResult.Items[0].EventName);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WhenUnauthenticated_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var controller = CreateController(db, customerId: null);
+
+        // Act
+        var result = await controller.GetPaymentById(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.NotNull(unauthorizedResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WhenInvalidGuid_ReturnsBadRequest()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var controller = CreateController(db, customerId: Guid.NewGuid());
+
+        // Act
+        var result = await controller.GetPaymentById(Guid.Empty, CancellationToken.None);
+
+        // Assert
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.NotNull(badRequestResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WhenPaymentBelongsToOtherCustomer_ReturnsNotFoundToHideExistence()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var ownerId = Guid.NewGuid();
+        var attackerId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = paymentId,
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-SECRET",
+            CustomerId = ownerId,
+            Amount = 5000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: attackerId);
+
+        // Act
+        var result = await controller.GetPaymentById(paymentId, CancellationToken.None);
+
+        // Assert - MUST be 404 to hide the existence of the resource
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.NotNull(notFoundResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WhenAdminRequests_ReturnsOkRegardlessOfOwner()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var ownerId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = paymentId,
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-ADMIN-VIEW",
+            CustomerId = ownerId,
+            Amount = 4000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: adminId, role: "Administrator");
+
+        // Act
+        var result = await controller.GetPaymentById(paymentId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var detail = Assert.IsType<CustomerPaymentDetailDto>(okResult.Value);
+        Assert.Equal(paymentId, detail.Id);
+        Assert.Equal(ownerId, detail.CustomerId);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_EnrichesWithEventName_WhenAvailableFromBookingService()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+        var token = "valid_jwt_token";
+
+        db.Payments.Add(new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "EP-2026-DETAIL-ENRICH",
+            CustomerId = customerId,
+            Amount = 3500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded,
+            CreatedAt = DateTimeOffset.UtcNow,
+            CompletedAt = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        _bookingClientMock
+            .Setup(c => c.GetBookingEventNameAsync(bookingId, token, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Rock Night 2026");
+
+        var controller = CreateController(db, customerId: customerId, token: token);
+
+        // Act
+        var result = await controller.GetPaymentById(paymentId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var detail = Assert.IsType<CustomerPaymentDetailDto>(okResult.Value);
+        Assert.Equal("Rock Night 2026", detail.EventName);
+        Assert.Equal(bookingId, detail.BookingId);
+        Assert.Equal("EP-2026-DETAIL-ENRICH", detail.BookingReference);
     }
 }

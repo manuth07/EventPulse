@@ -237,7 +237,93 @@ public class PaymentsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Retrieves the authenticated customer's paginated payment history (EP-356 / EP-54).
+    /// </summary>
+    [HttpGet("my-payments")]
+    [HttpGet("history")]
+    [ProducesResponseType(typeof(PagedResult<CustomerPaymentHistoryItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMyPayments(
+        [FromQuery] PaymentHistoryQueryParameters queryParams,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid or missing token identity." });
+        }
+
+        var query = _dbContext.Payments
+            .AsNoTracking()
+            .Where(p => p.CustomerId == customerId);
+
+        if (!string.IsNullOrWhiteSpace(queryParams.Status))
+        {
+            if (Enum.TryParse<PaymentStatus>(queryParams.Status, ignoreCase: true, out var statusEnum))
+            {
+                query = query.Where(p => p.Status == statusEnum);
+            }
+            else
+            {
+                _logger.LogWarning("Invalid payment status filter supplied: {Status}", queryParams.Status);
+            }
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var payments = await query
+            .OrderByDescending(p => p.CreatedAt)
+            .Skip((queryParams.Page - 1) * queryParams.PageSize)
+            .Take(queryParams.PageSize)
+            .ToListAsync(cancellationToken);
+
+        var token = GetBearerToken();
+
+        // Resolve event names where available through existing supported contracts
+        var distinctBookingIds = payments.Select(p => p.BookingId).Distinct().ToList();
+        var eventNamesByBooking = new Dictionary<Guid, string?>();
+
+        if (distinctBookingIds.Count > 0)
+        {
+            var eventNameTasks = distinctBookingIds.Select(async bId =>
+            {
+                var eventName = await _bookingClient.GetBookingEventNameAsync(bId, token, cancellationToken);
+                return (bId, eventName);
+            });
+
+            var eventNameResults = await Task.WhenAll(eventNameTasks);
+            foreach (var (bId, eventName) in eventNameResults)
+            {
+                eventNamesByBooking[bId] = eventName;
+            }
+        }
+
+        var items = payments.Select(p => new CustomerPaymentHistoryItemDto
+        {
+            Id = p.Id,
+            BookingId = p.BookingId,
+            BookingReference = p.BookingReference,
+            Amount = p.Amount,
+            Currency = p.Currency,
+            Status = p.Status.ToString(),
+            PaymentDate = p.CompletedAt ?? p.CreatedAt,
+            CreatedAt = p.CreatedAt,
+            CompletedAt = p.CompletedAt,
+            EventName = eventNamesByBooking.GetValueOrDefault(p.BookingId)
+        }).ToList();
+
+        var pagedResult = new PagedResult<CustomerPaymentHistoryItemDto>(items, totalCount, queryParams.Page, queryParams.PageSize);
+        return Ok(pagedResult);
+    }
+
+    /// <summary>
+    /// Retrieves a single payment detail record for the authenticated owner (EP-356 / EP-54).
+    /// </summary>
     [HttpGet("{paymentId:guid}")]
+    [ProducesResponseType(typeof(CustomerPaymentDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetPaymentById([FromRoute] Guid paymentId, CancellationToken cancellationToken)
     {
         if (paymentId == Guid.Empty)
@@ -251,23 +337,19 @@ public class PaymentsController : ControllerBase
         }
 
         var payment = await _dbContext.Payments
+            .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == paymentId, cancellationToken);
 
-        if (payment == null)
+        // Security: Return 404 for inaccessible records to avoid revealing their existence to non-owners
+        if (payment == null || (payment.CustomerId != customerId && !User.IsInRole("Administrator")))
         {
             return NotFound(new { code = "PAYMENT_NOT_FOUND", message = "Payment not found." });
         }
 
-        if (payment.CustomerId != customerId && !User.IsInRole("Administrator"))
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                code = "FORBIDDEN",
-                message = "You are not authorized to view this payment."
-            });
-        }
+        var token = GetBearerToken();
+        var eventName = await _bookingClient.GetBookingEventNameAsync(payment.BookingId, token, cancellationToken);
 
-        return Ok(new PaymentDto
+        return Ok(new CustomerPaymentDetailDto
         {
             Id = payment.Id,
             BookingId = payment.BookingId,
@@ -276,10 +358,12 @@ public class PaymentsController : ControllerBase
             Amount = payment.Amount,
             Currency = payment.Currency,
             Status = payment.Status.ToString(),
-            StripeSessionId = payment.StripeSessionId,
-            StripePaymentIntentId = payment.StripePaymentIntentId,
+            PaymentDate = payment.CompletedAt ?? payment.CreatedAt,
             CreatedAt = payment.CreatedAt,
-            CompletedAt = payment.CompletedAt
+            CompletedAt = payment.CompletedAt,
+            EventName = eventName,
+            StripeSessionId = payment.StripeSessionId,
+            StripePaymentIntentId = payment.StripePaymentIntentId
         });
     }
 
