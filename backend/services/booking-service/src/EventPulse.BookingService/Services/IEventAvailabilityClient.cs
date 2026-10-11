@@ -45,6 +45,7 @@ public class ClientInventoryResult
 public interface IEventAvailabilityClient
 {
     Task<TicketTypeAvailability?> GetTicketTypeAsync(Guid eventId, Guid ticketTypeId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<TicketTypeAvailability>> GetEventTicketTypesAsync(Guid eventId, CancellationToken cancellationToken = default);
     Task<EventSummaryInfo?> GetEventSummaryAsync(Guid eventId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventSummaryInfo>> GetOrganizerEventsAsync(Guid organizerId, CancellationToken cancellationToken = default);
 

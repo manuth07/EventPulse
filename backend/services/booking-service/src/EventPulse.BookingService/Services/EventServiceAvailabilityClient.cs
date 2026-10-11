@@ -33,6 +33,25 @@ public class EventServiceAvailabilityClient : IEventAvailabilityClient
         }
     }
 
+    public async Task<IReadOnlyList<TicketTypeAvailability>> GetEventTicketTypesAsync(
+        Guid eventId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync($"/api/events/{eventId}/ticket-types/public", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return Array.Empty<TicketTypeAvailability>();
+
+            var ticketTypes = await response.Content.ReadFromJsonAsync<List<TicketTypeAvailability>>(cancellationToken: cancellationToken);
+            return ticketTypes ?? (IReadOnlyList<TicketTypeAvailability>)Array.Empty<TicketTypeAvailability>();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to fetch ticket types for Event {EventId}", eventId);
+            return Array.Empty<TicketTypeAvailability>();
+        }
+    }
+
     public async Task<EventSummaryInfo?> GetEventSummaryAsync(Guid eventId, CancellationToken cancellationToken = default)
     {
         try
