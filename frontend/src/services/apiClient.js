@@ -8,8 +8,8 @@
  * - Normalizes error responses for consistent UI handling
  */
 
-import { getApiBaseUrl } from './apiConfig';
-import { handleApiAuthError } from '../utils/routeSecurity';
+import { getApiBaseUrl } from './apiConfig.js';
+import { handleApiAuthError } from '../utils/routeSecurity.js';
 
 const TOKEN_KEY = 'ep_access_token';
 
@@ -105,7 +105,7 @@ export async function apiRequest(endpoint, options = {}) {
       } else if (response.status === 403) {
         console.warn(`[apiClient] 403 Forbidden encountered on ${url}. Access denied.`);
         if (typeof window !== 'undefined' && window.location) {
-          if (currentPath !== '/forbidden' && (url.includes('/api/admin') || currentPath.startsWith('/admin'))) {
+          if (currentPath !== '/forbidden' && (url.includes('/api/admin') || currentPath.startsWith('/admin') || url.includes('/api/organizer') || currentPath.startsWith('/organizer'))) {
             window.location.assign('/forbidden');
           }
         }

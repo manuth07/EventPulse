@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar, Bell, CheckCircle2, Clock, CreditCard } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar, Bell, CheckCircle2, Clock, CreditCard, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { buildApiUrl } from '../../services/apiConfig';
 import { getAdminNotifications, getAdminNotificationsUnreadCount, markAdminNotificationRead } from '../../services/eventService';
+import { shouldShowSalesAnalyticsNavigation } from '../../utils/routeSecurity';
 
 export function Header({ location = 'Colombo, LK' }) {
   const navigate = useNavigate();
@@ -145,12 +146,18 @@ export function Header({ location = 'Colombo, LK' }) {
 
           {(isOrganizer || isAdmin) && (
             <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              {/* Organizer navigation */}
-              {isOrganizer && (
-                <Link to="/organizer" style={navLinkStyle('/organizer')}>
-                  <LayoutDashboard size={14} />
-                  <span>Organizer Dashboard</span>
-                </Link>
+              {/* Organizer navigation (EP-386) */}
+              {shouldShowSalesAnalyticsNavigation(currentUser, isAuthenticated) && (
+                <>
+                  <Link to="/organizer" style={navLinkStyle('/organizer')}>
+                    <LayoutDashboard size={14} />
+                    <span>Organizer Dashboard</span>
+                  </Link>
+                  <Link to="/organizer/analytics/sales" style={navLinkStyle('/organizer/analytics/sales')}>
+                    <TrendingUp size={14} />
+                    <span>Sales Analytics</span>
+                  </Link>
+                </>
               )}
 
               {/* Administrator navigation */}
@@ -627,6 +634,37 @@ export function Header({ location = 'Colombo, LK' }) {
                     >
                       <LayoutDashboard size={14} color="var(--ep-text-secondary)" />
                       <span>Organizer Dashboard</span>
+                    </Link>
+                  )}
+
+                  {shouldShowSalesAnalyticsNavigation(currentUser, isAuthenticated) && (
+                    <Link
+                      to="/organizer/analytics/sales"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'none',
+                        borderBottom: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'var(--ep-text-primary)',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
+                        fontFamily: 'var(--ep-font-body)',
+                        textAlign: 'left',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <TrendingUp size={14} color="var(--ep-text-secondary)" />
+                      <span>Sales Analytics</span>
                     </Link>
                   )}
 

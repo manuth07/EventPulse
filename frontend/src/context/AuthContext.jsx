@@ -94,6 +94,8 @@ export function AuthProvider({ children, initialLoading = false }) {
       // If administrative endpoint returned 403, strip stale Administrator role immediately
       if (url.includes('/admin') || url.includes('/api/admin')) {
         removeRole('Administrator');
+      } else if (url.includes('/organizer') || url.includes('/api/organizer')) {
+        removeRole('Organizer');
       }
     };
 

@@ -33,6 +33,43 @@ export function shouldShowAdminNavigation(user, isAuthenticated) {
 }
 
 /**
+ * Checks whether a user is an authenticated Organizer (EP-386).
+ * @param {Object|null} user - The current user object.
+ * @param {boolean} isAuthenticated - Whether the user possesses a valid, non-expired token.
+ * @returns {boolean} True only if authenticated AND user has the Organizer role.
+ */
+export function isOrganizer(user, isAuthenticated) {
+  if (!isAuthenticated || !user || !Array.isArray(user.roles)) {
+    return false;
+  }
+  return user.roles.includes('Organizer');
+}
+
+/**
+ * Determines whether organizer navigation entries should be displayed in the UI.
+ * @param {Object|null} user - The current user object.
+ * @param {boolean} isAuthenticated - Authentication state.
+ * @returns {boolean} True if and only if authenticated as an Organizer.
+ */
+export function shouldShowOrganizerNavigation(user, isAuthenticated) {
+  return isOrganizer(user, isAuthenticated);
+}
+
+/**
+ * Determines whether organizer sales analytics navigation entries (links, badges, menus)
+ * should be displayed in the UI (EP-386).
+ * Ensures private organizer sales analytics are strictly hidden from customers, logged-out users,
+ * and administrators without the Organizer role.
+ * 
+ * @param {Object|null} user - The current user object.
+ * @param {boolean} isAuthenticated - Authentication state.
+ * @returns {boolean} True if and only if authenticated as an Organizer.
+ */
+export function shouldShowSalesAnalyticsNavigation(user, isAuthenticated) {
+  return isOrganizer(user, isAuthenticated);
+}
+
+/**
  * Evaluates route access decisions for guarded components.
  * 
  * Rules:
@@ -150,6 +187,13 @@ export function handleApiAuthError({
     const isTargetingAdmin = url.includes('/admin') || url.includes('/api/admin') || currentPath.startsWith('/admin');
     if (isTargetingAdmin && typeof onStaleRole === 'function') {
       onStaleRole('Administrator');
+      staleRoleRemoved = true;
+    }
+
+    // Detect stale organizer role if hitting organizer endpoints (EP-386)
+    const isTargetingOrganizer = url.includes('/organizer') || url.includes('/api/organizer') || currentPath.startsWith('/organizer');
+    if (isTargetingOrganizer && typeof onStaleRole === 'function') {
+      onStaleRole('Organizer');
       staleRoleRemoved = true;
     }
 
