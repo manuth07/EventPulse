@@ -17,7 +17,7 @@ import { CreateEvent } from './pages/CreateEvent/CreateEvent';
 import { EditEvent } from './pages/EditEvent/EditEvent';
 import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
 import { PendingEvents } from './pages/PendingEvents/PendingEvents';
-import { RequireAuth, RequireRole } from './components/RouteGuards/RouteGuards';
+import { RequireAuth, RequireRole, AdminRoute } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
 import { Cart } from './pages/Cart/Cart';
@@ -76,8 +76,8 @@ function App() {
               <Route path="/events/create" element={<CreateEvent />} />
             </Route>
 
-            {/* Administrator Protected Routes */}
-            <Route element={<RequireRole allowedRoles="Administrator" />}>
+            {/* Administrator Protected Routes (EP-373) */}
+            <Route element={<AdminRoute />}>
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/events/pending" element={<PendingEvents />} />
               <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
