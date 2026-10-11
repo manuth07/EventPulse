@@ -109,16 +109,22 @@ export function Header({ location = 'Colombo, LK' }) {
     navigate('/');
   };
 
-  const navLinkStyle = (path) => ({
-    fontSize: '13px',
-    fontWeight: routerLocation.pathname === path ? 600 : 500,
-    color: routerLocation.pathname === path ? 'var(--ep-primary)' : 'var(--ep-text-primary)',
-    textDecoration: 'none',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-    transition: 'var(--ep-transition)',
-  });
+  const navLinkStyle = (path) => {
+    const isSalesPath = path === '/organizer/sales-analytics' || path === '/organizer/analytics/sales';
+    const isActive = isSalesPath
+      ? (routerLocation.pathname === '/organizer/sales-analytics' || routerLocation.pathname === '/organizer/analytics/sales' || routerLocation.pathname === '/organizer/analytics')
+      : routerLocation.pathname === path;
+    return {
+      fontSize: '13px',
+      fontWeight: isActive ? 600 : 500,
+      color: isActive ? 'var(--ep-primary)' : 'var(--ep-text-primary)',
+      textDecoration: 'none',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      transition: 'var(--ep-transition)',
+    };
+  };
 
   return (
     <header style={{
@@ -153,7 +159,7 @@ export function Header({ location = 'Colombo, LK' }) {
                     <LayoutDashboard size={14} />
                     <span>Organizer Dashboard</span>
                   </Link>
-                  <Link to="/organizer/analytics/sales" style={navLinkStyle('/organizer/analytics/sales')}>
+                  <Link to="/organizer/sales-analytics" style={navLinkStyle('/organizer/sales-analytics')}>
                     <TrendingUp size={14} />
                     <span>Sales Analytics</span>
                   </Link>
@@ -639,7 +645,7 @@ export function Header({ location = 'Colombo, LK' }) {
 
                   {shouldShowSalesAnalyticsNavigation(currentUser, isAuthenticated) && (
                     <Link
-                      to="/organizer/analytics/sales"
+                      to="/organizer/sales-analytics"
                       role="menuitem"
                       onClick={() => setMenuOpen(false)}
                       style={{

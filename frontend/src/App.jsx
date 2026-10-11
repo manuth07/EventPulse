@@ -12,6 +12,7 @@ import { ResetPassword } from './pages/ResetPassword/ResetPassword';
 import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
+import { OrganizerSalesAnalytics } from './pages/OrganizerSalesAnalytics/OrganizerSalesAnalytics';
 import { OrganizerEventDetails } from './pages/OrganizerEventDetails/OrganizerEventDetails';
 import { CreateEvent } from './pages/CreateEvent/CreateEvent';
 import { EditEvent } from './pages/EditEvent/EditEvent';
@@ -73,9 +74,10 @@ function App() {
               <Route path="/organizer" element={<OrganizerDashboard />} />
               <Route path="/organizer/events/:id" element={<OrganizerEventDetails />} />
               <Route path="/organizer/events/:id/edit" element={<EditEvent />} />
-              <Route path="/organizer/analytics" element={<OrganizerDashboard />} />
-              <Route path="/organizer/analytics/sales" element={<OrganizerDashboard />} />
-              <Route path="/organizer/events/:id/sales" element={<OrganizerEventDetails />} />
+              <Route path="/organizer/sales-analytics" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/analytics" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/analytics/sales" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/events/:id/sales" element={<OrganizerSalesAnalytics />} />
               <Route path="/events/create" element={<CreateEvent />} />
             </Route>
 
