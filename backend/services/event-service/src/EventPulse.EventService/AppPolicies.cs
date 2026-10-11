@@ -19,5 +19,10 @@ public static class AppPolicies
     /// Allows only users with the Administrator role.
     /// Used for event approval, user management endpoints.
     /// </summary>
+    public const string AdminOnly = "AdminOnly";
+
+    /// <summary>
+    /// Backward-compatible alias for AdminOnly.
+    /// </summary>
     public const string AdministratorOnly = "AdministratorOnly";
 }

@@ -5,6 +5,7 @@ using EventPulse.IdentityService.Models;
 using EventPulse.IdentityService.Security;
 using EventPulse.IdentityService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -66,6 +67,10 @@ builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationService>();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IPlatformMetricsClient, PlatformMetricsClient>();
+builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
+builder.Services.AddScoped<IAuthorizationHandler, AdminOnlyAuthorizationHandler>();
 builder.Services.AddScoped<EventPulse.IdentityService.Services.IdentityDataSeeder>();
 
 // ---------------------------------------------------------------------------
@@ -116,6 +121,31 @@ builder.Services.AddAuthentication(options =>
     };
     options.Events = new JwtBearerEvents
     {
+        OnTokenValidated = async context =>
+        {
+            var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+            var userIdStr = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst("sub")?.Value;
+
+            if (Guid.TryParse(userIdStr, out var userId))
+            {
+                var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+                if (user == null || !user.IsActive)
+                {
+                    context.Fail("User account is inactive or has been deactivated.");
+                    return;
+                }
+
+                var tokenStamp = context.Principal?.FindFirst("security_stamp")?.Value
+                    ?? context.Principal?.FindFirst("AspNet.Identity.SecurityStamp")?.Value;
+
+                if (!string.IsNullOrEmpty(tokenStamp) && !string.IsNullOrEmpty(user.SecurityStamp) && user.SecurityStamp != tokenStamp)
+                {
+                    context.Fail("Session has been revoked due to security stamp change.");
+                    return;
+                }
+            }
+        },
         OnAuthenticationFailed = context =>
         {
             var logger = context.HttpContext.RequestServices
@@ -143,12 +173,22 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(options =>
 {
     // Organizer-only endpoints (e.g., create/manage events)
-    options.AddPolicy("OrganizerOnly", policy =>
-        policy.RequireRole(EventPulse.IdentityService.Models.AppRoles.Organizer));
+    options.AddPolicy(AppPolicies.OrganizerOnly, policy =>
+        policy.RequireRole(AppRoles.Organizer));
 
-    // Administrator-only endpoints (e.g., event approval, user management)
-    options.AddPolicy("AdministratorOnly", policy =>
-        policy.RequireRole(EventPulse.IdentityService.Models.AppRoles.Administrator));
+    // Administrator-only endpoints (e.g., user management, organizer application review)
+    // Enforces server-validated role claim + live Identity DB verification against stale JWTs
+    options.AddPolicy(AppPolicies.AdminOnly, policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.AddRequirements(new AdminOnlyRequirement());
+    });
+
+    options.AddPolicy(AppPolicies.AdministratorOnly, policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.AddRequirements(new AdminOnlyRequirement());
+    });
 });
 
 // ---------------------------------------------------------------------------

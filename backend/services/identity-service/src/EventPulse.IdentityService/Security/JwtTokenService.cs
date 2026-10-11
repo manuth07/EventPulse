@@ -32,7 +32,9 @@ public class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new("firstName", user.FirstName),
-            new("lastName", user.LastName)
+            new("lastName", user.LastName),
+            new("security_stamp", user.SecurityStamp ?? string.Empty),
+            new("AspNet.Identity.SecurityStamp", user.SecurityStamp ?? string.Empty)
         };
 
         foreach (var role in roles)

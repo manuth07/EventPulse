@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using EventPulse.IdentityService.DTOs;
 using EventPulse.IdentityService.Models;
+using EventPulse.IdentityService.Security;
 using EventPulse.IdentityService.Services;
 
 namespace EventPulse.IdentityService.Controllers;
@@ -163,7 +164,7 @@ public class OrganizerApplicationsController : ControllerBase
     [HttpGet("admin")]
     [HttpGet("admin/pending")]
     [HttpGet("/api/admin/organizer-applications")]
-    [Authorize(Policy = "AdministratorOnly")]
+    [Authorize(Policy = AppPolicies.AdminOnly)]
     public async Task<IActionResult> GetAdminApplications(
         [FromQuery] string? status = null,
         CancellationToken cancellationToken = default)
@@ -189,7 +190,7 @@ public class OrganizerApplicationsController : ControllerBase
     /// </summary>
     [HttpGet("admin/{id:guid}")]
     [HttpGet("/api/admin/organizer-applications/{id:guid}")]
-    [Authorize(Policy = "AdministratorOnly")]
+    [Authorize(Policy = AppPolicies.AdminOnly)]
     public async Task<IActionResult> GetAdminApplicationById(
         [FromRoute] Guid id,
         CancellationToken cancellationToken = default)
@@ -213,7 +214,7 @@ public class OrganizerApplicationsController : ControllerBase
     /// </summary>
     [HttpPost("admin/{id:guid}/approve")]
     [HttpPost("/api/admin/organizer-applications/{id:guid}/approve")]
-    [Authorize(Policy = "AdministratorOnly")]
+    [Authorize(Policy = AppPolicies.AdminOnly)]
     public async Task<IActionResult> ApproveApplication(
         [FromRoute] Guid id,
         [FromBody] ApproveOrganizerApplicationRequest? request = null,
@@ -249,7 +250,7 @@ public class OrganizerApplicationsController : ControllerBase
     /// </summary>
     [HttpPost("admin/{id:guid}/reject")]
     [HttpPost("/api/admin/organizer-applications/{id:guid}/reject")]
-    [Authorize(Policy = "AdministratorOnly")]
+    [Authorize(Policy = AppPolicies.AdminOnly)]
     public async Task<IActionResult> RejectApplication(
         [FromRoute] Guid id,
         [FromBody] RejectOrganizerApplicationRequest request,

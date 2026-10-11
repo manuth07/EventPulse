@@ -19,6 +19,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
     public DbSet<OrganizerApplication> OrganizerApplications => Set<OrganizerApplication>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -159,6 +160,38 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // Exactly one application per user is enforced at DB level
             entity.HasIndex(a => a.UserId)
                 .IsUnique();
+        });
+
+        // -----------------------------------------------------------------------
+        // AdminAuditLog
+        // -----------------------------------------------------------------------
+        builder.Entity<AdminAuditLog>(entity =>
+        {
+            entity.ToTable("AdminAuditLogs");
+            entity.HasKey(a => a.Id);
+
+            entity.Property(a => a.Action)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(a => a.ActorEmail)
+                .HasMaxLength(256);
+
+            entity.Property(a => a.TargetEmail)
+                .HasMaxLength(256);
+
+            entity.Property(a => a.Outcome)
+                .HasMaxLength(50);
+
+            entity.Property(a => a.Reason)
+                .HasMaxLength(1000);
+
+            entity.Property(a => a.Timestamp)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(a => a.TargetUserId);
+            entity.HasIndex(a => a.ActorAdminId);
+            entity.HasIndex(a => a.Timestamp);
         });
     }
 }
