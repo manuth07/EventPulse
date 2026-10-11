@@ -14,6 +14,8 @@ public record BookingCancellationResultDto
     public DateTimeOffset CancelledAt { get; init; }
     public bool Success { get; init; }
     public string? Message { get; init; }
+    public string? CancelledBy { get; init; }
+    public string? ReasonCode { get; init; }
 
     public BookingCancellationResultDto() { }
 
@@ -24,7 +26,9 @@ public record BookingCancellationResultDto
         string newStatus,
         DateTimeOffset cancelledAt,
         bool success,
-        string? message = null)
+        string? message = null,
+        string? cancelledBy = null,
+        string? reasonCode = null)
     {
         BookingId = bookingId;
         BookingReference = bookingReference;
@@ -33,5 +37,7 @@ public record BookingCancellationResultDto
         CancelledAt = cancelledAt;
         Success = success;
         Message = message;
+        CancelledBy = cancelledBy;
+        ReasonCode = reasonCode;
     }
 }

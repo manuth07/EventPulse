@@ -410,6 +410,75 @@ public class BookingsControllerTests
     }
 
     [Fact]
+    public async Task CancelBooking_ReturnsUnauthorized_WhenUnauthenticated()
+    {
+        using var context = CreateInMemoryDbContext();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
+        var referenceGeneratorMock = new Mock<IBookingReferenceGenerator>();
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var cartServiceMock = new Mock<ICartService>();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        var unauthUser = new ClaimsPrincipal(new ClaimsIdentity());
+
+        var controller = CreateController(
+            context,
+            eventClientMock,
+            referenceGeneratorMock,
+            eventPublisherMock,
+            cartServiceMock,
+            user: unauthUser,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var result = await controller.CancelBooking(Guid.NewGuid(), null, CancellationToken.None);
+
+        Assert.IsType<UnauthorizedResult>(result);
+    }
+
+    [Fact]
+    public async Task CancelBooking_ReturnsBadRequest_WithStructuredReasonCode_WhenCutoffClosed()
+    {
+        using var context = CreateInMemoryDbContext();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
+        var referenceGeneratorMock = new Mock<IBookingReferenceGenerator>();
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+        var cartServiceMock = new Mock<ICartService>();
+        var cancellationServiceMock = new Mock<IBookingCancellationService>();
+
+        var customerId = Guid.NewGuid();
+        var authenticatedUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, customerId.ToString())
+        }, "mock"));
+
+        var bookingId = Guid.NewGuid();
+        cancellationServiceMock
+            .Setup(s => s.CancelBookingAsync(bookingId, customerId, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingCancellationResultDto(
+                bookingId, "REF-123", "Confirmed", "Confirmed", DateTimeOffset.UtcNow, false,
+                "The cancellation window for this event has closed",
+                cancelledBy: null,
+                reasonCode: CancellationReasonCodes.CancellationWindowClosed));
+
+        var controller = CreateController(
+            context,
+            eventClientMock,
+            referenceGeneratorMock,
+            eventPublisherMock,
+            cartServiceMock,
+            user: authenticatedUser,
+            cancellationServiceMock: cancellationServiceMock);
+
+        var result = await controller.CancelBooking(bookingId, null, CancellationToken.None);
+
+        var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
+        var dto = Assert.IsType<BookingCancellationResultDto>(badRequestResult.Value);
+        Assert.False(dto.Success);
+        Assert.Equal(CancellationReasonCodes.CancellationWindowClosed, dto.ReasonCode);
+        Assert.Equal("The cancellation window for this event has closed", dto.Message);
+    }
+
+    [Fact]
     public async Task GetBookingDetail_ReturnsOk_WhenUserOwnsBooking()
     {
         using var context = CreateInMemoryDbContext();

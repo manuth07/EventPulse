@@ -432,7 +432,10 @@ public class BookingsController : ControllerBase
 
         if (!result.Success)
         {
-            if (result.Message == "Booking not found or access denied")
+            if (result.ReasonCode == CancellationReasonCodes.BookingNotFound ||
+                result.ReasonCode == CancellationReasonCodes.Unauthorized ||
+                result.Message == "Booking not found or access denied" ||
+                result.Message == "Booking not found")
             {
                 return NotFound(result);
             }
