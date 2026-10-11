@@ -10,12 +10,17 @@ public class EventInventoryService : IEventInventoryService
 {
     private readonly EventDbContext _context;
     private readonly ILogger<EventInventoryService>? _logger;
+    private readonly TimeProvider _timeProvider;
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> KeyLocks = new();
 
-    public EventInventoryService(EventDbContext context, ILogger<EventInventoryService>? logger = null)
+    public EventInventoryService(
+        EventDbContext context,
+        ILogger<EventInventoryService>? logger = null,
+        TimeProvider? timeProvider = null)
     {
         _context = context;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     private static SemaphoreSlim GetLock(Guid eventId) =>
@@ -73,7 +78,7 @@ public class EventInventoryService : IEventInventoryService
             if (ticketTypes.Count != ticketTypeIds.Count)
                 return InventoryOperationResult.Failed("One or more ticket types not found for this event.", 404);
 
-            var now = DateTimeOffset.UtcNow;
+            var now = _timeProvider.GetUtcNow();
 
             // Fetch active unexpired reservations for these ticket types
             var activeHolds = await _context.InventoryReservations
@@ -245,13 +250,38 @@ public class EventInventoryService : IEventInventoryService
         if (request.Items == null || request.Items.Count == 0)
             return InventoryOperationResult.Failed("At least one ticket item is required to restore.", 400);
 
+        if (request.Items.Any(i => i.Quantity <= 0))
+            return InventoryOperationResult.Failed("Restoration quantities must be greater than zero.", 400);
+
         var sem = GetLock(eventId);
         await sem.WaitAsync(cancellationToken);
         try
         {
+            var eventItem = await _context.Events
+                .AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken);
+
+            if (eventItem == null)
+                return InventoryOperationResult.Failed("Event not found.", 404);
+
+            var now = _timeProvider.GetUtcNow();
+
+            // Critical Policy Guard (EP-361 Section 7.2 & EP-364):
+            // If Delta t <= 0 (event has already started or ended), inventory restoration MUST BE BYPASSED.
+            // Restoring tickets for past events creates ghost inventory on finished events and distorts post-event analytics.
+            if (eventItem.EventDate <= now.UtcDateTime)
+            {
+                _logger?.LogWarning(
+                    "Inventory restoration rejected for Event {EventId}: Event has already started or concluded (EventDate: {EventDate:u}, UtcNow: {Now:u}).",
+                    eventId, eventItem.EventDate, now);
+                return InventoryOperationResult.Failed(
+                    "Cannot restore inventory for an event that has already started or concluded.", 400);
+            }
+
             // Check idempotency: if this CancellationKey was already processed, return success
             var alreadyRestored = await _context.InventoryRestorations
-                .AnyAsync(r => r.CancellationKey == request.CancellationKey, cancellationToken);
+                .AnyAsync(r => r.CancellationKey == request.CancellationKey ||
+                               r.CancellationKey.StartsWith(request.CancellationKey + ":"), cancellationToken);
 
             if (alreadyRestored)
             {
@@ -264,16 +294,22 @@ public class EventInventoryService : IEventInventoryService
                 .Where(t => t.EventId == eventId && ticketTypeIds.Contains(t.Id))
                 .ToListAsync(cancellationToken);
 
-            var now = DateTimeOffset.UtcNow;
+            if (ticketTypes.Count != ticketTypeIds.Count)
+                return InventoryOperationResult.Failed("One or more ticket types not found for this event.", 404);
 
             foreach (var item in request.Items)
             {
                 var tt = ticketTypes.FirstOrDefault(t => t.Id == item.TicketTypeId);
                 if (tt != null)
                 {
-                    // Restore: decrement BookedQuantity (never drop below 0)
-                    tt.BookedQuantity = Math.Max(0, tt.BookedQuantity - item.Quantity);
+                    // Restore: decrement BookedQuantity (never drop below 0, never exceed capacity)
+                    tt.BookedQuantity = Math.Clamp(tt.BookedQuantity - item.Quantity, 0, tt.Capacity);
                 }
+
+                // If multiple ticket types in same restoration request, namespace key to satisfy unique index
+                var itemKey = request.Items.Count > 1
+                    ? $"{request.CancellationKey}:{item.TicketTypeId}"
+                    : request.CancellationKey;
 
                 var restorationRecord = new InventoryRestoration
                 {
@@ -281,7 +317,7 @@ public class EventInventoryService : IEventInventoryService
                     EventId = eventId,
                     BookingId = request.BookingId,
                     TicketId = request.TicketId,
-                    CancellationKey = request.CancellationKey,
+                    CancellationKey = itemKey,
                     TicketTypeId = item.TicketTypeId,
                     RestoredQuantity = item.Quantity,
                     RestoredAtUtc = now
@@ -289,8 +325,17 @@ public class EventInventoryService : IEventInventoryService
                 _context.InventoryRestorations.Add(restorationRecord);
             }
 
-            // Also mark any committed reservations for this booking as Released if full cancellation
-            // (or leave as is if partial)
+            // Also mark any committed/active reservations for this booking as Released
+            // while preserving active reservations for all other customers
+            var bookingReservations = await _context.InventoryReservations
+                .Where(r => r.BookingId == request.BookingId && r.Status != InventoryReservationStatus.Released)
+                .ToListAsync(cancellationToken);
+
+            foreach (var res in bookingReservations)
+            {
+                res.Status = InventoryReservationStatus.Released;
+            }
+
             await _context.SaveChangesAsync(cancellationToken);
 
             _logger?.LogInformation(

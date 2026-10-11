@@ -92,6 +92,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AppPolicies.AdministratorOnly, policy => policy.RequireRole("Administrator"));
 });
 
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IEventSubmissionService, EventSubmissionService>();
 builder.Services.AddScoped<IEventReviewService, EventReviewService>();
 builder.Services.AddScoped<ITicketTypeService, TicketTypeService>();
@@ -107,8 +108,10 @@ builder.Services.AddSingleton<IKafkaMessageProducer, KafkaMessageProducer>();
 builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
 builder.Services.AddScoped<IEventSubmittedNotificationHandler, EventSubmittedNotificationHandler>();
 builder.Services.AddScoped<IKafkaEventSubmittedDispatcher, KafkaEventSubmittedDispatcher>();
+builder.Services.AddScoped<IKafkaBookingCancelledDispatcher, KafkaBookingCancelledDispatcher>();
 builder.Services.AddHostedService<EventOutboxPublisherService>();
 builder.Services.AddHostedService<KafkaEventSubmittedConsumer>();
+builder.Services.AddHostedService<KafkaBookingCancelledConsumer>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
