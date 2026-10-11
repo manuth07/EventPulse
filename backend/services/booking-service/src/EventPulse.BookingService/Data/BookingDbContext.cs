@@ -83,9 +83,18 @@ public class BookingDbContext : DbContext
             
             entity.HasIndex(b => b.BookingReference).IsUnique();
 
+            entity.Property(b => b.Status)
+                .IsConcurrencyToken();
+
             entity.Property(b => b.TotalAmount)
                 .HasColumnType("decimal(18,2)")
                 .IsRequired();
+
+            entity.Property(b => b.CancelledBy)
+                .HasMaxLength(150);
+
+            entity.Property(b => b.CancellationReason)
+                .HasMaxLength(500);
 
             entity.HasMany(b => b.Items)
                 .WithOne(i => i.Booking)

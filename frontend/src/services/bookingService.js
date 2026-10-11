@@ -78,18 +78,39 @@ export async function getMyBookings(page = 1, pageSize = 10, status, token) {
 }
 
 /**
- * Cancels a booking for the customer (US-28 / EP-308).
+ * Checks cancellation eligibility for customer's booking (EP-362 / EP-366).
+ * 
+ * @param {string} bookingId - The GUID of the booking.
+ * @param {string} [token] - Optional JWT authentication token.
+ * @returns {Promise<{ isEligible: boolean, reasonCode?: string, explanation?: string, cutoffUtc?: string, timeRemaining?: string }>}
+ */
+export async function checkCancellationEligibility(bookingId, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.get(`/api/bookings/${bookingId}/cancellation-eligibility`, { headers });
+}
+
+/**
+ * Cancels a booking for the customer (US-28 / EP-308 / EP-363 / EP-366).
  * 
  * @param {string} bookingId - The GUID of the booking.
  * @param {string} [reason] - Optional cancellation reason.
  * @param {string} [token] - Optional JWT authentication token.
- * @returns {Promise<{ bookingId: string, bookingReference: string, previousStatus: string, newStatus: string, cancelledAt: string, success: boolean, message?: string }>}
+ * @returns {Promise<{ bookingId: string, bookingReference: string, previousStatus: string, newStatus: string, cancelledAt: string, success: boolean, message?: string, reasonCode?: string }>}
  */
 export async function cancelBooking(bookingId, reason, token) {
   const authToken = token || getStoredToken();
   const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
-  return apiClient.post(`/api/bookings/${bookingId}/cancel`, { reason }, { headers });
+  try {
+    return await apiClient.post(`/api/bookings/${bookingId}/cancel`, { reason }, { headers });
+  } catch (err) {
+    if (err?.data?.reasonCode && !err.reasonCode) {
+      err.reasonCode = err.data.reasonCode;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -113,6 +134,7 @@ export default {
   getBookingTickets,
   getTicketById,
   getMyBookings,
+  checkCancellationEligibility,
   cancelBooking,
   cancelTicket,
 };

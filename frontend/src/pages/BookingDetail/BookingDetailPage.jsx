@@ -2,13 +2,22 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getBookingDetail, cancelBooking } from '../../services/bookingService';
+import {
+  getBookingDetail,
+  cancelBooking,
+  checkCancellationEligibility,
+} from '../../services/bookingService';
 import { createCheckoutSession } from '../../services/paymentService';
 import {
   formatTicketHistoryDate,
   formatCurrency,
   getStatusBadgeConfig,
 } from '../../utils/ticketHistoryHelper';
+import {
+  getCancellationReasonMessage,
+  getRefundOutcomeInfo,
+  formatCancellationTime,
+} from '../../utils/cancellationHelper';
 import {
   Ticket,
   Calendar,
@@ -23,6 +32,8 @@ import {
   CreditCard,
   Ban,
   AlertTriangle,
+  AlertCircle,
+  CheckCircle2,
   X,
   ExternalLink,
   ShieldCheck,
@@ -100,6 +111,11 @@ export function BookingDetailPage() {
   const [cancelError, setCancelError] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
 
+  // Cancellation feedback and eligibility state (EP-366)
+  const [eligibility, setEligibility] = useState(null);
+  const [checkingEligibility, setCheckingEligibility] = useState(false);
+  const [cancellationFeedback, setCancellationFeedback] = useState(null);
+
   // Pay now state
   const [isRedirectingPayment, setIsRedirectingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
@@ -149,10 +165,22 @@ export function BookingDetailPage() {
     });
   };
 
-  const handleOpenCancelModal = () => {
+  const handleOpenCancelModal = async () => {
     setCancelReason('');
     setCancelError(null);
     setCancelModalOpen(true);
+
+    if (booking?.id) {
+      setCheckingEligibility(true);
+      try {
+        const result = await checkCancellationEligibility(booking.id, accessToken);
+        setEligibility(result);
+      } catch (err) {
+        console.warn('Unable to evaluate cancellation eligibility pre-check:', err);
+      } finally {
+        setCheckingEligibility(false);
+      }
+    }
   };
 
   const handleCloseCancelModal = () => {
@@ -163,24 +191,35 @@ export function BookingDetailPage() {
   };
 
   const handleConfirmCancel = async () => {
-    if (!booking) return;
+    if (!booking || isCancelling) return;
 
     setIsCancelling(true);
     setCancelError(null);
 
     try {
       const result = await cancelBooking(booking.id, cancelReason.trim() || undefined, accessToken);
-      setBooking((prev) => (prev ? { ...prev, status: result?.newStatus || 'Cancelled' } : null));
+      const refundOutcome = getRefundOutcomeInfo(booking, result);
+      const cancelledAt = result?.cancelledAt || new Date().toISOString();
+
+      setCancellationFeedback({
+        bookingReference: booking.bookingReference,
+        cancelledAt,
+        message: result?.message || 'Your booking has been cancelled successfully.',
+        refundOutcome,
+      });
+
+      setBooking((prev) => (prev ? { ...prev, status: result?.newStatus || 'Cancelled', cancelledAt } : null));
       setToastMessage(`Booking #${booking.bookingReference} has been successfully cancelled.`);
       setCancelModalOpen(false);
+
+      // Synchronize latest authoritative state from backend
+      await fetchDetail();
     } catch (err) {
       console.error('Failed to cancel booking:', err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.data?.message ||
-        err?.message ||
-        'Failed to cancel booking. Please try again.';
-      setCancelError(msg);
+      const reasonCode = err?.reasonCode || err?.data?.reasonCode || err?.data?.code;
+      const rawMessage = err?.data?.message || err?.response?.data?.message || err?.message;
+      const friendlyMessage = getCancellationReasonMessage(reasonCode, rawMessage);
+      setCancelError(friendlyMessage);
     } finally {
       setIsCancelling(false);
     }
@@ -550,6 +589,107 @@ export function BookingDetailPage() {
                 gap: '24px',
               }}
             >
+              {/* Cancellation Success & Refund Feedback Banner (EP-366) */}
+              {(cancellationFeedback || isCancelled) && (() => {
+                const refundOutcome = cancellationFeedback?.refundOutcome || getRefundOutcomeInfo(booking);
+                const cancellationTime = cancellationFeedback?.cancelledAt || booking?.cancelledAt;
+                return (
+                  <div
+                    data-testid="cancellation-success-card"
+                    style={{
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      borderRadius: 'var(--ep-radius-card)',
+                      padding: '24px',
+                      boxShadow: '0 4px 14px rgba(220, 38, 38, 0.08)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '16px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                      <div
+                        style={{
+                          width: '42px',
+                          height: '42px',
+                          borderRadius: '50%',
+                          backgroundColor: '#DC2626',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Ban size={22} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                          <h2
+                            data-testid="cancellation-success-title"
+                            style={{ fontSize: '18px', fontWeight: 800, color: '#991B1B', margin: 0 }}
+                          >
+                            Your booking has been cancelled successfully.
+                          </h2>
+                          {cancellationTime && (
+                            <span data-testid="cancellation-time-badge" style={{ fontSize: '12px', color: '#7F1D1D', fontWeight: 600 }}>
+                              Cancelled on {formatCancellationTime(cancellationTime)}
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: '13px', color: '#7F1D1D', marginTop: '6px', marginBottom: 0, lineHeight: 1.5 }}>
+                          Booking <strong>#{booking.bookingReference}</strong> status is now marked as <strong>Cancelled</strong>. Reserved tickets have been returned to available inventory and associated digital admission passes are permanently invalidated.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Refund Outcome Box */}
+                    <div
+                      data-testid="cancellation-refund-outcome-box"
+                      style={{
+                        backgroundColor: '#ffffff',
+                        border: `1px solid ${refundOutcome.badge.border}`,
+                        borderRadius: '10px',
+                        padding: '14px 18px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                            Refund Outcome:
+                          </span>
+                          <span
+                            data-testid="refund-outcome-status-badge"
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '3px 10px',
+                              borderRadius: 'var(--ep-radius-pill)',
+                              backgroundColor: refundOutcome.badge.bg,
+                              color: refundOutcome.badge.color,
+                              border: `1px solid ${refundOutcome.badge.border}`,
+                            }}
+                          >
+                            {refundOutcome.statusLabel}
+                          </span>
+                        </div>
+                        {refundOutcome.amount > 0 && (
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ep-text-primary)' }}>
+                            Eligible Amount: {formatCurrency(refundOutcome.amount)}
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                        {refundOutcome.explanation}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Header Card */}
               <div
                 style={{
@@ -1091,8 +1231,97 @@ export function BookingDetailPage() {
                 Are you sure you want to cancel booking <strong>#{booking?.bookingReference}</strong>? All reserved tickets and admissions will be invalidated and released back to event capacity.
               </p>
 
+              {/* Expected Refund Outcome Preview */}
+              {(() => {
+                const previewRefund = getRefundOutcomeInfo(booking);
+                return (
+                  <div
+                    data-testid="expected-refund-preview"
+                    style={{
+                      padding: '12px 14px',
+                      backgroundColor: '#F8FAFC',
+                      borderRadius: '8px',
+                      border: '1px solid #E2E8F0',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Expected Refund Outcome
+                      </span>
+                      <span
+                        data-testid="preview-refund-badge"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: previewRefund.badgeBg,
+                          color: previewRefund.badgeColor,
+                        }}
+                      >
+                        {previewRefund.refundStatus}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#475569', lineHeight: 1.45 }}>
+                      {previewRefund.refundExplanation}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* Policy & Invalidation Notice */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  padding: '10px 12px',
+                  backgroundColor: '#FFFBEB',
+                  border: '1px solid #FDE68A',
+                  borderRadius: '6px',
+                  marginBottom: '16px',
+                  fontSize: '12px',
+                  color: '#92400E',
+                  lineHeight: 1.4,
+                }}
+              >
+                <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  <strong>Important:</strong> Under the cancellation policy, tickets are revoked immediately, digital QR codes are deactivated, and released slots return to event inventory.
+                </span>
+              </div>
+
+              {/* Ineligibility Warning if backend pre-check indicates not eligible */}
+              {eligibility && !eligibility.isEligible && (
+                <div
+                  data-testid="cancellation-ineligible-warning"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    padding: '10px 12px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: '6px',
+                    color: '#991B1B',
+                    fontSize: '13px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div>
+                    <strong>Cancellation Ineligible:</strong>{' '}
+                    {getCancellationReasonMessage(eligibility.reasonCode, eligibility.explanation)}
+                  </div>
+                </div>
+              )}
+
               {cancelError && (
                 <div
+                  data-testid="cancellation-error-message"
                   style={{
                     padding: '10px 12px',
                     backgroundColor: '#FEF2F2',
@@ -1152,7 +1381,7 @@ export function BookingDetailPage() {
                   type="button"
                   data-testid="confirm-cancel-booking-btn"
                   onClick={handleConfirmCancel}
-                  disabled={isCancelling}
+                  disabled={isCancelling || checkingEligibility || (eligibility && !eligibility.isEligible)}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1163,9 +1392,9 @@ export function BookingDetailPage() {
                     borderRadius: 'var(--ep-radius-btn)',
                     fontSize: '13px',
                     fontWeight: 600,
-                    cursor: isCancelling ? 'not-allowed' : 'pointer',
+                    cursor: isCancelling || (eligibility && !eligibility.isEligible) ? 'not-allowed' : 'pointer',
                     color: '#ffffff',
-                    opacity: isCancelling ? 0.75 : 1,
+                    opacity: isCancelling || (eligibility && !eligibility.isEligible) ? 0.75 : 1,
                   }}
                 >
                   {isCancelling ? (

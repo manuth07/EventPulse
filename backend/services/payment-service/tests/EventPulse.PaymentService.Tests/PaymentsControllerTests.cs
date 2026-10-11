@@ -2047,5 +2047,252 @@ public class PaymentsControllerTests
         Assert.Equal(customerId.ToString(), principal.FindFirst(ClaimTypes.NameIdentifier)?.Value);
     }
 
+    [Fact]
+    public async Task GetMyPayments_WithRefundedAndPartiallyRefundedPayments_PopulatesRefundedAmountAndStatus()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+
+        var refundedPayment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-REFUNDED-01",
+            CustomerId = customerId,
+            Amount = 100m,
+            Currency = "usd",
+            Status = PaymentStatus.Refunded,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
+            RefundRecords = new List<RefundRecord>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    Amount = 100m,
+                    Currency = "usd",
+                    Status = RefundStatus.Completed,
+                    Reason = "Customer cancelled",
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5),
+                    CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-5)
+                }
+            }
+        };
+
+        var partiallyRefundedPayment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-PARTIAL-02",
+            CustomerId = customerId,
+            Amount = 200m,
+            Currency = "usd",
+            Status = PaymentStatus.PartiallyRefunded,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-20),
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-15),
+            RefundRecords = new List<RefundRecord>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    Amount = 75m,
+                    Currency = "usd",
+                    Status = RefundStatus.Completed,
+                    Reason = "Partial cancellation refund",
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-15),
+                    CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-15)
+                }
+            }
+        };
+
+        db.Payments.AddRange(refundedPayment, partiallyRefundedPayment);
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.Equal(2, pagedResult.TotalCount);
+
+        var refundedItem = pagedResult.Items.First(p => p.Id == refundedPayment.Id);
+        Assert.Equal("Refunded", refundedItem.Status);
+        Assert.Equal(100m, refundedItem.Amount);
+        Assert.Equal(100m, refundedItem.RefundedAmount);
+
+        var partialItem = pagedResult.Items.First(p => p.Id == partiallyRefundedPayment.Id);
+        Assert.Equal("PartiallyRefunded", partialItem.Status);
+        Assert.Equal(200m, partialItem.Amount);
+        Assert.Equal(75m, partialItem.RefundedAmount);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WithRefunds_ReturnsDetailedRefundSummaryCollection()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+        var refundId1 = Guid.NewGuid();
+        var refundId2 = Guid.NewGuid();
+
+        var payment = new Payment
+        {
+            Id = paymentId,
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-DETAIL-REFUND",
+            CustomerId = customerId,
+            Amount = 150m,
+            Currency = "usd",
+            Status = PaymentStatus.PartiallyRefunded,
+            CreatedAt = DateTimeOffset.UtcNow.AddHours(-1),
+            CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-50),
+            RefundRecords = new List<RefundRecord>
+            {
+                new()
+                {
+                    Id = refundId1,
+                    PaymentId = paymentId,
+                    Amount = 50m,
+                    Currency = "usd",
+                    Status = RefundStatus.Completed,
+                    Reason = "Cancellation 50% refund",
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+                    CompletedAt = DateTimeOffset.UtcNow.AddMinutes(-29),
+                    StripeRefundId = "re_test_completed_123"
+                },
+                new()
+                {
+                    Id = refundId2,
+                    PaymentId = paymentId,
+                    Amount = 25m,
+                    Currency = "usd",
+                    Status = RefundStatus.Failed,
+                    Reason = "Additional partial refund attempt",
+                    FailureReason = "Card expired",
+                    CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-10)
+                }
+            }
+        };
+
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetPaymentById(paymentId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var detailDto = Assert.IsType<CustomerPaymentDetailDto>(okResult.Value);
+        Assert.Equal(paymentId, detailDto.Id);
+        Assert.Equal("PartiallyRefunded", detailDto.Status);
+        Assert.Equal(150m, detailDto.Amount);
+        Assert.Equal(50m, detailDto.RefundedAmount); // Only completed refunds are counted in RefundedAmount
+        Assert.Equal(2, detailDto.Refunds.Count);
+
+        var firstRefund = detailDto.Refunds.First(r => r.RefundId == refundId1);
+        Assert.Equal(50m, firstRefund.Amount);
+        Assert.Equal("usd", firstRefund.Currency);
+        Assert.Equal("Completed", firstRefund.Status);
+        Assert.Equal("Cancellation 50% refund", firstRefund.Reason);
+        Assert.NotNull(firstRefund.CompletedAt);
+
+        var secondRefund = detailDto.Refunds.First(r => r.RefundId == refundId2);
+        Assert.Equal(25m, secondRefund.Amount);
+        Assert.Equal("Failed", secondRefund.Status);
+        Assert.Equal("Card expired", secondRefund.FailureReason);
+        Assert.Null(secondRefund.CompletedAt);
+    }
+
+    [Fact]
+    public async Task StripeWebhook_WithValidChargeRefunded_ReconcilesPaymentStatusAndCompletesPendingRefunds()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var paymentId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var paymentIntentId = "pi_refund_reconcile_test";
+
+        var payment = new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "EP-2026-WEBHOOK-REFUND",
+            CustomerId = Guid.NewGuid(),
+            Amount = 100.00m,
+            Currency = "usd",
+            StripePaymentIntentId = paymentIntentId,
+            Status = PaymentStatus.Succeeded,
+            RefundRecords = new List<RefundRecord>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    PaymentId = paymentId,
+                    Amount = 100.00m,
+                    Currency = "usd",
+                    Status = RefundStatus.Pending,
+                    Reason = "Cancellation requested"
+                }
+            }
+        };
+
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+
+        var jsonPayload = $$"""
+        {
+          "id": "evt_charge_refunded_123",
+          "object": "event",
+          "api_version": "2023-10-16",
+          "created": 1700000000,
+          "data": {
+            "object": {
+              "id": "ch_test_charge_123",
+              "object": "charge",
+              "amount": 10000,
+              "amount_refunded": 10000,
+              "currency": "usd",
+              "payment_intent": "{{paymentIntentId}}",
+              "refunded": true
+            }
+          },
+          "livemode": false,
+          "pending_webhooks": 1,
+          "request": {
+            "id": "req_123",
+            "idempotency_key": null
+          },
+          "type": "charge.refunded"
+        }
+        """;
+
+        var signature = GenerateStripeSignature(jsonPayload, WebhookSecret);
+        var controller = CreateController(db, requestBody: jsonPayload, signatureHeader: signature);
+
+        // Act
+        var result = await controller.StripeWebhook(CancellationToken.None);
+
+        // Assert
+        Assert.IsType<OkResult>(result);
+
+        var updatedPayment = await db.Payments
+            .Include(p => p.RefundRecords)
+            .FirstOrDefaultAsync(p => p.Id == paymentId);
+
+        Assert.NotNull(updatedPayment);
+        Assert.Equal(PaymentStatus.Refunded, updatedPayment.Status);
+
+        var refundRecord = Assert.Single(updatedPayment.RefundRecords);
+        Assert.Equal(RefundStatus.Completed, refundRecord.Status);
+        Assert.NotNull(refundRecord.CompletedAt);
+    }
+
     #endregion
 }

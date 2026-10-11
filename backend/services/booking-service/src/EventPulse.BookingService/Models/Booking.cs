@@ -11,6 +11,9 @@ public class Booking
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ConfirmedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? CancelledAt { get; set; }
+    public string? CancelledBy { get; set; }
+    public string? CancellationReason { get; set; }
 
     public ICollection<BookingItem> Items { get; set; } = new List<BookingItem>();
     public ICollection<Ticket> Tickets { get; set; } = new List<Ticket>();

@@ -26,6 +26,7 @@ builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(clie
 });
 
 builder.Services.AddScoped<IStripeCheckoutService, StripeCheckoutService>();
+builder.Services.AddScoped<IStripeRefundService, StripeRefundService>();
 builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
 builder.Services.AddScoped<IPaymentEventPublisher, LoggingPaymentEventPublisher>();
 builder.Services.AddScoped<IPaymentRefundService, PaymentRefundService>();

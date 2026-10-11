@@ -21,6 +21,8 @@ public class KafkaTopicOptions
     public string PaymentRefunded { get; set; } = KafkaTopics.PaymentRefunded;
     public string EventSubmitted { get; set; } = KafkaTopics.EventSubmitted;
     public string EventSubmittedDlq { get; set; } = KafkaTopics.EventSubmittedDlq;
+    public string BookingCancelled { get; set; } = KafkaTopics.BookingCancelled;
+    public string BookingCancelledDlq { get; set; } = KafkaTopics.BookingCancelledDlq;
 }
 
 public class KafkaConsumerOptions

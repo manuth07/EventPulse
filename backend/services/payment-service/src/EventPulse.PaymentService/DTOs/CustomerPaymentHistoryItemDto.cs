@@ -7,6 +7,7 @@ public class CustomerPaymentHistoryItemDto
     public Guid BookingId { get; set; }
     public string BookingReference { get; set; } = string.Empty;
     public decimal Amount { get; set; }
+    public decimal RefundedAmount { get; set; }
     public string Currency { get; set; } = "usd";
     public string Status { get; set; } = string.Empty;
     public DateTimeOffset PaymentDate { get; set; }
