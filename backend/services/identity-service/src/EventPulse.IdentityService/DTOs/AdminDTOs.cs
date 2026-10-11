@@ -142,3 +142,41 @@ public class PlatformDependencyMetricDto
     public string Status { get; set; } = "Available"; // "Available", "Unavailable"
     public string? Message { get; set; }
 }
+
+/// <summary>
+/// Request payload for activating or deactivating a user account.
+/// </summary>
+public class UserStatusChangeRequest
+{
+    public bool? IsActive { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Request payload for updating an account's assigned system role.
+/// </summary>
+public class UserRoleChangeRequest
+{
+    public string? Role { get; set; }
+    public List<string>? Roles { get; set; }
+    public string? Reason { get; set; }
+}
+
+/// <summary>
+/// Structured outcome result returned by administrative actions.
+/// </summary>
+public class AdminActionResult
+{
+    public bool Succeeded { get; init; }
+    public int StatusCode { get; init; }
+    public string Code { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+    public AdminUserDetailsDto? User { get; init; }
+
+    public static AdminActionResult Success(string message, AdminUserDetailsDto? user = null) =>
+        new() { Succeeded = true, StatusCode = 200, Code = "SUCCESS", Message = message, User = user };
+
+    public static AdminActionResult Failure(int statusCode, string code, string message) =>
+        new() { Succeeded = false, StatusCode = statusCode, Code = code, Message = message };
+}
+

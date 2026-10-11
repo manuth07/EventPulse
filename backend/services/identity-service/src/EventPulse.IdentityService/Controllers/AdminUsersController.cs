@@ -82,4 +82,151 @@ public class AdminUsersController : ControllerBase
         var overview = await _adminService.GetPlatformOverviewAsync(cancellationToken);
         return Ok(overview);
     }
+
+    /// <summary>
+    /// PATCH/POST /api/admin/users/{userId}/activate
+    /// Activates a previously deactivated or suspended user account.
+    /// </summary>
+    [HttpPatch("users/{userId}/activate")]
+    [HttpPost("users/{userId}/activate")]
+    [HttpPut("users/{userId}/activate")]
+    public async Task<IActionResult> ActivateUser(
+        [FromRoute] string userId,
+        [FromBody] UserStatusChangeRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(userId, out var targetGuid) || targetGuid == Guid.Empty)
+        {
+            return BadRequest(new { code = "INVALID_USER_ID", message = "The specified user ID format is invalid." });
+        }
+
+        if (!TryGetCallerId(out var callerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid caller identity." });
+        }
+
+        var result = await _adminService.ActivateUserAsync(
+            callerId,
+            targetGuid,
+            request?.Reason,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(new { message = result.Message, user = result.User });
+    }
+
+    /// <summary>
+    /// PATCH/POST /api/admin/users/{userId}/deactivate
+    /// Deactivates a user account, enforcing self-deactivation and last active admin guards.
+    /// </summary>
+    [HttpPatch("users/{userId}/deactivate")]
+    [HttpPost("users/{userId}/deactivate")]
+    [HttpPut("users/{userId}/deactivate")]
+    public async Task<IActionResult> DeactivateUser(
+        [FromRoute] string userId,
+        [FromBody] UserStatusChangeRequest? request = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(userId, out var targetGuid) || targetGuid == Guid.Empty)
+        {
+            return BadRequest(new { code = "INVALID_USER_ID", message = "The specified user ID format is invalid." });
+        }
+
+        if (!TryGetCallerId(out var callerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid caller identity." });
+        }
+
+        var result = await _adminService.DeactivateUserAsync(
+            callerId,
+            targetGuid,
+            request?.Reason,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(new { message = result.Message, user = result.User });
+    }
+
+    /// <summary>
+    /// PATCH/PUT/POST /api/admin/users/{userId}/role
+    /// Promotes or demotes an account's role with self-demotion and last active admin guards.
+    /// </summary>
+    [HttpPatch("users/{userId}/role")]
+    [HttpPut("users/{userId}/role")]
+    [HttpPut("users/{userId}/roles")]
+    [HttpPost("users/{userId}/role")]
+    public async Task<IActionResult> ChangeUserRole(
+        [FromRoute] string userId,
+        [FromBody] UserRoleChangeRequest? request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(userId, out var targetGuid) || targetGuid == Guid.Empty)
+        {
+            return BadRequest(new { code = "INVALID_USER_ID", message = "The specified user ID format is invalid." });
+        }
+
+        var targetRole = request?.Role ?? request?.Roles?.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(targetRole))
+        {
+            return BadRequest(new { code = "INVALID_ROLE_SPECIFIED", message = "Role name cannot be empty." });
+        }
+
+        if (!TryGetCallerId(out var callerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid caller identity." });
+        }
+
+        var result = await _adminService.ChangeUserRoleAsync(
+            callerId,
+            targetGuid,
+            targetRole,
+            request?.Reason,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(new { message = result.Message, user = result.User });
+    }
+
+    /// <summary>
+    /// PUT/PATCH /api/admin/users/{userId}/status
+    /// Combined status endpoint supporting both activation and deactivation.
+    /// </summary>
+    [HttpPut("users/{userId}/status")]
+    [HttpPatch("users/{userId}/status")]
+    public async Task<IActionResult> UpdateUserStatus(
+        [FromRoute] string userId,
+        [FromBody] UserStatusChangeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!request.IsActive.HasValue)
+        {
+            return BadRequest(new { code = "INVALID_REQUEST", message = "isActive field is required." });
+        }
+
+        return request.IsActive.Value
+            ? await ActivateUser(userId, request, cancellationToken)
+            : await DeactivateUser(userId, request, cancellationToken);
+    }
+
+    private bool TryGetCallerId(out Guid callerId)
+    {
+        var idStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("sub")?.Value;
+        return Guid.TryParse(idStr, out callerId);
+    }
 }

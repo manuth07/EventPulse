@@ -121,6 +121,31 @@ builder.Services.AddAuthentication(options =>
     };
     options.Events = new JwtBearerEvents
     {
+        OnTokenValidated = async context =>
+        {
+            var db = context.HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+            var userIdStr = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst("sub")?.Value;
+
+            if (Guid.TryParse(userIdStr, out var userId))
+            {
+                var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+                if (user == null || !user.IsActive)
+                {
+                    context.Fail("User account is inactive or has been deactivated.");
+                    return;
+                }
+
+                var tokenStamp = context.Principal?.FindFirst("security_stamp")?.Value
+                    ?? context.Principal?.FindFirst("AspNet.Identity.SecurityStamp")?.Value;
+
+                if (!string.IsNullOrEmpty(tokenStamp) && !string.IsNullOrEmpty(user.SecurityStamp) && user.SecurityStamp != tokenStamp)
+                {
+                    context.Fail("Session has been revoked due to security stamp change.");
+                    return;
+                }
+            }
+        },
         OnAuthenticationFailed = context =>
         {
             var logger = context.HttpContext.RequestServices

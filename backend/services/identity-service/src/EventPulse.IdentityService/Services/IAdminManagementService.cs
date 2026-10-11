@@ -27,4 +27,35 @@ public interface IAdminManagementService
     /// </summary>
     Task<AdminPlatformOverviewDto> GetPlatformOverviewAsync(
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Activates a deactivated user account.
+    /// </summary>
+    Task<AdminActionResult> ActivateUserAsync(
+        Guid actorAdminId,
+        Guid targetUserId,
+        string? reason = null,
+        string? ipAddress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deactivates an active user account with safety guards for self-deactivation and last active admin protection.
+    /// </summary>
+    Task<AdminActionResult> DeactivateUserAsync(
+        Guid actorAdminId,
+        Guid targetUserId,
+        string? reason = null,
+        string? ipAddress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates a user's system role with safety guards for self-demotion and last active admin protection.
+    /// </summary>
+    Task<AdminActionResult> ChangeUserRoleAsync(
+        Guid actorAdminId,
+        Guid targetUserId,
+        string newRole,
+        string? reason = null,
+        string? ipAddress = null,
+        CancellationToken cancellationToken = default);
 }
