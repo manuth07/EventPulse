@@ -67,6 +67,9 @@ builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationService>();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IPlatformMetricsClient, PlatformMetricsClient>();
+builder.Services.AddScoped<IAdminManagementService, AdminManagementService>();
 builder.Services.AddScoped<IAuthorizationHandler, AdminOnlyAuthorizationHandler>();
 builder.Services.AddScoped<EventPulse.IdentityService.Services.IdentityDataSeeder>();
 
