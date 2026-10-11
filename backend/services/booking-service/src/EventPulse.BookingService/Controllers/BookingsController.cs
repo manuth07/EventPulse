@@ -283,6 +283,7 @@ public class BookingsController : ControllerBase
 
         var booking = new Booking
         {
+            Id = Guid.NewGuid(),
             BookingReference = bookingReference,
             CustomerId = customerId,
             EventId = request.EventId,
