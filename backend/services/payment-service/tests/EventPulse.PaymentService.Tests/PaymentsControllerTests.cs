@@ -1,5 +1,8 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Reflection;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using EventPulse.Contracts.Kafka;
 using EventPulse.PaymentService.Controllers;
 using EventPulse.PaymentService.Data;
@@ -7,11 +10,13 @@ using EventPulse.PaymentService.DTOs;
 using EventPulse.PaymentService.Events;
 using EventPulse.PaymentService.Models;
 using EventPulse.PaymentService.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using Moq;
 
 namespace EventPulse.PaymentService.Tests;
@@ -44,7 +49,16 @@ public class PaymentsControllerTests
             .Build();
     }
 
-    private PaymentsController CreateController(PaymentDbContext dbContext, Guid? customerId = null, string? token = null, string? requestBody = null, string? signatureHeader = null, string? role = null)
+    private PaymentsController CreateController(
+        PaymentDbContext dbContext,
+        Guid? customerId = null,
+        string? token = null,
+        string? requestBody = null,
+        string? signatureHeader = null,
+        string? role = null,
+        IEnumerable<string>? roles = null,
+        IEnumerable<Claim>? customClaims = null,
+        bool isAuthenticated = true)
     {
         var kafkaOptions = Microsoft.Extensions.Options.Options.Create(new KafkaOptions());
         var writerLogger = new Mock<ILogger<OutboxWriter>>();
@@ -60,18 +74,31 @@ public class PaymentsControllerTests
         );
 
         var claims = new List<Claim>();
-        if (customerId.HasValue)
+        if (customClaims != null)
+        {
+            claims.AddRange(customClaims);
+        }
+        else if (customerId.HasValue)
         {
             claims.Add(new Claim(ClaimTypes.NameIdentifier, customerId.Value.ToString()));
             claims.Add(new Claim("sub", customerId.Value.ToString()));
         }
 
-        if (!string.IsNullOrEmpty(role))
+        if (roles != null)
+        {
+            foreach (var r in roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, r));
+            }
+        }
+        else if (!string.IsNullOrEmpty(role))
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
         }
 
-        var identity = new ClaimsIdentity(claims, "TestAuth");
+        var identity = isAuthenticated
+            ? new ClaimsIdentity(claims, "TestAuth")
+            : new ClaimsIdentity();
         var claimsPrincipal = new ClaimsPrincipal(identity);
 
         var httpContext = new DefaultHttpContext
@@ -1497,4 +1524,528 @@ public class PaymentsControllerTests
         Assert.Equal(bookingId, detail.BookingId);
         Assert.Equal("EP-2026-DETAIL-ENRICH", detail.BookingReference);
     }
+
+    #region EP-359 Security & Access Control Hardening Tests
+
+    [Fact]
+    public void PaymentsController_IsDecoratedWithAuthorizeAttribute_ExceptWebhookAllowAnonymous()
+    {
+        // Assert class-level [Authorize]
+        var classAuthorizeAttrs = typeof(PaymentsController).GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true);
+        Assert.NotEmpty(classAuthorizeAttrs);
+
+        // Assert Webhook endpoint allows anonymous access (Stripe webhook uses signature verification)
+        var webhookMethod = typeof(PaymentsController).GetMethod(nameof(PaymentsController.StripeWebhook));
+        Assert.NotNull(webhookMethod);
+        var webhookAllowAnon = webhookMethod.GetCustomAttribute<AllowAnonymousAttribute>();
+        Assert.NotNull(webhookAllowAnon);
+
+        // Assert all protected payment endpoints do NOT have [AllowAnonymous]
+        var protectedMethodNames = new[]
+        {
+            nameof(PaymentsController.GetMyPayments),
+            nameof(PaymentsController.GetPaymentById),
+            nameof(PaymentsController.GetPaymentsByBooking),
+            nameof(PaymentsController.CreateCheckoutSession)
+        };
+
+        foreach (var methodName in protectedMethodNames)
+        {
+            var method = typeof(PaymentsController).GetMethod(methodName);
+            Assert.NotNull(method);
+            Assert.Null(method.GetCustomAttribute<AllowAnonymousAttribute>());
+        }
+    }
+
+    [Fact]
+    public async Task GetMyPayments_WithMalformedOrNonGuidClaim_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customClaims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, "malformed-not-a-guid"),
+            new Claim("sub", "malformed-not-a-guid")
+        };
+        var controller = CreateController(db, customClaims: customClaims);
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.NotNull(unauthorizedResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WithMalformedOrNonGuidClaim_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customClaims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, "non-guid-identity-string")
+        };
+        var controller = CreateController(db, customClaims: customClaims);
+
+        // Act
+        var result = await controller.GetPaymentById(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.NotNull(unauthorizedResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WhenUnauthenticated_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var controller = CreateController(db, customerId: null, isAuthenticated: false);
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.NotNull(unauthorizedResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WithMalformedOrNonGuidClaim_ReturnsUnauthorized()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customClaims = new[]
+        {
+            new Claim("sub", "invalid-guid-payload")
+        };
+        var controller = CreateController(db, customClaims: customClaims);
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        var unauthorizedResult = Assert.IsType<UnauthorizedObjectResult>(result);
+        Assert.NotNull(unauthorizedResult.Value);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WhenBookingBelongsToOtherCustomer_ReturnsForbidden()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var ownerId = Guid.NewGuid();
+        var attackerId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-2026-OWNER-BOOKING",
+            CustomerId = ownerId,
+            Amount = 3000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: attackerId);
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(bookingId, CancellationToken.None);
+
+        // Assert
+        var forbiddenResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, forbiddenResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetPaymentsByBooking_WhenAdminRequests_ReturnsOkRegardlessOfOwner()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var ownerId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var bookingId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = paymentId,
+            BookingId = bookingId,
+            BookingReference = "EP-2026-ADMIN-BOOKING",
+            CustomerId = ownerId,
+            Amount = 4500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db, customerId: adminId, role: "Administrator");
+
+        // Act
+        var result = await controller.GetPaymentsByBooking(bookingId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var list = Assert.IsType<List<PaymentDto>>(okResult.Value);
+        Assert.Single(list);
+        Assert.Equal(paymentId, list[0].Id);
+        Assert.Equal(ownerId, list[0].CustomerId);
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WhenPaymentDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var controller = CreateController(db, customerId: customerId);
+
+        // Act
+        var result = await controller.GetPaymentById(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.NotNull(notFoundResult.Value);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_WhenUserHasMultipleRoles_ReturnsPersonalPayments()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var otherCustomerId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-MULTIROLE-1",
+            CustomerId = customerId,
+            Amount = 1500m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        db.Payments.Add(new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-OTHER-ROLE",
+            CustomerId = otherCustomerId,
+            Amount = 8000m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        // User holds both Customer and Organizer roles
+        var controller = CreateController(db, customerId: customerId, roles: new[] { "Customer", "Organizer" });
+
+        // Act
+        var result = await controller.GetMyPayments(new PaymentHistoryQueryParameters(), CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.Single(pagedResult.Items);
+        Assert.Equal("EP-2026-MULTIROLE-1", pagedResult.Items[0].BookingReference);
+        Assert.DoesNotContain(pagedResult.Items, p => p.BookingReference == "EP-2026-OTHER-ROLE");
+    }
+
+    [Fact]
+    public async Task GetPaymentById_WhenUserHasMultipleRoles_ReturnsPersonalPaymentDetail()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+
+        db.Payments.Add(new Payment
+        {
+            Id = paymentId,
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-MULTIROLE-DETAIL",
+            CustomerId = customerId,
+            Amount = 2200m,
+            Currency = "lkr",
+            Status = PaymentStatus.Succeeded
+        });
+        await db.SaveChangesAsync();
+
+        // User holds both Customer and Organizer roles
+        var controller = CreateController(db, customerId: customerId, roles: new[] { "Customer", "Organizer" });
+
+        // Act
+        var result = await controller.GetPaymentById(paymentId, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var detail = Assert.IsType<CustomerPaymentDetailDto>(okResult.Value);
+        Assert.Equal(paymentId, detail.Id);
+        Assert.Equal(customerId, detail.CustomerId);
+    }
+
+    [Fact]
+    public async Task GetMyPayments_CrossCustomerDataIsolation_PagingAndFilteringNeverLeaksOtherCustomersData()
+    {
+        // Arrange
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerA = Guid.NewGuid();
+        var customerB = Guid.NewGuid();
+
+        // 5 payments for Customer A (3 Succeeded, 2 Failed)
+        for (int i = 1; i <= 5; i++)
+        {
+            db.Payments.Add(new Payment
+            {
+                Id = Guid.NewGuid(),
+                BookingId = Guid.NewGuid(),
+                BookingReference = $"EP-2026-A-{i}",
+                CustomerId = customerA,
+                Amount = i * 100m,
+                Currency = "lkr",
+                Status = i <= 3 ? PaymentStatus.Succeeded : PaymentStatus.Failed,
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-i * 10)
+            });
+        }
+
+        // 5 payments for Customer B (3 Succeeded, 2 Failed) interleaved in time
+        for (int i = 1; i <= 5; i++)
+        {
+            db.Payments.Add(new Payment
+            {
+                Id = Guid.NewGuid(),
+                BookingId = Guid.NewGuid(),
+                BookingReference = $"EP-2026-B-{i}",
+                CustomerId = customerB,
+                Amount = i * 200m,
+                Currency = "lkr",
+                Status = i <= 3 ? PaymentStatus.Succeeded : PaymentStatus.Failed,
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-i * 10 - 2)
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var controllerA = CreateController(db, customerId: customerA);
+
+        // Act & Assert: Page 1 for Customer A (PageSize = 2)
+        var resPage1 = await controllerA.GetMyPayments(new PaymentHistoryQueryParameters { Page = 1, PageSize = 2 }, CancellationToken.None);
+        var page1 = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(Assert.IsType<OkObjectResult>(resPage1).Value);
+        Assert.Equal(5, page1.TotalCount);
+        Assert.Equal(2, page1.Items.Count);
+        Assert.All(page1.Items, item => Assert.StartsWith("EP-2026-A-", item.BookingReference));
+
+        // Act & Assert: Page 2 for Customer A (PageSize = 2)
+        var resPage2 = await controllerA.GetMyPayments(new PaymentHistoryQueryParameters { Page = 2, PageSize = 2 }, CancellationToken.None);
+        var page2 = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(Assert.IsType<OkObjectResult>(resPage2).Value);
+        Assert.Equal(2, page2.Items.Count);
+        Assert.All(page2.Items, item => Assert.StartsWith("EP-2026-A-", item.BookingReference));
+
+        // Act & Assert: Page 3 for Customer A (PageSize = 2)
+        var resPage3 = await controllerA.GetMyPayments(new PaymentHistoryQueryParameters { Page = 3, PageSize = 2 }, CancellationToken.None);
+        var page3 = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(Assert.IsType<OkObjectResult>(resPage3).Value);
+        Assert.Single(page3.Items);
+        Assert.All(page3.Items, item => Assert.StartsWith("EP-2026-A-", item.BookingReference));
+
+        // Act & Assert: Status Filter "Failed" for Customer A
+        var resFailed = await controllerA.GetMyPayments(new PaymentHistoryQueryParameters { Status = "Failed" }, CancellationToken.None);
+        var failedList = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(Assert.IsType<OkObjectResult>(resFailed).Value);
+        Assert.Equal(2, failedList.TotalCount);
+        Assert.Equal(2, failedList.Items.Count);
+        Assert.All(failedList.Items, item =>
+        {
+            Assert.StartsWith("EP-2026-A-", item.BookingReference);
+            Assert.Equal("Failed", item.Status);
+        });
+
+        // Act & Assert: Status Filter "Succeeded" for Customer A
+        var resSucceeded = await controllerA.GetMyPayments(new PaymentHistoryQueryParameters { Status = "Succeeded" }, CancellationToken.None);
+        var succeededList = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(Assert.IsType<OkObjectResult>(resSucceeded).Value);
+        Assert.Equal(3, succeededList.TotalCount);
+        Assert.Equal(3, succeededList.Items.Count);
+        Assert.All(succeededList.Items, item =>
+        {
+            Assert.StartsWith("EP-2026-A-", item.BookingReference);
+            Assert.Equal("Succeeded", item.Status);
+        });
+    }
+
+    [Fact]
+    public async Task PaymentHistoryQueryParameters_ClampsBoundaryValuesCorrectly()
+    {
+        // Unit test direct parameter properties
+        var paramsNegative = new PaymentHistoryQueryParameters { Page = -5, PageSize = -10 };
+        Assert.Equal(1, paramsNegative.Page);
+        Assert.Equal(10, paramsNegative.PageSize); // Fallback default is 10
+
+        var paramsZero = new PaymentHistoryQueryParameters { Page = 0, PageSize = 0 };
+        Assert.Equal(1, paramsZero.Page);
+        Assert.Equal(10, paramsZero.PageSize); // Fallback default is 10
+
+        var paramsOversized = new PaymentHistoryQueryParameters { Page = 2, PageSize = 1000 };
+        Assert.Equal(2, paramsOversized.Page);
+        Assert.Equal(50, paramsOversized.PageSize); // Clamped to MaxPageSize (50)
+
+        // Test through controller invocation
+        using var db = new PaymentDbContext(_dbOptions);
+        var customerId = Guid.NewGuid();
+        var controller = CreateController(db, customerId: customerId);
+
+        var result = await controller.GetMyPayments(paramsOversized, CancellationToken.None);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<PagedResult<CustomerPaymentHistoryItemDto>>(okResult.Value);
+        Assert.Equal(2, pagedResult.Page);
+        Assert.Equal(50, pagedResult.PageSize);
+    }
+
+    [Fact]
+    public void PaymentDtos_AndActionResponses_NeverExposeSensitiveCardDataOrSecrets()
+    {
+        // 1. Inspect CustomerPaymentDetailDto properties via reflection
+        var detailProperties = typeof(CustomerPaymentDetailDto).GetProperties().Select(p => p.Name.ToLowerInvariant()).ToList();
+        var sensitiveTerms = new[] { "secret", "cvv", "cvc", "cardnumber", "pan", "privatekey", "password" };
+
+        foreach (var term in sensitiveTerms)
+        {
+            Assert.DoesNotContain(detailProperties, p => p.Contains(term));
+        }
+
+        // 2. Inspect CustomerPaymentHistoryItemDto properties via reflection
+        var historyProperties = typeof(CustomerPaymentHistoryItemDto).GetProperties().Select(p => p.Name.ToLowerInvariant()).ToList();
+        foreach (var term in sensitiveTerms)
+        {
+            Assert.DoesNotContain(historyProperties, p => p.Contains(term));
+        }
+
+        // 3. Serialize DTOs and verify JSON text does not contain sensitive substrings
+        var detailDto = new CustomerPaymentDetailDto
+        {
+            Id = Guid.NewGuid(),
+            BookingId = Guid.NewGuid(),
+            BookingReference = "EP-2026-SECURITY-CHECK",
+            CustomerId = Guid.NewGuid(),
+            Amount = 1500m,
+            Currency = "lkr",
+            Status = "Succeeded",
+            PaymentDate = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow,
+            CompletedAt = DateTimeOffset.UtcNow,
+            EventName = "Grand Concert",
+            StripeSessionId = "cs_test_sample_session",
+            StripePaymentIntentId = "pi_test_sample_intent"
+        };
+
+        var json = JsonSerializer.Serialize(detailDto);
+        var lowerJson = json.ToLowerInvariant();
+
+        foreach (var term in sensitiveTerms)
+        {
+            Assert.DoesNotContain($"\"{term}\"", lowerJson);
+        }
+    }
+
+    [Fact]
+    public void JwtSecurityToken_Validation_EnforcesLifetimeAndRejectsTamperedOrUntrustedSignatures()
+    {
+        // Arrange - use identical configuration parameters as PaymentService Program.cs
+        var secretKey = "EventPulseKey_2026_SecureAuthSigningKey_9876543210_LK";
+        var keyBytes = Encoding.UTF8.GetBytes(secretKey);
+        var signingKey = new SymmetricSecurityKey(keyBytes) { KeyId = "EventPulseKey_2026" };
+
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var validationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = signingKey,
+            ValidateIssuer = true,
+            ValidIssuer = "EventPulse.IdentityService",
+            ValidateAudience = true,
+            ValidAudience = "EventPulse.Clients",
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+
+        var customerId = Guid.NewGuid();
+        var signingCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
+
+        // Case 1: Expired Token -> must fail with SecurityTokenExpiredException
+        var expiredTokenDescriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, customerId.ToString()),
+                new Claim("sub", customerId.ToString())
+            }),
+            Issuer = "EventPulse.IdentityService",
+            Audience = "EventPulse.Clients",
+            NotBefore = DateTime.UtcNow.AddMinutes(-10),
+            Expires = DateTime.UtcNow.AddMinutes(-5),
+            SigningCredentials = signingCredentials
+        };
+        var expiredJwt = tokenHandler.CreateToken(expiredTokenDescriptor);
+        var expiredTokenString = tokenHandler.WriteToken(expiredJwt);
+
+        Assert.Throws<SecurityTokenExpiredException>(() =>
+            tokenHandler.ValidateToken(expiredTokenString, validationParameters, out _));
+
+        // Case 2: Untrusted Signature Key -> must fail signature validation
+        var untrustedKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("UntrustedSigningKey_9876543210_LK_Test_Key_9999"));
+        var untrustedCredentials = new SigningCredentials(untrustedKey, SecurityAlgorithms.HmacSha256);
+        var untrustedTokenDescriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, customerId.ToString()),
+                new Claim("sub", customerId.ToString())
+            }),
+            Issuer = "EventPulse.IdentityService",
+            Audience = "EventPulse.Clients",
+            Expires = DateTime.UtcNow.AddMinutes(30),
+            SigningCredentials = untrustedCredentials
+        };
+        var untrustedJwt = tokenHandler.CreateToken(untrustedTokenDescriptor);
+        var untrustedTokenString = tokenHandler.WriteToken(untrustedJwt);
+
+        Assert.ThrowsAny<SecurityTokenException>(() =>
+            tokenHandler.ValidateToken(untrustedTokenString, validationParameters, out _));
+
+        // Case 3: Tampered Token (modified payload) -> must fail signature validation
+        var validTokenDescriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, customerId.ToString()),
+                new Claim("sub", customerId.ToString())
+            }),
+            Issuer = "EventPulse.IdentityService",
+            Audience = "EventPulse.Clients",
+            Expires = DateTime.UtcNow.AddMinutes(30),
+            SigningCredentials = signingCredentials
+        };
+        var validJwt = tokenHandler.CreateToken(validTokenDescriptor);
+        var validTokenString = tokenHandler.WriteToken(validJwt);
+
+        // Tamper with payload part of the JWT (header.payload.signature)
+        var parts = validTokenString.Split('.');
+        Assert.Equal(3, parts.Length);
+        var originalPayloadJson = Base64UrlEncoder.Decode(parts[1]);
+        var tamperedPayloadJson = originalPayloadJson.Replace("EventPulse.IdentityService", "UntrustedTamperedIssuer");
+        var tamperedPayload = Base64UrlEncoder.Encode(tamperedPayloadJson);
+        var tamperedTokenString = $"{parts[0]}.{tamperedPayload}.{parts[2]}";
+
+        Assert.ThrowsAny<SecurityTokenException>(() =>
+            tokenHandler.ValidateToken(tamperedTokenString, validationParameters, out _));
+
+        // Case 4: Valid Token -> successfully validates and yields claims
+        var principal = tokenHandler.ValidateToken(validTokenString, validationParameters, out var validatedToken);
+        Assert.NotNull(principal);
+        Assert.NotNull(validatedToken);
+        Assert.Equal(customerId.ToString(), principal.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+    }
+
+    #endregion
 }
