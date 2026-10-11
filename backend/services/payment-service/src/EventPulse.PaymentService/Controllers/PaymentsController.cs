@@ -272,6 +272,7 @@ public class PaymentsController : ControllerBase
         var totalCount = await query.CountAsync(cancellationToken);
 
         var payments = await query
+            .Include(p => p.RefundRecords)
             .OrderByDescending(p => p.CreatedAt)
             .Skip((queryParams.Page - 1) * queryParams.PageSize)
             .Take(queryParams.PageSize)
@@ -304,6 +305,7 @@ public class PaymentsController : ControllerBase
             BookingId = p.BookingId,
             BookingReference = p.BookingReference,
             Amount = p.Amount,
+            RefundedAmount = p.RefundRecords.Where(r => r.Status == RefundStatus.Completed).Sum(r => r.Amount),
             Currency = p.Currency,
             Status = p.Status.ToString(),
             PaymentDate = p.CompletedAt ?? p.CreatedAt,
@@ -337,6 +339,7 @@ public class PaymentsController : ControllerBase
         }
 
         var payment = await _dbContext.Payments
+            .Include(p => p.RefundRecords)
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == paymentId, cancellationToken);
 
@@ -356,6 +359,7 @@ public class PaymentsController : ControllerBase
             BookingReference = payment.BookingReference,
             CustomerId = payment.CustomerId,
             Amount = payment.Amount,
+            RefundedAmount = payment.RefundRecords.Where(r => r.Status == RefundStatus.Completed).Sum(r => r.Amount),
             Currency = payment.Currency,
             Status = payment.Status.ToString(),
             PaymentDate = payment.CompletedAt ?? payment.CreatedAt,
@@ -363,7 +367,18 @@ public class PaymentsController : ControllerBase
             CompletedAt = payment.CompletedAt,
             EventName = eventName,
             StripeSessionId = payment.StripeSessionId,
-            StripePaymentIntentId = payment.StripePaymentIntentId
+            StripePaymentIntentId = payment.StripePaymentIntentId,
+            Refunds = payment.RefundRecords.Select(r => new RefundSummaryDto
+            {
+                Id = r.Id,
+                Amount = r.Amount,
+                Currency = r.Currency,
+                Status = r.Status.ToString(),
+                Reason = r.Reason,
+                FailureReason = r.FailureReason,
+                CreatedAt = r.CreatedAt,
+                CompletedAt = r.CompletedAt
+            }).ToList()
         });
     }
 
@@ -522,6 +537,38 @@ public class PaymentsController : ControllerBase
                 _outboxWriter.EnqueuePaymentFailed(evt);
 
                 await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+        else if (stripeEvent.Type == EventTypes.ChargeRefunded)
+        {
+            if (stripeEvent.Data.Object is Stripe.Charge charge)
+            {
+                var payment = await _dbContext.Payments
+                    .Include(p => p.RefundRecords)
+                    .FirstOrDefaultAsync(p => p.StripePaymentIntentId == charge.PaymentIntentId, cancellationToken);
+
+                if (payment != null)
+                {
+                    var amountRefunded = Convert.ToDecimal(charge.AmountRefunded) / 100m;
+                    if (amountRefunded >= payment.Amount)
+                    {
+                        payment.Status = PaymentStatus.Refunded;
+                    }
+                    else if (amountRefunded > 0)
+                    {
+                        payment.Status = PaymentStatus.PartiallyRefunded;
+                    }
+
+                    var pendingRefunds = payment.RefundRecords.Where(r => r.Status == RefundStatus.Pending).ToList();
+                    foreach (var pending in pendingRefunds)
+                    {
+                        pending.Status = RefundStatus.Completed;
+                        pending.CompletedAt = DateTimeOffset.UtcNow;
+                    }
+
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    _logger.LogInformation("Reconciled Stripe charge.refunded webhook for Payment {PaymentId}. Status: {Status}", payment.Id, payment.Status);
+                }
             }
         }
 

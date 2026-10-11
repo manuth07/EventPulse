@@ -29,7 +29,9 @@ public class PaymentRefundServiceTests
         _publisherMock = new Mock<IPaymentEventPublisher>();
     }
 
-    private (PaymentRefundService Service, PaymentDbContext DbContext, OutboxWriter OutboxWriter) CreateService(PaymentDbContext dbContext)
+    private (PaymentRefundService Service, PaymentDbContext DbContext, OutboxWriter OutboxWriter) CreateService(
+        PaymentDbContext dbContext,
+        IStripeRefundService? stripeRefundService = null)
     {
         var kafkaOptions = Options.Create(new KafkaOptions());
         var writerLogger = new Mock<ILogger<OutboxWriter>>();
@@ -39,7 +41,8 @@ public class PaymentRefundServiceTests
             dbContext,
             outboxWriter,
             _loggerMock.Object,
-            _publisherMock.Object
+            _publisherMock.Object,
+            stripeRefundService
         );
 
         return (service, dbContext, outboxWriter);
@@ -285,5 +288,352 @@ public class PaymentRefundServiceTests
         Assert.True(success);
         var updated = await dbContext.Payments.FindAsync(payment.Id);
         Assert.Equal(PaymentStatus.Refunded, updated!.Status);
+    }
+
+    [Fact]
+    public async Task ProcessRefundAsync_NoRefund_WhenAmountZeroOrLess_CreatesNotRefundableRecord()
+    {
+        // Arrange
+        using var dbContext = new PaymentDbContext(_dbOptions);
+        var bookingId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        var payment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-REF-005",
+            CustomerId = customerId,
+            Amount = 100.00m,
+            Currency = "usd",
+            Status = PaymentStatus.Succeeded,
+            CompletedAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Payments.Add(payment);
+        await dbContext.SaveChangesAsync();
+
+        var (service, _, _) = CreateService(dbContext);
+
+        var zeroRefundEvent = new BookingRefundRequestedEvent(
+            RefundRequestId: Guid.NewGuid(),
+            BookingId: bookingId,
+            BookingReference: "EP-REF-005",
+            CustomerId: customerId,
+            EventId: Guid.NewGuid(),
+            RefundAmount: 0.00m, // No refund
+            Reason: "Cancelled within non-refundable window",
+            RequestedAt: DateTimeOffset.UtcNow
+        );
+
+        // Act
+        var result = await service.ProcessRefundAsync(zeroRefundEvent);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(0.00m, result.Amount);
+        Assert.Equal(RefundStatus.NotRefundable, result.Status);
+
+        var updatedPayment = await dbContext.Payments.FindAsync(payment.Id);
+        Assert.Equal(PaymentStatus.Succeeded, updatedPayment!.Status); // Payment status not modified
+    }
+
+    [Fact]
+    public async Task ProcessRefundAsync_WhenPaymentPendingOrFailed_CreatesNotRefundableRecord()
+    {
+        // Arrange
+        using var dbContext = new PaymentDbContext(_dbOptions);
+        var bookingId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        var payment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-REF-006",
+            CustomerId = customerId,
+            Amount = 100.00m,
+            Currency = "usd",
+            Status = PaymentStatus.Pending, // Never captured
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Payments.Add(payment);
+        await dbContext.SaveChangesAsync();
+
+        var (service, _, _) = CreateService(dbContext);
+
+        var refundEvent = new BookingRefundRequestedEvent(
+            RefundRequestId: Guid.NewGuid(),
+            BookingId: bookingId,
+            BookingReference: "EP-REF-006",
+            CustomerId: customerId,
+            EventId: Guid.NewGuid(),
+            RefundAmount: 100.00m,
+            Reason: "Cancellation of pending booking",
+            RequestedAt: DateTimeOffset.UtcNow
+        );
+
+        // Act
+        var result = await service.ProcessRefundAsync(refundEvent);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(0.00m, result.Amount);
+        Assert.Equal(RefundStatus.NotRefundable, result.Status);
+
+        var updatedPayment = await dbContext.Payments.FindAsync(payment.Id);
+        Assert.Equal(PaymentStatus.Pending, updatedPayment!.Status);
+    }
+
+    [Fact]
+    public async Task ProcessRefundAsync_InvalidRefundAmount_CapsAtEligibleAmount()
+    {
+        // Arrange
+        using var dbContext = new PaymentDbContext(_dbOptions);
+        var bookingId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        var payment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-REF-007",
+            CustomerId = customerId,
+            Amount = 100.00m, // Only 100 paid
+            Currency = "usd",
+            Status = PaymentStatus.Succeeded,
+            CompletedAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Payments.Add(payment);
+        await dbContext.SaveChangesAsync();
+
+        var (service, _, _) = CreateService(dbContext);
+
+        var excessiveRefundEvent = new BookingRefundRequestedEvent(
+            RefundRequestId: Guid.NewGuid(),
+            BookingId: bookingId,
+            BookingReference: "EP-REF-007",
+            CustomerId: customerId,
+            EventId: Guid.NewGuid(),
+            RefundAmount: 150.00m, // Excess amount
+            Reason: "Full refund request with erroneous excessive amount",
+            RequestedAt: DateTimeOffset.UtcNow
+        );
+
+        // Act
+        var result = await service.ProcessRefundAsync(excessiveRefundEvent);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(100.00m, result.Amount); // Capped at eligible 100.00m
+        Assert.Equal(RefundStatus.Completed, result.Status);
+
+        var updatedPayment = await dbContext.Payments.FindAsync(payment.Id);
+        Assert.Equal(PaymentStatus.Refunded, updatedPayment!.Status);
+    }
+
+    [Fact]
+    public async Task ProcessRefundAsync_WhenStripeReturnsPending_DoesNotMarkCompletedPrematurely()
+    {
+        // Arrange
+        using var dbContext = new PaymentDbContext(_dbOptions);
+        var bookingId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        var payment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-REF-008",
+            CustomerId = customerId,
+            Amount = 100.00m,
+            Currency = "usd",
+            Status = PaymentStatus.Succeeded,
+            StripePaymentIntentId = "pi_test_12345",
+            CompletedAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Payments.Add(payment);
+        await dbContext.SaveChangesAsync();
+
+        var stripeMock = new Mock<IStripeRefundService>();
+        stripeMock
+            .Setup(s => s.CreateRefundAsync(
+                "pi_test_12345",
+                100.00m,
+                "usd",
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StripeRefundResult(
+                Success: true,
+                StripeRefundId: "re_pending_123",
+                Status: "pending",
+                FailureReason: null
+            ));
+
+        var (service, _, _) = CreateService(dbContext, stripeMock.Object);
+
+        var refundEvent = new BookingRefundRequestedEvent(
+            RefundRequestId: Guid.NewGuid(),
+            BookingId: bookingId,
+            BookingReference: "EP-REF-008",
+            CustomerId: customerId,
+            EventId: Guid.NewGuid(),
+            RefundAmount: 100.00m,
+            Reason: "Customer cancellation",
+            RequestedAt: DateTimeOffset.UtcNow
+        );
+
+        // Act
+        var result = await service.ProcessRefundAsync(refundEvent);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(RefundStatus.Pending, result.Status);
+        Assert.Null(result.CompletedAt); // Not completed yet
+        Assert.Equal("re_pending_123", result.StripeRefundId);
+
+        var updatedPayment = await dbContext.Payments.FindAsync(payment.Id);
+        Assert.Equal(PaymentStatus.Succeeded, updatedPayment!.Status); // Payment status stays Succeeded until confirmed
+    }
+
+    [Fact]
+    public async Task ProcessRefundAsync_WhenStripeFails_SetsStatusFailedAndDoesNotEmitEvent()
+    {
+        // Arrange
+        using var dbContext = new PaymentDbContext(_dbOptions);
+        var bookingId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        var payment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-REF-009",
+            CustomerId = customerId,
+            Amount = 100.00m,
+            Currency = "usd",
+            Status = PaymentStatus.Succeeded,
+            StripePaymentIntentId = "pi_fail_12345",
+            CompletedAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Payments.Add(payment);
+        await dbContext.SaveChangesAsync();
+
+        var stripeMock = new Mock<IStripeRefundService>();
+        stripeMock
+            .Setup(s => s.CreateRefundAsync(
+                "pi_fail_12345",
+                100.00m,
+                "usd",
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StripeRefundResult(
+                Success: false,
+                StripeRefundId: null,
+                Status: "failed",
+                FailureReason: "Card has expired or charge already refunded"
+            ));
+
+        var (service, _, _) = CreateService(dbContext, stripeMock.Object);
+
+        var refundEvent = new BookingRefundRequestedEvent(
+            RefundRequestId: Guid.NewGuid(),
+            BookingId: bookingId,
+            BookingReference: "EP-REF-009",
+            CustomerId: customerId,
+            EventId: Guid.NewGuid(),
+            RefundAmount: 100.00m,
+            Reason: "Customer cancellation",
+            RequestedAt: DateTimeOffset.UtcNow
+        );
+
+        // Act
+        var result = await service.ProcessRefundAsync(refundEvent);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(RefundStatus.Failed, result.Status);
+        Assert.Equal("Card has expired or charge already refunded", result.FailureReason);
+
+        var updatedPayment = await dbContext.Payments.FindAsync(payment.Id);
+        Assert.Equal(PaymentStatus.RefundFailed, updatedPayment!.Status);
+
+        // Outbox event should NOT be enqueued on failure
+        var outboxEvents = await dbContext.OutboxMessages.Where(m => m.EventType == nameof(PaymentRefundedEvent)).ToListAsync();
+        Assert.Empty(outboxEvents);
+    }
+
+    [Fact]
+    public async Task ProcessRefundAsync_UsesIdempotencyKeyWithStripe()
+    {
+        // Arrange
+        using var dbContext = new PaymentDbContext(_dbOptions);
+        var bookingId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var refundRequestId = Guid.NewGuid();
+
+        var payment = new Payment
+        {
+            Id = Guid.NewGuid(),
+            BookingId = bookingId,
+            BookingReference = "EP-REF-010",
+            CustomerId = customerId,
+            Amount = 75.00m,
+            Currency = "usd",
+            Status = PaymentStatus.Succeeded,
+            StripePaymentIntentId = "pi_idemp_123",
+            CompletedAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Payments.Add(payment);
+        await dbContext.SaveChangesAsync();
+
+        var stripeMock = new Mock<IStripeRefundService>();
+        stripeMock
+            .Setup(s => s.CreateRefundAsync(
+                "pi_idemp_123",
+                75.00m,
+                "usd",
+                It.IsAny<string>(),
+                $"refund-{refundRequestId}",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StripeRefundResult(
+                Success: true,
+                StripeRefundId: "re_idemp_confirmed",
+                Status: "succeeded",
+                FailureReason: null
+            ));
+
+        var (service, _, _) = CreateService(dbContext, stripeMock.Object);
+
+        var refundEvent = new BookingRefundRequestedEvent(
+            RefundRequestId: refundRequestId,
+            BookingId: bookingId,
+            BookingReference: "EP-REF-010",
+            CustomerId: customerId,
+            EventId: Guid.NewGuid(),
+            RefundAmount: 75.00m,
+            Reason: "Customer cancelled",
+            RequestedAt: DateTimeOffset.UtcNow
+        );
+
+        // Act
+        var result = await service.ProcessRefundAsync(refundEvent);
+
+        // Assert
+        Assert.NotNull(result);
+        stripeMock.Verify(s => s.CreateRefundAsync(
+            "pi_idemp_123",
+            75.00m,
+            "usd",
+            It.IsAny<string>(),
+            $"refund-{refundRequestId}",
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

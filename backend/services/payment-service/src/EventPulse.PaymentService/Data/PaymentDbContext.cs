@@ -78,11 +78,28 @@ public class PaymentDbContext : DbContext
                 .HasColumnType("decimal(18,2)")
                 .IsRequired();
 
+            entity.Property(r => r.Currency)
+                .IsRequired()
+                .HasMaxLength(10)
+                .HasDefaultValue("usd");
+
+            entity.Property(r => r.Status)
+                .IsRequired()
+                .HasConversion<string>();
+
             entity.Property(r => r.Reason)
                 .HasMaxLength(500);
 
+            entity.Property(r => r.FailureReason)
+                .HasMaxLength(500);
+
+            entity.Property(r => r.StripeRefundId)
+                .HasMaxLength(255);
+
             entity.Property(r => r.CreatedAt)
                 .IsRequired();
+
+            entity.Property(r => r.CompletedAt);
         });
 
         modelBuilder.Entity<OutboxMessage>(entity =>
