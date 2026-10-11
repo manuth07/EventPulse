@@ -89,6 +89,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AppPolicies.OrganizerOnly, policy => policy.RequireRole("Organizer"));
+    options.AddPolicy(AppPolicies.AdminOnly, policy => policy.RequireRole("Administrator"));
     options.AddPolicy(AppPolicies.AdministratorOnly, policy => policy.RequireRole("Administrator"));
 });
 

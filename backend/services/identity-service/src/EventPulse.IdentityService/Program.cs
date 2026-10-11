@@ -5,6 +5,7 @@ using EventPulse.IdentityService.Models;
 using EventPulse.IdentityService.Security;
 using EventPulse.IdentityService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -66,6 +67,7 @@ builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 builder.Services.AddScoped<ISetPasswordService, SetPasswordService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IOrganizerApplicationService, OrganizerApplicationService>();
+builder.Services.AddScoped<IAuthorizationHandler, AdminOnlyAuthorizationHandler>();
 builder.Services.AddScoped<EventPulse.IdentityService.Services.IdentityDataSeeder>();
 
 // ---------------------------------------------------------------------------
@@ -143,12 +145,22 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(options =>
 {
     // Organizer-only endpoints (e.g., create/manage events)
-    options.AddPolicy("OrganizerOnly", policy =>
-        policy.RequireRole(EventPulse.IdentityService.Models.AppRoles.Organizer));
+    options.AddPolicy(AppPolicies.OrganizerOnly, policy =>
+        policy.RequireRole(AppRoles.Organizer));
 
-    // Administrator-only endpoints (e.g., event approval, user management)
-    options.AddPolicy("AdministratorOnly", policy =>
-        policy.RequireRole(EventPulse.IdentityService.Models.AppRoles.Administrator));
+    // Administrator-only endpoints (e.g., user management, organizer application review)
+    // Enforces server-validated role claim + live Identity DB verification against stale JWTs
+    options.AddPolicy(AppPolicies.AdminOnly, policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.AddRequirements(new AdminOnlyRequirement());
+    });
+
+    options.AddPolicy(AppPolicies.AdministratorOnly, policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.AddRequirements(new AdminOnlyRequirement());
+    });
 });
 
 // ---------------------------------------------------------------------------
