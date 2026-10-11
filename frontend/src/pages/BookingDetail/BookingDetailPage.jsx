@@ -230,7 +230,14 @@ export function BookingDetailPage() {
       >
         <div style={{ maxWidth: '900px', margin: '0 auto', width: '100%' }}>
           {/* Breadcrumb Navigation */}
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            marginBottom: '24px',
+          }}>
             <button
               type="button"
               data-testid="back-to-bookings-btn"
@@ -254,6 +261,26 @@ export function BookingDetailPage() {
               <ArrowLeft size={16} />
               <span>Back to Booked Tickets</span>
             </button>
+
+            <Link
+              to="/payment-history"
+              data-testid="booking-detail-payment-history-link"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '13px',
+                fontWeight: 600,
+                color: 'var(--ep-text-secondary)',
+                textDecoration: 'none',
+                transition: 'var(--ep-transition)',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ep-primary)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ep-text-secondary)')}
+            >
+              <CreditCard size={14} />
+              <span>View Payment History</span>
+            </Link>
           </div>
 
           {/* Toast Notification */}

@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
+  CreditCard,
 } from 'lucide-react';
 
 function getRoleBadgeConfig(role) {
@@ -1191,30 +1192,57 @@ export function ProfilePage() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    data-testid="view-all-tickets-btn"
-                    onClick={() => navigate('/my-bookings')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 16px',
-                      backgroundColor: '#ffffff',
-                      color: 'var(--ep-primary)',
-                      border: '1px solid var(--ep-border)',
-                      borderRadius: 'var(--ep-radius-btn)',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'var(--ep-transition)',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
-                  >
-                    <span>View All Booked Tickets</span>
-                    <ChevronRight size={14} />
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      data-testid="profile-view-payments-btn"
+                      onClick={() => navigate('/payment-history')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 16px',
+                        backgroundColor: '#ffffff',
+                        color: 'var(--ep-text-primary)',
+                        border: '1px solid var(--ep-border)',
+                        borderRadius: 'var(--ep-radius-btn)',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
+                    >
+                      <CreditCard size={14} color="var(--ep-text-secondary)" />
+                      <span>Payment History</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      data-testid="view-all-tickets-btn"
+                      onClick={() => navigate('/my-bookings')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 16px',
+                        backgroundColor: '#ffffff',
+                        color: 'var(--ep-primary)',
+                        border: '1px solid var(--ep-border)',
+                        borderRadius: 'var(--ep-radius-btn)',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
+                    >
+                      <span>View All Booked Tickets</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Sub-State: Loading Bookings */}

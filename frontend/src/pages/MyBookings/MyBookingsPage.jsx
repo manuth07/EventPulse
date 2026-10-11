@@ -365,8 +365,10 @@ export function MyBookingsPage() {
           {/* Page Header */}
           <div style={{
             display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '16px',
             marginBottom: '28px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -402,6 +404,30 @@ export function MyBookingsPage() {
                 </p>
               </div>
             </div>
+
+            <Link
+              to="/payment-history"
+              data-testid="my-bookings-payment-history-link"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                backgroundColor: '#ffffff',
+                color: 'var(--ep-text-primary)',
+                border: '1px solid var(--ep-border)',
+                borderRadius: 'var(--ep-radius-btn)',
+                fontSize: '13px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                transition: 'var(--ep-transition)',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
+            >
+              <CreditCard size={14} color="var(--ep-text-secondary)" />
+              <span>Payment History</span>
+            </Link>
           </div>
 
           {/* Status Filter Tabs */}
