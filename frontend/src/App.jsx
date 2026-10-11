@@ -28,6 +28,7 @@ import { Tickets } from './pages/Tickets/Tickets';
 import { MyBookingsPage } from './pages/MyBookings/MyBookingsPage';
 import { BookingDetailPage } from './pages/BookingDetail/BookingDetailPage';
 import { ProfilePage } from './pages/Profile/ProfilePage';
+import { PaymentHistoryPage } from './pages/PaymentHistory/PaymentHistoryPage';
 import { WhoWeAre } from './pages/WhoWeAre/WhoWeAre';
 import { ContactUs } from './pages/ContactUs/ContactUs';
 
@@ -55,6 +56,7 @@ function App() {
             <Route path="/list-your-event" element={<ListYourEvent />} />
             <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+            <Route path="/payment-history" element={<RequireAuth><PaymentHistoryPage /></RequireAuth>} />
             <Route path="/events/:id/tickets" element={<SelectTickets />} />
             <Route path="/payment-success" element={<PaymentSuccess />} />
             <Route path="/payment-cancel" element={<PaymentCancel />} />

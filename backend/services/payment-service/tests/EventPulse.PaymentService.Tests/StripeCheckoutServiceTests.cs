@@ -65,7 +65,14 @@ public class StripeCheckoutServiceTests
         Assert.NotNull(options.Metadata);
         Assert.Equal(payment.BookingId.ToString(), options.Metadata["BookingId"]);
         Assert.Equal("EP-2026-PAY-1234", options.Metadata["BookingReference"]);
+        Assert.Equal(payment.CustomerId.ToString(), options.Metadata["CustomerId"]);
         Assert.Equal(payment.Id.ToString(), options.Metadata["PaymentId"]);
+
+        Assert.NotNull(options.PaymentIntentData?.Metadata);
+        Assert.Equal(payment.BookingId.ToString(), options.PaymentIntentData.Metadata["BookingId"]);
+        Assert.Equal("EP-2026-PAY-1234", options.PaymentIntentData.Metadata["BookingReference"]);
+        Assert.Equal(payment.CustomerId.ToString(), options.PaymentIntentData.Metadata["CustomerId"]);
+        Assert.Equal(payment.Id.ToString(), options.PaymentIntentData.Metadata["PaymentId"]);
 
         Assert.NotNull(options.ExtraParams);
         Assert.True(options.ExtraParams.ContainsKey("managed_payments[enabled]"));

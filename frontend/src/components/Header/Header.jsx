@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar, Bell, CheckCircle2, Clock } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar, Bell, CheckCircle2, Clock, CreditCard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { buildApiUrl } from '../../services/apiConfig';
@@ -767,6 +767,48 @@ export function Header({ location = 'Colombo, LK' }) {
                   >
                     <Ticket size={14} color="var(--ep-text-secondary)" />
                     <span>My Booked Tickets</span>
+                  </Link>
+
+                  {/* Payment History (available to all authenticated users) */}
+                  <Link
+                    to="/payment-history"
+                    id="account-menu-payment-history"
+                    data-testid="account-menu-payment-history"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'none',
+                      borderBottom: '1px solid var(--ep-border)',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: 'var(--ep-text-primary)',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      transition: 'var(--ep-transition)',
+                      fontFamily: 'var(--ep-font-body)',
+                      textAlign: 'left',
+                      boxSizing: 'border-box',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--ep-soft-accent)';
+                      e.currentTarget.style.color = 'var(--ep-primary)';
+                      const svg = e.currentTarget.querySelector('svg');
+                      if (svg) svg.style.color = 'var(--ep-primary)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--ep-text-primary)';
+                      const svg = e.currentTarget.querySelector('svg');
+                      if (svg) svg.style.color = 'var(--ep-text-secondary)';
+                    }}
+                  >
+                    <CreditCard size={14} color="var(--ep-text-secondary)" />
+                    <span>Payment History</span>
                   </Link>
 
                   {/* Log out */}
