@@ -79,6 +79,7 @@ function App() {
             {/* Administrator Protected Routes (EP-373) */}
             <Route element={<AdminRoute />}>
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/users" element={<AdminDashboard />} />
               <Route path="/admin/events/pending" element={<PendingEvents />} />
               <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
             </Route>
