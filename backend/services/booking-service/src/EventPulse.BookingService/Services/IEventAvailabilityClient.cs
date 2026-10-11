@@ -19,6 +19,7 @@ public class EventSummaryInfo
     public DateTime EventDate { get; set; }
     public string? ImageUrl { get; set; }
     public string? Status { get; set; }
+    public Guid OrganizerId { get; set; }
 }
 
 public class ReserveInventoryItemDto
@@ -45,6 +46,7 @@ public interface IEventAvailabilityClient
 {
     Task<TicketTypeAvailability?> GetTicketTypeAsync(Guid eventId, Guid ticketTypeId, CancellationToken cancellationToken = default);
     Task<EventSummaryInfo?> GetEventSummaryAsync(Guid eventId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EventSummaryInfo>> GetOrganizerEventsAsync(Guid organizerId, CancellationToken cancellationToken = default);
 
     Task<ClientInventoryResult> ReserveInventoryAsync(
         Guid eventId,

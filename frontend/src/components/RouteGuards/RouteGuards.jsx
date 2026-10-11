@@ -149,3 +149,67 @@ export function AdminRoute({ children }) {
 
   return children ? children : <Outlet />;
 }
+
+/**
+ * Specialized, reusable Organizer route guard (EP-386).
+ * 
+ * Guarantees:
+ * - Logged-out user -> Redirect to /login (preserving return location).
+ * - Authenticated Customer -> Access Denied (/forbidden).
+ * - Authenticated Administrator (without Organizer role) -> Access Denied (/forbidden)
+ *   (strictly avoids granting automatic access to private organizer sales).
+ * - Authenticated Organizer -> Renders protected organizer content.
+ * - While auth is being verified -> Accessible loading state (prevents leaking private sales UI or premature redirect).
+ * 
+ * Usable both as an outlet layout route: `<Route element={<OrganizerRoute />}>`
+ * and as a direct component wrapper: `<OrganizerRoute><OrganizerSalesComponent /></OrganizerRoute>`.
+ */
+export function OrganizerRoute({ children }) {
+  const { isAuthenticated, currentUser, isLoading } = useAuth();
+  const location = useLocation();
+
+  const decision = getRouteAccessDecision({
+    isAuthenticated,
+    user: currentUser,
+    roles: currentUser?.roles,
+    requiredRole: 'Organizer',
+    isLoading,
+  });
+
+  if (decision.status === 'LOADING') {
+    return (
+      <div
+        data-testid="organizer-route-loading"
+        aria-busy="true"
+        aria-label="Verifying organizer access"
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'var(--ep-canvas)',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+          <div className="spinner-border text-primary" role="status" style={{ width: '2.5rem', height: '2.5rem' }}>
+            <span className="visually-hidden">Verifying authorization...</span>
+          </div>
+          <span style={{ fontSize: '14px', color: 'var(--ep-text-secondary)', fontWeight: 500 }}>
+            Verifying organizer access...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (decision.status === 'REDIRECT_LOGIN') {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (decision.status === 'ACCESS_DENIED') {
+    return <Navigate to="/forbidden" replace />;
+  }
+
+  return children ? children : <Outlet />;
+}
+

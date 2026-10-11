@@ -18,6 +18,7 @@ public class PaymentSucceededEventHandlerTests
     private readonly Mock<ITicketGenerationService> _ticketGenerationServiceMock;
     private readonly Mock<IEventAvailabilityClient> _eventAvailabilityClientMock;
     private readonly Mock<IBookingEventPublisher> _eventPublisherMock;
+    private readonly Mock<ISalesReportingService> _salesReportingServiceMock;
     private readonly Mock<ILogger<PaymentSucceededEventHandler>> _loggerMock;
     private readonly PaymentSucceededEventHandler _handler;
 
@@ -36,6 +37,7 @@ public class PaymentSucceededEventHandlerTests
             .Setup(c => c.CommitInventoryAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(ClientInventoryResult.Ok());
         _eventPublisherMock = new Mock<IBookingEventPublisher>();
+        _salesReportingServiceMock = new Mock<ISalesReportingService>();
         _loggerMock = new Mock<ILogger<PaymentSucceededEventHandler>>();
         _handler = new PaymentSucceededEventHandler(
             _dbContext,
@@ -43,6 +45,7 @@ public class PaymentSucceededEventHandlerTests
             _ticketGenerationServiceMock.Object,
             _eventAvailabilityClientMock.Object,
             _eventPublisherMock.Object,
+            _salesReportingServiceMock.Object,
             _loggerMock.Object);
     }
 
@@ -282,6 +285,7 @@ public class PaymentSucceededEventHandlerTests
             ticketGenerationService,
             eventClientMock.Object,
             eventPublisherMock.Object,
+            _salesReportingServiceMock.Object,
             handlerLogger.Object);
 
         var paymentEvent = new PaymentSucceededEvent

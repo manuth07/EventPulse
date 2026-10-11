@@ -12,12 +12,13 @@ import { ResetPassword } from './pages/ResetPassword/ResetPassword';
 import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
+import { OrganizerSalesAnalytics } from './pages/OrganizerSalesAnalytics/OrganizerSalesAnalytics';
 import { OrganizerEventDetails } from './pages/OrganizerEventDetails/OrganizerEventDetails';
 import { CreateEvent } from './pages/CreateEvent/CreateEvent';
 import { EditEvent } from './pages/EditEvent/EditEvent';
 import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
 import { PendingEvents } from './pages/PendingEvents/PendingEvents';
-import { RequireAuth, RequireRole, AdminRoute } from './components/RouteGuards/RouteGuards';
+import { RequireAuth, RequireRole, AdminRoute, OrganizerRoute } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
 import { Cart } from './pages/Cart/Cart';
@@ -68,11 +69,15 @@ function App() {
             <Route path="/booked-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
             <Route path="/booked-tickets/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
 
-            {/* Organizer Protected Routes */}
-            <Route element={<RequireRole allowedRoles="Organizer" />}>
+            {/* Organizer Protected Routes (EP-386) */}
+            <Route element={<OrganizerRoute />}>
               <Route path="/organizer" element={<OrganizerDashboard />} />
               <Route path="/organizer/events/:id" element={<OrganizerEventDetails />} />
               <Route path="/organizer/events/:id/edit" element={<EditEvent />} />
+              <Route path="/organizer/sales-analytics" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/analytics" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/analytics/sales" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/events/:id/sales" element={<OrganizerSalesAnalytics />} />
               <Route path="/events/create" element={<CreateEvent />} />
             </Route>
 
