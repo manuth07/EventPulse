@@ -13,6 +13,7 @@ import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
 import { OrganizerSalesAnalytics } from './pages/OrganizerSalesAnalytics/OrganizerSalesAnalytics';
+import { OrganizerBookingAnalytics } from './pages/OrganizerBookingAnalytics/OrganizerBookingAnalytics';
 import { OrganizerEventDetails } from './pages/OrganizerEventDetails/OrganizerEventDetails';
 import { CreateEvent } from './pages/CreateEvent/CreateEvent';
 import { EditEvent } from './pages/EditEvent/EditEvent';
@@ -78,9 +79,9 @@ function App() {
               <Route path="/organizer/analytics" element={<OrganizerSalesAnalytics />} />
               <Route path="/organizer/analytics/sales" element={<OrganizerSalesAnalytics />} />
               <Route path="/organizer/events/:id/sales" element={<OrganizerSalesAnalytics />} />
-              <Route path="/organizer/booking-analytics" element={<OrganizerDashboard />} />
-              <Route path="/organizer/analytics/bookings" element={<OrganizerDashboard />} />
-              <Route path="/organizer/events/:id/bookings" element={<OrganizerDashboard />} />
+              <Route path="/organizer/booking-analytics" element={<OrganizerBookingAnalytics />} />
+              <Route path="/organizer/analytics/bookings" element={<OrganizerBookingAnalytics />} />
+              <Route path="/organizer/events/:id/bookings" element={<OrganizerBookingAnalytics />} />
               <Route path="/events/create" element={<CreateEvent />} />
             </Route>
 
