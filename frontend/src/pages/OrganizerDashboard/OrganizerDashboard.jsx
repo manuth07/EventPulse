@@ -14,6 +14,7 @@ import {
   Image as ImageIcon,
   ChevronRight,
   TrendingUp,
+  Ticket,
 } from 'lucide-react';
 
 function formatEventDateTime(dateString) {
@@ -176,6 +177,28 @@ export function OrganizerDashboard() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <Link
+              to="/organizer/booking-analytics"
+              data-testid="organizer-booking-analytics-link"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                borderRadius: 'var(--ep-radius-btn)',
+                border: '1px solid var(--ep-border)',
+                color: 'var(--ep-text-primary)',
+                backgroundColor: '#ffffff',
+                transition: 'var(--ep-transition)',
+              }}
+            >
+              <Ticket size={16} color="var(--ep-primary)" />
+              <span>Booking Analytics</span>
+            </Link>
+
             <Link
               to="/organizer/sales-analytics"
               data-testid="organizer-sales-analytics-link"

@@ -70,6 +70,20 @@ export function shouldShowSalesAnalyticsNavigation(user, isAuthenticated) {
 }
 
 /**
+ * Determines whether organizer booking analytics navigation entries (links, badges, menus)
+ * should be displayed in the UI (EP-391).
+ * Ensures private organizer booking analytics are strictly hidden from customers, logged-out users,
+ * and administrators without the Organizer role.
+ * 
+ * @param {Object|null} user - The current user object.
+ * @param {boolean} isAuthenticated - Authentication state.
+ * @returns {boolean} True if and only if authenticated as an Organizer.
+ */
+export function shouldShowBookingAnalyticsNavigation(user, isAuthenticated) {
+  return isOrganizer(user, isAuthenticated);
+}
+
+/**
  * Evaluates route access decisions for guarded components.
  * 
  * Rules:

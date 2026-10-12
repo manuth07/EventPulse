@@ -130,6 +130,7 @@ builder.Services.AddScoped<IBookingCancellationService, BookingCancellationServi
 builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublisher>();
 builder.Services.AddScoped<ISalesReportingService, SalesReportingService>();
 builder.Services.AddScoped<IOrganizerSalesAnalyticsService, OrganizerSalesAnalyticsService>();
+builder.Services.AddScoped<IOrganizerBookingAnalyticsService, OrganizerBookingAnalyticsService>();
 
 // ---------------------------------------------------------------------------
 // Kafka Event Consumers & Handlers
