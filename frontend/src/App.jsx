@@ -78,6 +78,9 @@ function App() {
               <Route path="/organizer/analytics" element={<OrganizerSalesAnalytics />} />
               <Route path="/organizer/analytics/sales" element={<OrganizerSalesAnalytics />} />
               <Route path="/organizer/events/:id/sales" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/booking-analytics" element={<OrganizerDashboard />} />
+              <Route path="/organizer/analytics/bookings" element={<OrganizerDashboard />} />
+              <Route path="/organizer/events/:id/bookings" element={<OrganizerDashboard />} />
               <Route path="/events/create" element={<CreateEvent />} />
             </Route>
 

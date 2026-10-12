@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { buildApiUrl } from '../../services/apiConfig';
 import { getAdminNotifications, getAdminNotificationsUnreadCount, markAdminNotificationRead } from '../../services/eventService';
-import { shouldShowSalesAnalyticsNavigation } from '../../utils/routeSecurity';
+import { shouldShowSalesAnalyticsNavigation, shouldShowBookingAnalyticsNavigation } from '../../utils/routeSecurity';
 
 export function Header({ location = 'Colombo, LK' }) {
   const navigate = useNavigate();
@@ -111,8 +111,11 @@ export function Header({ location = 'Colombo, LK' }) {
 
   const navLinkStyle = (path) => {
     const isSalesPath = path === '/organizer/sales-analytics' || path === '/organizer/analytics/sales';
+    const isBookingPath = path === '/organizer/booking-analytics' || path === '/organizer/analytics/bookings';
     const isActive = isSalesPath
       ? (routerLocation.pathname === '/organizer/sales-analytics' || routerLocation.pathname === '/organizer/analytics/sales' || routerLocation.pathname === '/organizer/analytics')
+      : isBookingPath
+      ? (routerLocation.pathname === '/organizer/booking-analytics' || routerLocation.pathname === '/organizer/analytics/bookings')
       : routerLocation.pathname === path;
     return {
       fontSize: '13px',
@@ -152,7 +155,7 @@ export function Header({ location = 'Colombo, LK' }) {
 
           {(isOrganizer || isAdmin) && (
             <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-              {/* Organizer navigation (EP-386) */}
+              {/* Organizer navigation (EP-386 / EP-391) */}
               {shouldShowSalesAnalyticsNavigation(currentUser, isAuthenticated) && (
                 <>
                   <Link to="/organizer" style={navLinkStyle('/organizer')}>
@@ -164,6 +167,12 @@ export function Header({ location = 'Colombo, LK' }) {
                     <span>Sales Analytics</span>
                   </Link>
                 </>
+              )}
+              {shouldShowBookingAnalyticsNavigation(currentUser, isAuthenticated) && (
+                <Link to="/organizer/booking-analytics" style={navLinkStyle('/organizer/booking-analytics')}>
+                  <Ticket size={14} />
+                  <span>Booking Analytics</span>
+                </Link>
               )}
 
               {/* Administrator navigation */}
@@ -671,6 +680,37 @@ export function Header({ location = 'Colombo, LK' }) {
                     >
                       <TrendingUp size={14} color="var(--ep-text-secondary)" />
                       <span>Sales Analytics</span>
+                    </Link>
+                  )}
+
+                  {shouldShowBookingAnalyticsNavigation(currentUser, isAuthenticated) && (
+                    <Link
+                      to="/organizer/booking-analytics"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'none',
+                        borderBottom: '1px solid var(--ep-border)',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'var(--ep-text-primary)',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        transition: 'var(--ep-transition)',
+                        fontFamily: 'var(--ep-font-body)',
+                        textAlign: 'left',
+                        boxSizing: 'border-box',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <Ticket size={14} color="var(--ep-text-secondary)" />
+                      <span>Booking Analytics</span>
                     </Link>
                   )}
 
