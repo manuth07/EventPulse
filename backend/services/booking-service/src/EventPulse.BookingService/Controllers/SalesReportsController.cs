@@ -7,7 +7,7 @@ namespace EventPulse.BookingService.Controllers;
 
 [ApiController]
 [Route("api/bookings/sales-reports")]
-[Authorize]
+[Authorize(Policy = AppPolicies.AdminOnly)]
 public class SalesReportsController : ControllerBase
 {
     private readonly ISalesReportingService _salesReportingService;
