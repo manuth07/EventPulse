@@ -167,3 +167,27 @@ public class PlatformActivityReportDataDto
 
     public ReportingPeriodDto ReportingPeriod { get; set; } = new();
 }
+
+/// <summary>
+/// Unified request criteria for report generation endpoint (EP-378).
+/// </summary>
+public class GenerateReportRequest
+{
+    public string ReportType { get; set; } = string.Empty;
+    public DateTimeOffset? From { get; set; }
+    public DateTimeOffset? To { get; set; }
+    public Guid? EventId { get; set; }
+    public Guid? OrganizerId { get; set; }
+    public string? BookingStatus { get; set; }
+    public string? Currency { get; set; }
+}
+
+/// <summary>
+/// Envelope returned by the dynamic report generation API.
+/// </summary>
+public class GeneratedReportEnvelopeDto
+{
+    public string ReportType { get; set; } = string.Empty;
+    public DateTimeOffset GeneratedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public object Data { get; set; } = null!;
+}
