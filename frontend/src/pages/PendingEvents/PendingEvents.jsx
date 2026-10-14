@@ -108,6 +108,30 @@ export function PendingEvents() {
     return accessToken || sessionStorage.getItem('ep_access_token');
   }, [accessToken]);
 
+  const handleOpenReview = useCallback(async (item) => {
+    setActionError(null);
+    setConfirmMode(null);
+    setRejectionNotes('');
+    setSelectedEvent(item);
+    setLoadingDetails(true);
+
+    const token = getEffectiveToken();
+    if (token) {
+      try {
+        const freshDetails = await getPendingEventById(item.id, token);
+        if (freshDetails) {
+          setSelectedEvent(freshDetails);
+        }
+      } catch {
+        // Fallback to item from list if single fetch fails
+      } finally {
+        setLoadingDetails(false);
+      }
+    } else {
+      setLoadingDetails(false);
+    }
+  }, [getEffectiveToken]);
+
   const loadAllData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
       setRefreshing(true);
@@ -163,35 +187,11 @@ export function PendingEvents() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getEffectiveToken, reviewEventId]);
+  }, [getEffectiveToken, reviewEventId, selectedEvent, handleOpenReview]);
 
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
-
-  const handleOpenReview = async (item) => {
-    setActionError(null);
-    setConfirmMode(null);
-    setRejectionNotes('');
-    setSelectedEvent(item);
-    setLoadingDetails(true);
-
-    const token = getEffectiveToken();
-    if (token) {
-      try {
-        const freshDetails = await getPendingEventById(item.id, token);
-        if (freshDetails) {
-          setSelectedEvent(freshDetails);
-        }
-      } catch (err) {
-        // Fallback to item from list if single fetch fails
-      } finally {
-        setLoadingDetails(false);
-      }
-    } else {
-      setLoadingDetails(false);
-    }
-  };
 
   const handleCloseReview = () => {
     if (actionInProgress) return;

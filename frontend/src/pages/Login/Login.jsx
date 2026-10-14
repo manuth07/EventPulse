@@ -101,8 +101,10 @@ export function Login() {
     if (result?.user?.profileCompleted === false) {
       navigate('/complete-profile', { replace: true });
     } else {
-      const from = location.state?.returnTo || location.state?.from?.pathname || '/';
-      navigate(from, { replace: true });
+      const searchFrom = new URLSearchParams(location.search).get('from');
+      const candidateFrom = location.state?.returnTo || location.state?.from?.pathname || searchFrom || '/';
+      const safeFrom = candidateFrom.startsWith('/') && !candidateFrom.startsWith('//') ? candidateFrom : '/';
+      navigate(safeFrom, { replace: true });
     }
   }
 
