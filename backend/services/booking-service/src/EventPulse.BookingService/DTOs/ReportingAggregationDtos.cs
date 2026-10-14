@@ -10,6 +10,8 @@ public class BookingsReportQueryParameters
     public Guid? EventId { get; set; }
     public Guid? OrganizerId { get; set; }
     public string? BookingStatus { get; set; }
+    public Guid? TicketTypeId { get; set; }
+    public string? Category { get; set; }
 }
 
 /// <summary>
@@ -67,6 +69,9 @@ public class RevenueReportQueryParameters
     public Guid? EventId { get; set; }
     public Guid? OrganizerId { get; set; }
     public string? Currency { get; set; }
+    public Guid? TicketTypeId { get; set; }
+    public string? Category { get; set; }
+    public string? BookingStatus { get; set; }
 }
 
 /// <summary>
@@ -131,6 +136,10 @@ public class PlatformActivityReportQueryParameters
     public DateTimeOffset? To { get; set; }
     public Guid? EventId { get; set; }
     public Guid? OrganizerId { get; set; }
+    public string? BookingStatus { get; set; }
+    public Guid? TicketTypeId { get; set; }
+    public string? Category { get; set; }
+    public string? Currency { get; set; }
 }
 
 /// <summary>
@@ -180,6 +189,8 @@ public class GenerateReportRequest
     public Guid? OrganizerId { get; set; }
     public string? BookingStatus { get; set; }
     public string? Currency { get; set; }
+    public Guid? TicketTypeId { get; set; }
+    public string? Category { get; set; }
 }
 
 /// <summary>

@@ -133,6 +133,7 @@ builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublish
 builder.Services.AddScoped<ISalesReportingService, SalesReportingService>();
 builder.Services.AddScoped<IOrganizerSalesAnalyticsService, OrganizerSalesAnalyticsService>();
 builder.Services.AddScoped<IOrganizerBookingAnalyticsService, OrganizerBookingAnalyticsService>();
+builder.Services.AddScoped<IReportFilteringService, ReportFilteringService>();
 builder.Services.AddScoped<IReportDataAggregationService, ReportDataAggregationService>();
 
 // ---------------------------------------------------------------------------

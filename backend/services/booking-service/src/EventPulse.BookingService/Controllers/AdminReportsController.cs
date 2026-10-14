@@ -119,6 +119,8 @@ public class AdminReportsController : ControllerBase
         [FromQuery] Guid? organizerId,
         [FromQuery] string? bookingStatus,
         [FromQuery] string? currency,
+        [FromQuery] Guid? ticketTypeId,
+        [FromQuery] string? category,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(reportType))
@@ -130,8 +132,19 @@ public class AdminReportsController : ControllerBase
             });
         }
 
-        return await GenerateReportInternal(reportType, from, to, eventId, organizerId, bookingStatus, currency, ct);
+        return await GenerateReportInternal(reportType, from, to, eventId, organizerId, bookingStatus, currency, ticketTypeId, category, ct);
     }
+
+    [NonAction]
+    public Task<IActionResult> GetReportByQuery(
+        string? reportType,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        Guid? eventId,
+        Guid? organizerId,
+        string? bookingStatus,
+        string? currency,
+        CancellationToken ct) => GetReportByQuery(reportType, from, to, eventId, organizerId, bookingStatus, currency, null, null, ct);
 
     /// <summary>
     /// GET /api/admin/reports/{reportType}
@@ -146,10 +159,23 @@ public class AdminReportsController : ControllerBase
         [FromQuery] Guid? organizerId,
         [FromQuery] string? bookingStatus,
         [FromQuery] string? currency,
+        [FromQuery] Guid? ticketTypeId,
+        [FromQuery] string? category,
         CancellationToken ct)
     {
-        return await GenerateReportInternal(reportType, from, to, eventId, organizerId, bookingStatus, currency, ct);
+        return await GenerateReportInternal(reportType, from, to, eventId, organizerId, bookingStatus, currency, ticketTypeId, category, ct);
     }
+
+    [NonAction]
+    public Task<IActionResult> GetReportByType(
+        string reportType,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        Guid? eventId,
+        Guid? organizerId,
+        string? bookingStatus,
+        string? currency,
+        CancellationToken ct) => GetReportByType(reportType, from, to, eventId, organizerId, bookingStatus, currency, null, null, ct);
 
     /// <summary>
     /// POST /api/admin/reports/generate
@@ -190,7 +216,9 @@ public class AdminReportsController : ControllerBase
                 To = request.To,
                 EventId = request.EventId,
                 OrganizerId = request.OrganizerId,
-                BookingStatus = request.BookingStatus
+                BookingStatus = request.BookingStatus,
+                TicketTypeId = request.TicketTypeId,
+                Category = request.Category
             }, ct);
 
             return Ok(new GeneratedReportEnvelopeDto
@@ -209,7 +237,10 @@ public class AdminReportsController : ControllerBase
                 To = request.To,
                 EventId = request.EventId,
                 OrganizerId = request.OrganizerId,
-                Currency = request.Currency
+                Currency = request.Currency,
+                TicketTypeId = request.TicketTypeId,
+                Category = request.Category,
+                BookingStatus = request.BookingStatus
             }, ct);
 
             return Ok(new GeneratedReportEnvelopeDto
@@ -227,7 +258,11 @@ public class AdminReportsController : ControllerBase
                 From = request.From,
                 To = request.To,
                 EventId = request.EventId,
-                OrganizerId = request.OrganizerId
+                OrganizerId = request.OrganizerId,
+                BookingStatus = request.BookingStatus,
+                Currency = request.Currency,
+                TicketTypeId = request.TicketTypeId,
+                Category = request.Category
             }, ct);
 
             return Ok(new GeneratedReportEnvelopeDto
@@ -253,6 +288,8 @@ public class AdminReportsController : ControllerBase
         Guid? organizerId,
         string? bookingStatus,
         string? currency,
+        Guid? ticketTypeId,
+        string? category,
         CancellationToken ct)
     {
         var trimmedType = reportType.Trim();
@@ -276,7 +313,9 @@ public class AdminReportsController : ControllerBase
                 To = to,
                 EventId = eventId,
                 OrganizerId = organizerId,
-                BookingStatus = bookingStatus
+                BookingStatus = bookingStatus,
+                TicketTypeId = ticketTypeId,
+                Category = category
             }, ct);
 
             return Ok(data);
@@ -290,7 +329,10 @@ public class AdminReportsController : ControllerBase
                 To = to,
                 EventId = eventId,
                 OrganizerId = organizerId,
-                Currency = currency
+                Currency = currency,
+                TicketTypeId = ticketTypeId,
+                Category = category,
+                BookingStatus = bookingStatus
             }, ct);
 
             return Ok(data);
@@ -303,7 +345,11 @@ public class AdminReportsController : ControllerBase
                 From = from,
                 To = to,
                 EventId = eventId,
-                OrganizerId = organizerId
+                OrganizerId = organizerId,
+                BookingStatus = bookingStatus,
+                Currency = currency,
+                TicketTypeId = ticketTypeId,
+                Category = category
             }, ct);
 
             return Ok(data);

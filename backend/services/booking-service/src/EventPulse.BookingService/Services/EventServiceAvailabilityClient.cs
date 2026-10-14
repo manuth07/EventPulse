@@ -94,6 +94,25 @@ public class EventServiceAvailabilityClient : IEventAvailabilityClient
         }
     }
 
+    public async Task<IReadOnlyList<EventSummaryInfo>> GetEventsByCategoryAsync(string category, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var encodedCategory = Uri.EscapeDataString(category);
+            var response = await _httpClient.GetAsync($"/api/events?category={encodedCategory}", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return Array.Empty<EventSummaryInfo>();
+
+            var events = await response.Content.ReadFromJsonAsync<List<EventSummaryInfo>>(cancellationToken: cancellationToken);
+            return events ?? (IReadOnlyList<EventSummaryInfo>)Array.Empty<EventSummaryInfo>();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Failed to fetch events for Category {Category}", category);
+            return Array.Empty<EventSummaryInfo>();
+        }
+    }
+
     public async Task<ClientInventoryResult> ReserveInventoryAsync(
         Guid eventId,
         Guid bookingId,
