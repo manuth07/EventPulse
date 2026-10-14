@@ -84,6 +84,19 @@ export function shouldShowBookingAnalyticsNavigation(user, isAuthenticated) {
 }
 
 /**
+ * Determines whether administrative reports navigation entries (links, badges, menus)
+ * should be displayed in the UI (EP-380).
+ * Ensures reporting links are strictly hidden from customers, organizers, and logged-out visitors.
+ * 
+ * @param {Object|null} user - The current user object.
+ * @param {boolean} isAuthenticated - Authentication state.
+ * @returns {boolean} True if and only if authenticated as an Administrator.
+ */
+export function shouldShowReportsNavigation(user, isAuthenticated) {
+  return isAdmin(user, isAuthenticated);
+}
+
+/**
  * Evaluates route access decisions for guarded components.
  * 
  * Rules:

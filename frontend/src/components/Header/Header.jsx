@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar, Bell, CheckCircle2, Clock, CreditCard, TrendingUp } from 'lucide-react';
+import { MapPin, User, ChevronDown, LogOut, LayoutDashboard, ShieldCheck, FileCheck, UserCheck, Ticket, ShoppingCart, Calendar, Bell, CheckCircle2, Clock, CreditCard, TrendingUp, BarChart3 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { buildApiUrl } from '../../services/apiConfig';
 import { getAdminNotifications, getAdminNotificationsUnreadCount, markAdminNotificationRead } from '../../services/eventService';
-import { shouldShowSalesAnalyticsNavigation, shouldShowBookingAnalyticsNavigation } from '../../utils/routeSecurity';
+import { shouldShowSalesAnalyticsNavigation, shouldShowBookingAnalyticsNavigation, shouldShowReportsNavigation } from '../../utils/routeSecurity';
 
 export function Header({ location = 'Colombo, LK' }) {
   const navigate = useNavigate();
@@ -189,6 +189,10 @@ export function Header({ location = 'Colombo, LK' }) {
                   <Link to="/admin/events/pending" style={navLinkStyle('/admin/events/pending')}>
                     <FileCheck size={14} />
                     <span>Pending Events</span>
+                  </Link>
+                  <Link to="/admin/reports" data-testid="header-nav-admin-reports" style={navLinkStyle('/admin/reports')}>
+                    <BarChart3 size={14} />
+                    <span>Dynamic Reports</span>
                   </Link>
                 </>
               )}
@@ -771,6 +775,35 @@ export function Header({ location = 'Colombo, LK' }) {
                       >
                         <UserCheck size={14} color="var(--ep-text-secondary)" />
                         <span>Organizer Applications</span>
+                      </Link>
+                      <Link
+                        to="/admin/reports"
+                        role="menuitem"
+                        data-testid="account-menu-admin-reports"
+                        onClick={() => setMenuOpen(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          width: '100%',
+                          padding: '10px 14px',
+                          background: 'none',
+                          borderBottom: '1px solid var(--ep-border)',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          color: 'var(--ep-text-primary)',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                          transition: 'var(--ep-transition)',
+                          fontFamily: 'var(--ep-font-body)',
+                          textAlign: 'left',
+                          boxSizing: 'border-box',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--ep-canvas)'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        <BarChart3 size={14} color="var(--ep-text-secondary)" />
+                        <span>Dynamic Reports</span>
                       </Link>
                     </>
                   )}
