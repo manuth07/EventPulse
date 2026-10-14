@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import {
   ShieldCheck,
-  BarChart3,
-  Calendar,
   Filter,
   RefreshCw,
   AlertCircle,
@@ -14,8 +12,6 @@ import {
   Users,
   Layers,
   ArrowLeft,
-  ChevronDown,
-  ChevronUp,
   TrendingUp,
   Percent,
   CheckCircle2,
@@ -29,18 +25,17 @@ import {
 } from '../../services/adminReportsService';
 import {
   SUPPORTED_REPORT_TYPES,
-  BOOKING_STATUS_OPTIONS,
-  CURRENCY_OPTIONS,
   validateReportCriteria,
   formatReportCount,
   formatReportRate,
   formatReportCurrency,
   formatReportingPeriodLabel,
-  getDatePresetRange,
   isReportDataEmpty,
 } from '../../utils/adminReportsUtils';
 import { ReportFilterPanel } from '../../components/common/ReportFilterPanel';
 import { getDefaultFilters } from '../../utils/reportFilterUtils';
+import { fetchPublishedEvents } from '../../services/eventService';
+import { getPublicTicketTypes } from '../../services/ticketTypeService';
 
 export function AdminReports() {
   // Criteria State
@@ -54,6 +49,69 @@ export function AdminReports() {
   const [eventId, setEventId] = useState('');
   const [ticketTypeId, setTicketTypeId] = useState('');
   const [organizerId, setOrganizerId] = useState('');
+
+  // Dynamic Options for Event & Ticket Tier Dropdowns
+  const [eventsList, setEventsList] = useState([]);
+  const [ticketTypesList, setTicketTypesList] = useState([]);
+
+  // Load published events on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadEvents() {
+      try {
+        const events = await fetchPublishedEvents();
+        if (isMounted && Array.isArray(events)) {
+          setEventsList(events);
+        }
+      } catch (err) {
+        // Fallback: eventsList remains empty, freeform input is available
+      }
+    }
+    loadEvents();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Load ticket types when event changes
+  useEffect(() => {
+    let isMounted = true;
+    async function loadTicketTypes() {
+      if (!eventId || eventId === 'ALL') {
+        setTicketTypesList([]);
+        return;
+      }
+      try {
+        const tiers = await getPublicTicketTypes(eventId);
+        if (isMounted && Array.isArray(tiers)) {
+          setTicketTypesList(tiers);
+        }
+      } catch (err) {
+        if (isMounted) setTicketTypesList([]);
+      }
+    }
+    loadTicketTypes();
+    return () => {
+      isMounted = false;
+    };
+  }, [eventId]);
+
+  const eventLabels = useMemo(() => {
+    const map = {};
+    eventsList.forEach((e) => {
+      if (e.id) map[e.id] = e.title || e.name || e.id;
+    });
+    return map;
+  }, [eventsList]);
+
+  const ticketTypeLabels = useMemo(() => {
+    const map = {};
+    ticketTypesList.forEach((t) => {
+      const id = t.id || t.ticketTypeId;
+      if (id) map[id] = t.name || t.tierName || id;
+    });
+    return map;
+  }, [ticketTypesList]);
 
   // Generation & Results State
   const [loading, setLoading] = useState(false);
@@ -89,6 +147,7 @@ export function AdminReports() {
     setBookingStatus(defaults.bookingStatus);
     setCurrency(defaults.currency);
     setOrganizerId(defaults.organizerId);
+    setTicketTypesList([]);
     setValidationError(null);
 
     handleGenerateReport({
@@ -117,11 +176,28 @@ export function AdminReports() {
     const targetTicketTypeId = customOverrides.ticketTypeId !== undefined ? customOverrides.ticketTypeId : ticketTypeId;
     const targetOrganizerId = customOverrides.organizerId !== undefined ? customOverrides.organizerId : organizerId;
 
+    // Client-side criteria validation
+    const validation = validateReportCriteria({
+      reportType: targetType,
+      from: targetFrom,
+      to: targetTo,
+      currency: targetCurrency,
+      category: targetCategory,
+      eventId: targetEventId,
+      ticketTypeId: targetTicketTypeId,
+      organizerId: targetOrganizerId,
+    }, 'Administrator');
+
+    if (!validation.isValid) {
+      setValidationError(validation.error);
+      return;
+    }
+
     // Build criteria payload
     const criteria = {
       reportType: targetType,
-      from: targetFrom ? new Date(targetFrom).toISOString() : undefined,
-      to: targetTo ? (() => {
+      from: targetFrom && !isNaN(new Date(targetFrom).getTime()) ? new Date(targetFrom).toISOString() : undefined,
+      to: targetTo && !isNaN(new Date(targetTo).getTime()) ? (() => {
         const d = new Date(targetTo);
         d.setHours(23, 59, 59, 999);
         return d.toISOString();
@@ -150,23 +226,6 @@ export function AdminReports() {
 
     if (targetOrganizerId && targetOrganizerId.trim()) {
       criteria.organizerId = targetOrganizerId.trim();
-    }
-
-    // Client-side criteria validation
-    const validation = validateReportCriteria({
-      reportType: targetType,
-      from: targetFrom,
-      to: targetTo,
-      currency: targetCurrency,
-      category: targetCategory,
-      eventId: targetEventId,
-      ticketTypeId: targetTicketTypeId,
-      organizerId: targetOrganizerId,
-    }, 'Administrator');
-
-    if (!validation.isValid) {
-      setValidationError(validation.error);
-      return;
     }
 
     setValidationError(null);
@@ -199,6 +258,20 @@ export function AdminReports() {
       setLoading(false);
     }
   }, [reportType, dateFrom, dateTo, activePreset, bookingStatus, currency, category, eventId, ticketTypeId, organizerId]);
+
+  // Reset dates to all time and regenerate
+  const handleClearDates = () => {
+    setDateFrom('');
+    setDateTo('');
+    setActivePreset('allTime');
+    setValidationError(null);
+
+    handleGenerateReport({
+      dateFrom: '',
+      dateTo: '',
+      activePreset: 'allTime',
+    });
+  };
 
   // Initial load: Generate default summary report on mount
   useEffect(() => {
@@ -458,6 +531,10 @@ export function AdminReports() {
                 currency,
                 organizerId,
               }}
+              eventsList={eventsList}
+              ticketTypesList={ticketTypesList}
+              eventLabels={eventLabels}
+              ticketTypeLabels={ticketTypeLabels}
               onFilterChange={handleFilterPanelChange}
               onApply={() => handleGenerateReport()}
               onClear={handleClearFilters}
