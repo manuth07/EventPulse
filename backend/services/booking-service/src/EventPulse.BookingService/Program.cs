@@ -115,6 +115,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AppPolicies.OrganizerOnly, policy => policy.RequireRole("Organizer"));
+    options.AddPolicy(AppPolicies.AdminOnly, policy => policy.RequireRole("Administrator"));
+    options.AddPolicy(AppPolicies.AdministratorOnly, policy => policy.RequireRole("Administrator"));
 });
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IBookingReferenceGenerator, BookingReferenceGenerator>();
@@ -131,6 +133,7 @@ builder.Services.AddSingleton<IBookingEventPublisher, LoggingBookingEventPublish
 builder.Services.AddScoped<ISalesReportingService, SalesReportingService>();
 builder.Services.AddScoped<IOrganizerSalesAnalyticsService, OrganizerSalesAnalyticsService>();
 builder.Services.AddScoped<IOrganizerBookingAnalyticsService, OrganizerBookingAnalyticsService>();
+builder.Services.AddScoped<IReportDataAggregationService, ReportDataAggregationService>();
 
 // ---------------------------------------------------------------------------
 // Kafka Event Consumers & Handlers
