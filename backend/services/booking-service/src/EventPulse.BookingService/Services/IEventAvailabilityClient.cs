@@ -20,6 +20,8 @@ public class EventSummaryInfo
     public string? ImageUrl { get; set; }
     public string? Status { get; set; }
     public Guid OrganizerId { get; set; }
+    public string? Category { get; set; }
+    public string? VenueType { get; set; }
 }
 
 public class ReserveInventoryItemDto
@@ -48,6 +50,8 @@ public interface IEventAvailabilityClient
     Task<IReadOnlyList<TicketTypeAvailability>> GetEventTicketTypesAsync(Guid eventId, CancellationToken cancellationToken = default);
     Task<EventSummaryInfo?> GetEventSummaryAsync(Guid eventId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventSummaryInfo>> GetOrganizerEventsAsync(Guid organizerId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EventSummaryInfo>> GetEventsByCategoryAsync(string category, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<EventSummaryInfo>>(Array.Empty<EventSummaryInfo>());
 
     Task<ClientInventoryResult> ReserveInventoryAsync(
         Guid eventId,

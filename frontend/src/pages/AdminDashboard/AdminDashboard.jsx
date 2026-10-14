@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Ticket,
   UserX,
+  BarChart3,
 } from 'lucide-react';
 import { getAdminNotifications, getAdminNotificationsUnreadCount } from '../../services/eventService';
 import { getPlatformOverview } from '../../services/adminService';
@@ -218,6 +219,24 @@ export function AdminDashboard() {
             >
               <FileCheck size={15} />
               <span>Pending Events</span>
+            </Link>
+
+            <Link
+              to="/admin/reports"
+              data-testid="admin-nav-reports-btn"
+              className="ep-btn-secondary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                fontSize: '13px',
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              <BarChart3 size={15} />
+              <span>Dynamic Reports</span>
             </Link>
 
             <a

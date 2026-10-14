@@ -3,26 +3,43 @@ using EventPulse.BookingService.DTOs;
 using EventPulse.BookingService.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EventPulse.BookingService.Services;
 
 /// <summary>
 /// Reusable backend aggregation service for dynamic platform reports (US-39 / EP-377).
 /// Implements calculation rules and data aggregation across authoritative bookings and sales reports.
+/// Integrated with IReportFilteringService (EP-394) for multi-dimensional filtering and line-item slicing.
 /// </summary>
 public class ReportDataAggregationService : IReportDataAggregationService
 {
     private readonly BookingDbContext _dbContext;
     private readonly IEventAvailabilityClient _eventAvailabilityClient;
+    private readonly IReportFilteringService _filteringService;
     private readonly ILogger<ReportDataAggregationService> _logger;
 
     public ReportDataAggregationService(
         BookingDbContext dbContext,
         IEventAvailabilityClient eventAvailabilityClient,
         ILogger<ReportDataAggregationService> logger)
+        : this(
+            dbContext,
+            eventAvailabilityClient,
+            new ReportFilteringService(dbContext, eventAvailabilityClient, NullLogger<ReportFilteringService>.Instance),
+            logger)
+    {
+    }
+
+    public ReportDataAggregationService(
+        BookingDbContext dbContext,
+        IEventAvailabilityClient eventAvailabilityClient,
+        IReportFilteringService filteringService,
+        ILogger<ReportDataAggregationService> logger)
     {
         _dbContext = dbContext;
         _eventAvailabilityClient = eventAvailabilityClient;
+        _filteringService = filteringService;
         _logger = logger;
     }
 
@@ -34,25 +51,16 @@ public class ReportDataAggregationService : IReportDataAggregationService
 
         var period = new ReportingPeriodDto { From = query.From, To = query.To };
 
-        // 1. Resolve Organizer filter boundary if specified
-        List<Guid>? organizerEventIds = null;
-        if (query.OrganizerId.HasValue)
-        {
-            try
-            {
-                var events = await _eventAvailabilityClient.GetOrganizerEventsAsync(query.OrganizerId.Value, cancellationToken);
-                organizerEventIds = events.Select(e => e.Id).ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to resolve events for Organizer {OrganizerId}", query.OrganizerId.Value);
-                organizerEventIds = new List<Guid>();
-            }
+        // 1. Resolve event boundaries across organizer, category, and event constraints
+        var allowedEventIds = await _filteringService.ResolveAllowedEventIdsAsync(
+            query.OrganizerId,
+            query.Category,
+            query.EventId,
+            cancellationToken);
 
-            if (organizerEventIds.Count == 0)
-            {
-                return new BookingsReportDataDto { ReportingPeriod = period };
-            }
+        if (allowedEventIds != null && allowedEventIds.Count == 0)
+        {
+            return new BookingsReportDataDto { ReportingPeriod = period };
         }
 
         // 2. Build EF query for Bookings
@@ -60,25 +68,18 @@ public class ReportDataAggregationService : IReportDataAggregationService
             .Include(b => b.Items)
             .AsNoTracking();
 
-        if (organizerEventIds != null)
+        var criteria = new ReportFilterCriteria
         {
-            bookingsQuery = bookingsQuery.Where(b => organizerEventIds.Contains(b.EventId));
-        }
+            From = query.From,
+            To = query.To,
+            EventId = query.EventId,
+            BookingStatus = query.BookingStatus,
+            TicketTypeId = query.TicketTypeId,
+            Category = query.Category,
+            OrganizerId = query.OrganizerId
+        };
 
-        if (query.EventId.HasValue)
-        {
-            bookingsQuery = bookingsQuery.Where(b => b.EventId == query.EventId.Value);
-        }
-
-        if (query.From.HasValue)
-        {
-            bookingsQuery = bookingsQuery.Where(b => (b.ConfirmedAt ?? b.CreatedAt) >= query.From.Value);
-        }
-
-        if (query.To.HasValue)
-        {
-            bookingsQuery = bookingsQuery.Where(b => (b.ConfirmedAt ?? b.CreatedAt) <= query.To.Value);
-        }
+        bookingsQuery = _filteringService.ApplyBookingFilters(bookingsQuery, criteria, allowedEventIds);
 
         var allMatchingBookings = await bookingsQuery.ToListAsync(cancellationToken);
 
@@ -104,20 +105,16 @@ public class ReportDataAggregationService : IReportDataAggregationService
             .Where(b => b.Status == BookingStatus.PaymentFailed)
             .ToList();
 
-        // Specific status filter override if requested by caller
-        if (!string.IsNullOrWhiteSpace(query.BookingStatus) &&
-            !query.BookingStatus.Equals("All", StringComparison.OrdinalIgnoreCase))
-        {
-            if (Enum.TryParse<BookingStatus>(query.BookingStatus, true, out var requestedStatus))
-            {
-                allMatchingBookings = allMatchingBookings.Where(b => b.Status == requestedStatus).ToList();
-            }
-        }
+        // 4. Compute canonical metrics with line-item slicing support
+        var isSpecificStatusFiltered = !string.IsNullOrWhiteSpace(query.BookingStatus) &&
+            !query.BookingStatus.Equals("All", StringComparison.OrdinalIgnoreCase);
 
-        // 4. Compute canonical metrics
-        var totalBookings = confirmedBookings.Count + cancelledBookings.Count;
-        var activeTickets = confirmedBookings.SelectMany(b => b.Items).Sum(i => i.Quantity);
-        var cancelledTickets = cancelledBookings.SelectMany(b => b.Items).Sum(i => i.Quantity);
+        var totalBookings = isSpecificStatusFiltered
+            ? allMatchingBookings.Count
+            : confirmedBookings.Count + cancelledBookings.Count;
+
+        var activeTickets = confirmedBookings.Sum(b => _filteringService.GetFilteredBookingTickets(b, query.TicketTypeId));
+        var cancelledTickets = cancelledBookings.Sum(b => _filteringService.GetFilteredBookingTickets(b, query.TicketTypeId));
         var grossTickets = activeTickets + cancelledTickets;
 
         var cancellationRate = totalBookings > 0
@@ -133,7 +130,10 @@ public class ReportDataAggregationService : IReportDataAggregationService
             : 0.0m;
 
         // 5. Compute per-event breakdown
-        var completedBookings = confirmedBookings.Concat(cancelledBookings).ToList();
+        var completedBookings = isSpecificStatusFiltered
+            ? allMatchingBookings
+            : confirmedBookings.Concat(cancelledBookings).ToList();
+
         var eventGroups = completedBookings.GroupBy(b => b.EventId);
         var eventBreakdown = new List<EventBookingAggregationItemDto>();
 
@@ -141,12 +141,12 @@ public class ReportDataAggregationService : IReportDataAggregationService
         {
             var eventConfirmed = group.Count(b => b.Status == BookingStatus.Confirmed);
             var eventCancelled = group.Count(b => b.Status == BookingStatus.Cancelled);
-            var eventTotal = eventConfirmed + eventCancelled;
+            var eventTotal = isSpecificStatusFiltered ? group.Count() : eventConfirmed + eventCancelled;
 
             var eventActiveTickets = group.Where(b => b.Status == BookingStatus.Confirmed)
-                .SelectMany(b => b.Items).Sum(i => i.Quantity);
+                .Sum(b => _filteringService.GetFilteredBookingTickets(b, query.TicketTypeId));
             var eventCancelledTickets = group.Where(b => b.Status == BookingStatus.Cancelled)
-                .SelectMany(b => b.Items).Sum(i => i.Quantity);
+                .Sum(b => _filteringService.GetFilteredBookingTickets(b, query.TicketTypeId));
 
             var eventCancRate = eventTotal > 0
                 ? Math.Round(((decimal)eventCancelled / eventTotal) * 100m, 2)
@@ -167,7 +167,7 @@ public class ReportDataAggregationService : IReportDataAggregationService
 
         // 6. Compute per-ticket-type tier breakdown
         var ticketTypeBreakdown = completedBookings
-            .SelectMany(b => b.Items.Select(item => new { Booking = b, Item = item }))
+            .SelectMany(b => _filteringService.GetMatchingBookingItems(b, query.TicketTypeId).Select(item => new { Booking = b, Item = item }))
             .GroupBy(x => new { x.Item.TicketTypeId, x.Item.TicketName })
             .Select(g =>
             {
@@ -217,35 +217,54 @@ public class ReportDataAggregationService : IReportDataAggregationService
 
         var period = new ReportingPeriodDto { From = query.From, To = query.To };
 
+        // 1. Resolve event boundaries across organizer, category, and event constraints
+        var allowedEventIds = await _filteringService.ResolveAllowedEventIdsAsync(
+            query.OrganizerId,
+            query.Category,
+            query.EventId,
+            cancellationToken);
+
+        if (allowedEventIds != null && allowedEventIds.Count == 0)
+        {
+            return new RevenueReportDataDto
+            {
+                Currency = !string.IsNullOrWhiteSpace(query.Currency) ? query.Currency.ToUpperInvariant() : "USD",
+                ReportingPeriod = period
+            };
+        }
+
+        // 2. Build EF query for SalesReports
         var salesQuery = _dbContext.SalesReports
             .Include(s => s.Items)
             .Include(s => s.RefundAdjustments)
             .AsNoTracking();
 
-        if (query.EventId.HasValue)
+        var criteria = new ReportFilterCriteria
         {
-            salesQuery = salesQuery.Where(s => s.EventId == query.EventId.Value);
-        }
+            From = query.From,
+            To = query.To,
+            EventId = query.EventId,
+            OrganizerId = query.OrganizerId,
+            Currency = query.Currency,
+            BookingStatus = query.BookingStatus,
+            TicketTypeId = query.TicketTypeId,
+            Category = query.Category
+        };
 
-        if (query.OrganizerId.HasValue)
-        {
-            salesQuery = salesQuery.Where(s => s.OrganizerId == query.OrganizerId.Value);
-        }
+        salesQuery = _filteringService.ApplySalesReportFilters(salesQuery, criteria, allowedEventIds);
 
-        if (!string.IsNullOrWhiteSpace(query.Currency))
+        // Status-based sales filter (EP-393 Section 8.1 Option B)
+        if (!string.IsNullOrWhiteSpace(query.BookingStatus) &&
+            !query.BookingStatus.Equals("All", StringComparison.OrdinalIgnoreCase))
         {
-            var normalizedCurrency = query.Currency.Trim().ToUpperInvariant();
-            salesQuery = salesQuery.Where(s => s.Currency.ToUpper() == normalizedCurrency);
-        }
-
-        if (query.From.HasValue)
-        {
-            salesQuery = salesQuery.Where(s => s.PaymentTimestampUtc >= query.From.Value);
-        }
-
-        if (query.To.HasValue)
-        {
-            salesQuery = salesQuery.Where(s => s.PaymentTimestampUtc <= query.To.Value);
+            if (query.BookingStatus.Equals("Confirmed", StringComparison.OrdinalIgnoreCase))
+            {
+                salesQuery = salesQuery.Where(s => s.RefundStatus != SalesRefundStatus.Refunded);
+            }
+            else if (query.BookingStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                salesQuery = salesQuery.Where(s => s.RefundStatus == SalesRefundStatus.Refunded);
+            }
         }
 
         var reports = await salesQuery.ToListAsync(cancellationToken);
@@ -259,19 +278,19 @@ public class ReportDataAggregationService : IReportDataAggregationService
             };
         }
 
-        // Multi-currency strict segregation (EP-375 Rule 6.5)
+        // 3. Multi-currency strict segregation (EP-375 Rule 6.5) with line-item slicing
         var currencyGroups = reports
             .GroupBy(r => string.IsNullOrWhiteSpace(r.Currency) ? "USD" : r.Currency.ToUpperInvariant())
             .Select(g =>
             {
-                var gross = g.Sum(r => r.SaleAmount);
-                var refunded = g.Sum(r => r.RefundedAmount);
+                var gross = g.Sum(r => _filteringService.GetFilteredGrossRevenue(r, query.TicketTypeId));
+                var refunded = g.Sum(r => _filteringService.GetFilteredRefundedAmount(r, query.TicketTypeId));
                 var net = Math.Max(0m, gross - refunded);
                 var purchaseCount = g.Count();
                 var aov = purchaseCount > 0 ? Math.Round(gross / purchaseCount, 2) : 0.0m;
                 var refundRate = gross > 0 ? Math.Round((refunded / gross) * 100m, 2) : 0.0m;
-                var ticketsSold = g.SelectMany(r => r.Items).Sum(i => i.Quantity);
-                var netTicketsSold = g.SelectMany(r => r.Items).Sum(i => i.Quantity - i.RefundedQuantity);
+                var ticketsSold = g.Sum(r => _filteringService.GetFilteredTicketsSold(r, query.TicketTypeId));
+                var netTicketsSold = g.Sum(r => _filteringService.GetFilteredNetTicketsSold(r, query.TicketTypeId));
 
                 return new CurrencyRevenueSummaryDto
                 {
@@ -291,16 +310,38 @@ public class ReportDataAggregationService : IReportDataAggregationService
 
         // Primary currency summary
         var primaryCurrencySummary = currencyGroups.First();
-        var fullRefunds = reports.Count(r => r.RefundStatus == SalesRefundStatus.Refunded);
-        var partialRefunds = reports.Count(r => r.RefundStatus == SalesRefundStatus.PartiallyRefunded);
 
-        // Per-event revenue breakdown
+        int fullRefunds;
+        int partialRefunds;
+        if (query.TicketTypeId.HasValue)
+        {
+            fullRefunds = reports.Count(r =>
+            {
+                var gross = _filteringService.GetFilteredGrossRevenue(r, query.TicketTypeId);
+                var refAmt = _filteringService.GetFilteredRefundedAmount(r, query.TicketTypeId);
+                return gross > 0 && refAmt >= gross;
+            });
+
+            partialRefunds = reports.Count(r =>
+            {
+                var gross = _filteringService.GetFilteredGrossRevenue(r, query.TicketTypeId);
+                var refAmt = _filteringService.GetFilteredRefundedAmount(r, query.TicketTypeId);
+                return gross > 0 && refAmt > 0 && refAmt < gross;
+            });
+        }
+        else
+        {
+            fullRefunds = reports.Count(r => r.RefundStatus == SalesRefundStatus.Refunded);
+            partialRefunds = reports.Count(r => r.RefundStatus == SalesRefundStatus.PartiallyRefunded);
+        }
+
+        // Per-event revenue breakdown with line-item slicing
         var eventBreakdown = reports
             .GroupBy(r => new { r.EventId, Currency = string.IsNullOrWhiteSpace(r.Currency) ? "USD" : r.Currency.ToUpperInvariant() })
             .Select(g =>
             {
-                var gross = g.Sum(r => r.SaleAmount);
-                var refunded = g.Sum(r => r.RefundedAmount);
+                var gross = g.Sum(r => _filteringService.GetFilteredGrossRevenue(r, query.TicketTypeId));
+                var refunded = g.Sum(r => _filteringService.GetFilteredRefundedAmount(r, query.TicketTypeId));
                 return new EventRevenueAggregationItemDto
                 {
                     EventId = g.Key.EventId,
@@ -314,13 +355,13 @@ public class ReportDataAggregationService : IReportDataAggregationService
             .OrderByDescending(e => e.GrossRevenue)
             .ToList();
 
-        // Per-organizer revenue breakdown
+        // Per-organizer revenue breakdown with line-item slicing
         var organizerBreakdown = reports
             .GroupBy(r => new { r.OrganizerId, Currency = string.IsNullOrWhiteSpace(r.Currency) ? "USD" : r.Currency.ToUpperInvariant() })
             .Select(g =>
             {
-                var gross = g.Sum(r => r.SaleAmount);
-                var refunded = g.Sum(r => r.RefundedAmount);
+                var gross = g.Sum(r => _filteringService.GetFilteredGrossRevenue(r, query.TicketTypeId));
+                var refunded = g.Sum(r => _filteringService.GetFilteredRefundedAmount(r, query.TicketTypeId));
                 return new OrganizerRevenueAggregationItemDto
                 {
                     OrganizerId = g.Key.OrganizerId,
@@ -366,7 +407,10 @@ public class ReportDataAggregationService : IReportDataAggregationService
             From = query.From,
             To = query.To,
             EventId = query.EventId,
-            OrganizerId = query.OrganizerId
+            OrganizerId = query.OrganizerId,
+            BookingStatus = query.BookingStatus,
+            TicketTypeId = query.TicketTypeId,
+            Category = query.Category
         };
         var bookingsData = await GetBookingsReportDataAsync(bookingsQuery, cancellationToken);
 
@@ -376,32 +420,49 @@ public class ReportDataAggregationService : IReportDataAggregationService
             From = query.From,
             To = query.To,
             EventId = query.EventId,
-            OrganizerId = query.OrganizerId
+            OrganizerId = query.OrganizerId,
+            Currency = query.Currency,
+            TicketTypeId = query.TicketTypeId,
+            Category = query.Category,
+            BookingStatus = query.BookingStatus
         };
         var revenueData = await GetRevenueReportDataAsync(revenueQuery, cancellationToken);
 
         // 3. Compute unique active customer and event counts across authoritative bookings
-        var bQuery = _dbContext.Bookings.AsNoTracking();
-        if (query.EventId.HasValue)
-            bQuery = bQuery.Where(b => b.EventId == query.EventId.Value);
+        var allowedEventIds = await _filteringService.ResolveAllowedEventIdsAsync(
+            query.OrganizerId,
+            query.Category,
+            query.EventId,
+            cancellationToken);
 
-        if (query.From.HasValue)
-            bQuery = bQuery.Where(b => (b.ConfirmedAt ?? b.CreatedAt) >= query.From.Value);
+        int uniqueCustomers = 0;
+        int activeEvents = 0;
 
-        if (query.To.HasValue)
-            bQuery = bQuery.Where(b => (b.ConfirmedAt ?? b.CreatedAt) <= query.To.Value);
+        if (allowedEventIds == null || allowedEventIds.Count > 0)
+        {
+            var bQuery = _dbContext.Bookings.AsNoTracking();
 
-        var uniqueCustomers = await bQuery
-            .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Cancelled)
-            .Select(b => b.CustomerId)
-            .Distinct()
-            .CountAsync(cancellationToken);
+            bQuery = _filteringService.ApplyBookingFilters(bQuery, new ReportFilterCriteria
+            {
+                From = query.From,
+                To = query.To,
+                EventId = query.EventId,
+                BookingStatus = query.BookingStatus,
+                TicketTypeId = query.TicketTypeId
+            }, allowedEventIds);
 
-        var activeEvents = await bQuery
-            .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Cancelled)
-            .Select(b => b.EventId)
-            .Distinct()
-            .CountAsync(cancellationToken);
+            uniqueCustomers = await bQuery
+                .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Cancelled)
+                .Select(b => b.CustomerId)
+                .Distinct()
+                .CountAsync(cancellationToken);
+
+            activeEvents = await bQuery
+                .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.Cancelled)
+                .Select(b => b.EventId)
+                .Distinct()
+                .CountAsync(cancellationToken);
+        }
 
         return new PlatformActivityReportDataDto
         {

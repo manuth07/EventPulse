@@ -22,6 +22,7 @@ import { PendingEvents } from './pages/PendingEvents/PendingEvents';
 import { RequireAuth, RequireRole, AdminRoute, OrganizerRoute } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
+import { AdminReports } from './pages/AdminReports/AdminReports';
 import { Cart } from './pages/Cart/Cart';
 import { SelectTickets } from './pages/SelectTickets/SelectTickets';
 import { PaymentSuccess } from './pages/PaymentSuccess/PaymentSuccess';
@@ -91,6 +92,7 @@ function App() {
               <Route path="/admin/users" element={<AdminDashboard />} />
               <Route path="/admin/events/pending" element={<PendingEvents />} />
               <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
+              <Route path="/admin/reports" element={<AdminReports />} />
             </Route>
 
             {/* Catch-all */}
