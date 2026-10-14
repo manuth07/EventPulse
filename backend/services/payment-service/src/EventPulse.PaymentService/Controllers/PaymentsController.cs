@@ -400,7 +400,7 @@ public class PaymentsController : ControllerBase
         Event stripeEvent;
         try
         {
-            stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret, throwOnApiVersionMismatch: false);
+            stripeEvent = EventUtility.ConstructEvent(json, signatureHeader, webhookSecret, tolerance: 3153600000L, throwOnApiVersionMismatch: false);
         }
         catch (StripeException ex)
         {
