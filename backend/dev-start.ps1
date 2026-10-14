@@ -1,5 +1,5 @@
 # =============================================================================
-# EventPulse Backend — Dev Runner
+# EventPulse Backend - Dev Runner
 # Starts: Gateway (:7000)  |  IdentityService (:7101)  |  EventService (:7102)  |  BookingService (:7103)  |  PaymentService (:7104)
 #
 # Usage:
@@ -12,7 +12,7 @@
 
 $ErrorActionPreference = "Stop"
 
-# ── Helper: Terminate lingering processes on service ports and EventPulse.* ──
+# -- Helper: Terminate lingering processes on service ports and EventPulse.* --
 function Stop-EventPulseProcesses {
     param([int[]]$Ports = @(7000, 7101, 7102, 7103, 7104))
     
@@ -48,11 +48,11 @@ function Stop-EventPulseProcesses {
     } catch {}
 }
 
-# ── Pre-startup Cleanup ───────────────────────────────────────────────────────
+# -- Pre-startup Cleanup -------------------------------------------------------
 Write-Host "Cleaning up any lingering processes on service ports..." -ForegroundColor DarkGray
 Stop-EventPulseProcesses -Ports @(7000, 7101, 7102, 7103, 7104)
 
-# ── Load Environment Variables from .env ──────────────────────────────────────
+# -- Load Environment Variables from .env --------------------------------------
 $EnvFile = Join-Path $PSScriptRoot ".env"
 if (-not (Test-Path $EnvFile)) {
     $EnvFile = Join-Path (Split-Path $PSScriptRoot -Parent) ".env"
@@ -70,11 +70,11 @@ if (Test-Path $EnvFile) {
     }
 }
 
-# ── Resolve paths relative to THIS script's directory ─────────────────────────
+# -- Resolve paths relative to THIS script's directory -------------------------
 $BackendRoot = $PSScriptRoot
 $RepoRoot = Split-Path $BackendRoot -Parent
 
-# ── Ensure Kafka topics exist if Kafka container is active ────────────────────
+# -- Ensure Kafka topics exist if Kafka container is active --------------------
 $setupKafkaScript = Join-Path $RepoRoot "scripts\setup-kafka.ps1"
 if (Test-Path $setupKafkaScript) {
     try {
@@ -89,7 +89,7 @@ if (Test-Path $setupKafkaScript) {
     }
 }
 
-# ── Single Build of Solution (Prevents CS2012 dll file locking) ───────────────
+# -- Single Build of Solution (Prevents CS2012 dll file locking) ---------------
 Write-Host ""
 Write-Host "Building EventPulse backend solution..." -ForegroundColor Cyan
 dotnet build "$BackendRoot\EventPulse.Backend.sln" -c Debug
@@ -132,7 +132,7 @@ $Services = @(
     }
 )
 
-# ── Validate project directories exist ────────────────────────────────────────
+# -- Validate project directories exist ----------------------------------------
 foreach ($svc in $Services) {
     if (-not (Test-Path $svc.Path)) {
         Write-Host "ERROR: Project directory not found: $($svc.Path)" -ForegroundColor Red
@@ -140,19 +140,19 @@ foreach ($svc in $Services) {
     }
 }
 
-# ── Print startup banner ──────────────────────────────────────────────────────
+# -- Print startup banner ------------------------------------------------------
 Write-Host ""
 Write-Host "  EventPulse Backend Dev Runner" -ForegroundColor White
-Write-Host "  ──────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  ------------------------------------------" -ForegroundColor DarkGray
 foreach ($svc in $Services) {
     Write-Host "  [$($svc.Name)]" -ForegroundColor $svc.Color -NoNewline
-    Write-Host " → http://localhost:$($svc.Port)" -ForegroundColor DarkGray
+    Write-Host " -> http://localhost:$($svc.Port)" -ForegroundColor DarkGray
 }
-Write-Host "  ──────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  ------------------------------------------" -ForegroundColor DarkGray
 Write-Host "  Press Ctrl+C to stop all services." -ForegroundColor DarkGray
 Write-Host ""
 
-# ── Start each service as a background job with --no-build ────────────────────
+# -- Start each service as a background job with --no-build --------------------
 $Jobs = @()
 
 foreach ($svc in $Services) {
@@ -165,10 +165,10 @@ foreach ($svc in $Services) {
     } -ArgumentList $svc.Path, $svc.Port
 
     $Jobs += @{ Job = $job; Service = $svc }
-    Write-Host "  Started [$($svc.Name)] — job #$($job.Id)" -ForegroundColor $svc.Color
+    Write-Host "  Started [$($svc.Name)] - job #$($job.Id)" -ForegroundColor $svc.Color
 }
 
-# ── Optional: Stripe Webhook Forwarder ────────────────────────────────────────
+# -- Optional: Stripe Webhook Forwarder ----------------------------------------
 if (Get-Command stripe -ErrorAction SilentlyContinue) {
     $stripeJob = Start-Job -Name "StripeListener" -ScriptBlock {
         while ($true) {
@@ -177,12 +177,12 @@ if (Get-Command stripe -ErrorAction SilentlyContinue) {
         }
     }
     $Jobs += @{ Job = $stripeJob; Service = @{ Name = "StripeListener"; Color = "DarkYellow" } }
-    Write-Host "  Started [StripeListener] — forwarding to http://localhost:7104/api/payments/webhook" -ForegroundColor DarkYellow
+    Write-Host "  Started [StripeListener] - forwarding to http://localhost:7104/api/payments/webhook" -ForegroundColor DarkYellow
 }
 
 Write-Host ""
 
-# ── Stream all job output in one terminal loop ────────────────────────────────
+# -- Stream all job output in one terminal loop --------------------------------
 $PrintedLines = @{}
 foreach ($j in $Jobs) { $PrintedLines[$j.Job.Id] = 0 }
 
@@ -225,7 +225,7 @@ try {
     }
 }
 finally {
-    # ── Cleanup: stop all jobs on Ctrl+C or natural exit ──────────────────────
+    # -- Cleanup: stop all jobs on Ctrl+C or natural exit ----------------------
     Write-Host "`n  Stopping all services..." -ForegroundColor DarkGray
 
     foreach ($entry in $Jobs) {
