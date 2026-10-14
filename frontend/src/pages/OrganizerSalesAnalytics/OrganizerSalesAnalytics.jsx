@@ -8,14 +8,11 @@ import {
   RotateCcw,
   RefreshCw,
   AlertCircle,
-  Calendar,
   Search,
   ChevronLeft,
   ChevronRight,
   DollarSign,
   Wallet,
-  CheckCircle2,
-  ExternalLink,
   X,
   Layers,
   ArrowRight,
@@ -109,8 +106,8 @@ export function OrganizerSalesAnalytics() {
 
     try {
       const params = {};
-      if (dateFrom) params.from = new Date(dateFrom).toISOString();
-      if (dateTo) {
+      if (dateFrom && !isNaN(new Date(dateFrom).getTime())) params.from = new Date(dateFrom).toISOString();
+      if (dateTo && !isNaN(new Date(dateTo).getTime())) {
         const toDate = new Date(dateTo);
         toDate.setHours(23, 59, 59, 999);
         params.to = toDate.toISOString();
@@ -150,8 +147,8 @@ export function OrganizerSalesAnalytics() {
         pageSize,
       };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (dateFrom) params.from = new Date(dateFrom).toISOString();
-      if (dateTo) {
+      if (dateFrom && !isNaN(new Date(dateFrom).getTime())) params.from = new Date(dateFrom).toISOString();
+      if (dateTo && !isNaN(new Date(dateTo).getTime())) {
         const toDate = new Date(dateTo);
         toDate.setHours(23, 59, 59, 999);
         params.to = toDate.toISOString();

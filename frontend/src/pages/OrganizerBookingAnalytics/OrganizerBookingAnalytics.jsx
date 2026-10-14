@@ -6,9 +6,9 @@ import {
   Ticket,
   CheckCircle2,
   XCircle,
+  RotateCcw,
   RefreshCw,
   AlertCircle,
-  Calendar,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -18,7 +18,6 @@ import {
   Filter,
   X,
   PieChart,
-  Users,
   Activity,
   BarChart3,
 } from 'lucide-react';
@@ -120,8 +119,8 @@ export function OrganizerBookingAnalytics() {
 
     try {
       const params = {};
-      if (dateFrom) params.from = new Date(dateFrom).toISOString();
-      if (dateTo) {
+      if (dateFrom && !isNaN(new Date(dateFrom).getTime())) params.from = new Date(dateFrom).toISOString();
+      if (dateTo && !isNaN(new Date(dateTo).getTime())) {
         const toDate = new Date(dateTo);
         toDate.setHours(23, 59, 59, 999);
         params.to = toDate.toISOString();
@@ -161,8 +160,8 @@ export function OrganizerBookingAnalytics() {
         pageSize,
       };
       if (debouncedSearch) params.search = debouncedSearch;
-      if (dateFrom) params.from = new Date(dateFrom).toISOString();
-      if (dateTo) {
+      if (dateFrom && !isNaN(new Date(dateFrom).getTime())) params.from = new Date(dateFrom).toISOString();
+      if (dateTo && !isNaN(new Date(dateTo).getTime())) {
         const toDate = new Date(dateTo);
         toDate.setHours(23, 59, 59, 999);
         params.to = toDate.toISOString();

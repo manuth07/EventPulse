@@ -232,6 +232,22 @@ export function validateFilterInputs(filters, options = {}) {
     };
   }
 
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (hasEvent && !UUID_REGEX.test(filters.eventId.trim())) {
+    return {
+      isValid: false,
+      error: "Event must be selected from the list or provided as a valid UUID (e.g. '12345678-1234-1234-1234-123456789abc').",
+    };
+  }
+
+  if (hasTicketType && !UUID_REGEX.test(filters.ticketTypeId.trim())) {
+    return {
+      isValid: false,
+      error: "Ticket Tier must be selected from the list or provided as a valid UUID (e.g. '12345678-1234-1234-1234-123456789abc').",
+    };
+  }
+
   // 3. Category Validation
   if (filters.category && filters.category !== 'All' && typeof filters.category === 'string') {
     const norm = normalizeCategory(filters.category.trim());
@@ -249,6 +265,12 @@ export function validateFilterInputs(filters, options = {}) {
       return {
         isValid: false,
         error: 'You do not have permission to filter by organizer.',
+      };
+    }
+    if (!UUID_REGEX.test(filters.organizerId.trim())) {
+      return {
+        isValid: false,
+        error: "Organizer ID must be a valid UUID format (e.g. '12345678-1234-1234-1234-123456789abc').",
       };
     }
   }

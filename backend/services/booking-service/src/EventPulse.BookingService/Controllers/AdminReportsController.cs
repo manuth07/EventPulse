@@ -3,6 +3,7 @@ using EventPulse.BookingService.Models;
 using EventPulse.BookingService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EventPulse.BookingService.Controllers;
 
@@ -48,6 +49,7 @@ public class AdminReportsController : ControllerBase
     {
     }
 
+    [ActivatorUtilitiesConstructor]
     public AdminReportsController(
         IReportDataAggregationService aggregationService,
         IEventAvailabilityClient? eventAvailabilityClient,

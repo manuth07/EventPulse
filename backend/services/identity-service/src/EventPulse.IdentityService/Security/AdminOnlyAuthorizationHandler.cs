@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using EventPulse.IdentityService.Models;
 
 namespace EventPulse.IdentityService.Security;
@@ -24,8 +25,7 @@ namespace EventPulse.IdentityService.Security;
 /// </summary>
 public class AdminOnlyAuthorizationHandler : AuthorizationHandler<AdminOnlyRequirement>
 {
-    private readonly UserManager<ApplicationUser>? _userManager;
-    private readonly IServiceProvider? _serviceProvider;
+    private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<AdminOnlyAuthorizationHandler> _logger;
 
     public AdminOnlyAuthorizationHandler(
@@ -33,14 +33,6 @@ public class AdminOnlyAuthorizationHandler : AuthorizationHandler<AdminOnlyRequi
         ILogger<AdminOnlyAuthorizationHandler> logger)
     {
         _userManager = userManager;
-        _logger = logger;
-    }
-
-    public AdminOnlyAuthorizationHandler(
-        IServiceProvider serviceProvider,
-        ILogger<AdminOnlyAuthorizationHandler> logger)
-    {
-        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
@@ -107,18 +99,8 @@ public class AdminOnlyAuthorizationHandler : AuthorizationHandler<AdminOnlyRequi
         context.Succeed(requirement);
     }
 
-    private UserManager<ApplicationUser>? GetUserManager()
+    private UserManager<ApplicationUser> GetUserManager()
     {
-        if (_userManager != null)
-        {
-            return _userManager;
-        }
-
-        if (_serviceProvider != null)
-        {
-            return _serviceProvider.GetService(typeof(UserManager<ApplicationUser>)) as UserManager<ApplicationUser>;
-        }
-
-        return null;
+        return _userManager;
     }
 }

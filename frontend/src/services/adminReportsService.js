@@ -68,6 +68,19 @@ export function formatReportApiError(error) {
     return errorData.message;
   }
 
+  if (errorData?.errors && typeof errorData.errors === 'object') {
+    const errorEntries = Object.entries(errorData.errors);
+    if (errorEntries.length > 0) {
+      const [field, messages] = errorEntries[0];
+      const msg = Array.isArray(messages) ? messages[0] : String(messages);
+      if (msg.includes('System.Nullable') || msg.includes('Guid') || msg.includes('converted to')) {
+        const fieldName = field.replace(/^\$\./, '');
+        return `Invalid identifier format for ${fieldName}. Please select a valid event or ticket tier from the dropdown, or provide a valid UUID.`;
+      }
+      return msg;
+    }
+  }
+
   if (error?.message) {
     return error.message;
   }
