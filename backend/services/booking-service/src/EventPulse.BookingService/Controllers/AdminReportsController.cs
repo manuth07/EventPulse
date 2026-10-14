@@ -1,4 +1,5 @@
 using EventPulse.BookingService.DTOs;
+using EventPulse.BookingService.Models;
 using EventPulse.BookingService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -37,13 +38,23 @@ public class AdminReportsController : ControllerBase
     };
 
     private readonly IReportDataAggregationService _aggregationService;
+    private readonly IEventAvailabilityClient? _eventAvailabilityClient;
     private readonly ILogger<AdminReportsController> _logger;
 
     public AdminReportsController(
         IReportDataAggregationService aggregationService,
         ILogger<AdminReportsController> logger)
+        : this(aggregationService, null, logger)
+    {
+    }
+
+    public AdminReportsController(
+        IReportDataAggregationService aggregationService,
+        IEventAvailabilityClient? eventAvailabilityClient,
+        ILogger<AdminReportsController> logger)
     {
         _aggregationService = aggregationService;
+        _eventAvailabilityClient = eventAvailabilityClient;
         _logger = logger;
     }
 
@@ -64,6 +75,14 @@ public class AdminReportsController : ControllerBase
         if (!statusValidation.IsValid)
             return statusValidation.ErrorResult!;
 
+        var categoryValidation = ValidateCategory(query.Category);
+        if (!categoryValidation.IsValid)
+            return categoryValidation.ErrorResult!;
+
+        var ticketValidation = await ValidateTicketTypeDependencyAsync(query.EventId, query.TicketTypeId, ct);
+        if (!ticketValidation.IsValid)
+            return ticketValidation.ErrorResult!;
+
         var result = await _aggregationService.GetBookingsReportDataAsync(query, ct);
         return Ok(result);
     }
@@ -81,9 +100,21 @@ public class AdminReportsController : ControllerBase
         if (!dateValidation.IsValid)
             return dateValidation.ErrorResult!;
 
+        var statusValidation = ValidateBookingStatus(query.BookingStatus);
+        if (!statusValidation.IsValid)
+            return statusValidation.ErrorResult!;
+
         var currencyValidation = ValidateCurrency(query.Currency);
         if (!currencyValidation.IsValid)
             return currencyValidation.ErrorResult!;
+
+        var categoryValidation = ValidateCategory(query.Category);
+        if (!categoryValidation.IsValid)
+            return categoryValidation.ErrorResult!;
+
+        var ticketValidation = await ValidateTicketTypeDependencyAsync(query.EventId, query.TicketTypeId, ct);
+        if (!ticketValidation.IsValid)
+            return ticketValidation.ErrorResult!;
 
         var result = await _aggregationService.GetRevenueReportDataAsync(query, ct);
         return Ok(result);
@@ -101,6 +132,22 @@ public class AdminReportsController : ControllerBase
         var dateValidation = ValidateDateRange(query.From, query.To);
         if (!dateValidation.IsValid)
             return dateValidation.ErrorResult!;
+
+        var statusValidation = ValidateBookingStatus(query.BookingStatus);
+        if (!statusValidation.IsValid)
+            return statusValidation.ErrorResult!;
+
+        var currencyValidation = ValidateCurrency(query.Currency);
+        if (!currencyValidation.IsValid)
+            return currencyValidation.ErrorResult!;
+
+        var categoryValidation = ValidateCategory(query.Category);
+        if (!categoryValidation.IsValid)
+            return categoryValidation.ErrorResult!;
+
+        var ticketValidation = await ValidateTicketTypeDependencyAsync(query.EventId, query.TicketTypeId, ct);
+        if (!ticketValidation.IsValid)
+            return ticketValidation.ErrorResult!;
 
         var result = await _aggregationService.GetPlatformActivityReportDataAsync(query, ct);
         return Ok(result);
@@ -204,9 +251,13 @@ public class AdminReportsController : ControllerBase
         if (!statusValidation.IsValid)
             return statusValidation.ErrorResult!;
 
-        var currencyValidation = ValidateCurrency(request.Currency);
-        if (!currencyValidation.IsValid)
-            return currencyValidation.ErrorResult!;
+        var categoryValidation = ValidateCategory(request.Category);
+        if (!categoryValidation.IsValid)
+            return categoryValidation.ErrorResult!;
+
+        var ticketValidation = await ValidateTicketTypeDependencyAsync(request.EventId, request.TicketTypeId, ct);
+        if (!ticketValidation.IsValid)
+            return ticketValidation.ErrorResult!;
 
         if (ValidBookingsAliases.Contains(normalizedType))
         {
@@ -305,6 +356,14 @@ public class AdminReportsController : ControllerBase
         if (!currencyValidation.IsValid)
             return currencyValidation.ErrorResult!;
 
+        var categoryValidation = ValidateCategory(category);
+        if (!categoryValidation.IsValid)
+            return categoryValidation.ErrorResult!;
+
+        var ticketValidation = await ValidateTicketTypeDependencyAsync(eventId, ticketTypeId, ct);
+        if (!ticketValidation.IsValid)
+            return ticketValidation.ErrorResult!;
+
         if (ValidBookingsAliases.Contains(trimmedType))
         {
             var data = await _aggregationService.GetBookingsReportDataAsync(new BookingsReportQueryParameters
@@ -401,7 +460,7 @@ public class AdminReportsController : ControllerBase
 
     private (bool IsValid, IActionResult? ErrorResult) ValidateCurrency(string? currency)
     {
-        if (!string.IsNullOrWhiteSpace(currency))
+        if (!string.IsNullOrWhiteSpace(currency) && !currency.Equals("All", StringComparison.OrdinalIgnoreCase))
         {
             var trimmed = currency.Trim();
             if (trimmed.Length != 3 || !trimmed.All(char.IsLetter))
@@ -411,6 +470,60 @@ public class AdminReportsController : ControllerBase
                     code = "INVALID_CURRENCY",
                     message = $"Currency '{currency}' must be a valid 3-letter ISO-4217 code (e.g. 'USD', 'LKR')."
                 }));
+            }
+        }
+
+        return (true, null);
+    }
+
+    private (bool IsValid, IActionResult? ErrorResult) ValidateCategory(string? category)
+    {
+        if (!string.IsNullOrWhiteSpace(category) && !category.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!ReportCategories.IsValid(category))
+            {
+                return (false, BadRequest(new
+                {
+                    code = "INVALID_CATEGORY",
+                    message = $"Unsupported event category '{category}'. Valid categories are Music, Sports, Conference, Workshop, Festival, Arts & Theatre, Community, Other."
+                }));
+            }
+        }
+
+        return (true, null);
+    }
+
+    private async Task<(bool IsValid, IActionResult? ErrorResult)> ValidateTicketTypeDependencyAsync(
+        Guid? eventId,
+        Guid? ticketTypeId,
+        CancellationToken ct)
+    {
+        if (ticketTypeId.HasValue && !eventId.HasValue)
+        {
+            return (false, BadRequest(new
+            {
+                code = "MISSING_EVENT_FOR_TIER",
+                message = "An event must be selected when filtering by ticket type."
+            }));
+        }
+
+        if (ticketTypeId.HasValue && eventId.HasValue && _eventAvailabilityClient != null)
+        {
+            try
+            {
+                var ticketType = await _eventAvailabilityClient.GetTicketTypeAsync(eventId.Value, ticketTypeId.Value, ct);
+                if (ticketType == null)
+                {
+                    return (false, BadRequest(new
+                    {
+                        code = "INVALID_TICKET_TYPE",
+                        message = "The specified ticket type does not belong to the selected event."
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to verify ticket type {TicketTypeId} for event {EventId}", ticketTypeId.Value, eventId.Value);
             }
         }
 

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EventPulse.BookingService.DTOs;
+using EventPulse.BookingService.Models;
 using EventPulse.BookingService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,8 +32,8 @@ public class OrganizerBookingAnalyticsController : ControllerBase
 
     /// <summary>
     /// GET /api/organizer/analytics/bookings
-    /// EP-389: Retrieves overall booking metrics for the authenticated organizer's events.
-    /// Returns 0s if organizer has no bookings. Supports optional date filtering.
+    /// EP-389 / EP-395: Retrieves overall booking metrics for the authenticated organizer's events.
+    /// Returns 0s if organizer has no bookings. Supports optional date filtering and server-side validation.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<OrganizerBookingSummaryDto>> GetOrganizerBookingSummary(
@@ -40,11 +41,13 @@ public class OrganizerBookingAnalyticsController : ControllerBase
         [FromQuery] DateTimeOffset? to,
         CancellationToken ct)
     {
-        if (!TryGetOrganizerId(out var organizerId))
-            return Unauthorized(new { message = "Invalid or missing organizer identity." });
+        var authCheck = ValidateOrganizerAuthorization(out var organizerId);
+        if (!authCheck.IsValid)
+            return authCheck.ErrorResult!;
 
-        if (from.HasValue && to.HasValue && from.Value > to.Value)
-            return BadRequest(new { message = "'from' date cannot be after 'to' date." });
+        var filterValidation = ValidateFilters(from, to, eventId: null);
+        if (!filterValidation.IsValid)
+            return filterValidation.ErrorResult!;
 
         var summary = await _analyticsService.GetOrganizerBookingSummaryAsync(organizerId, from, to, ct);
         return Ok(summary);
@@ -52,8 +55,8 @@ public class OrganizerBookingAnalyticsController : ControllerBase
 
     /// <summary>
     /// GET /api/organizer/analytics/bookings/events
-    /// EP-389: Retrieves paginated event-level booking summaries for all events owned by the organizer.
-    /// Supports search by event title, date filtering, and pagination.
+    /// EP-389 / EP-395: Retrieves paginated event-level booking summaries for all events owned by the organizer.
+    /// Supports search by event title, date filtering, pagination, and server-side validation.
     /// </summary>
     [HttpGet("events")]
     public async Task<ActionResult<PagedResult<EventBookingSummaryItemDto>>> GetOrganizerEventsBookingList(
@@ -64,17 +67,19 @@ public class OrganizerBookingAnalyticsController : ControllerBase
         [FromQuery] int pageSize = 20,
         CancellationToken ct = default)
     {
-        if (!TryGetOrganizerId(out var organizerId))
-            return Unauthorized(new { message = "Invalid or missing organizer identity." });
+        var authCheck = ValidateOrganizerAuthorization(out var organizerId);
+        if (!authCheck.IsValid)
+            return authCheck.ErrorResult!;
 
         if (page < 1)
-            return BadRequest(new { message = "Page must be greater than or equal to 1." });
+            return BadRequest(new { code = "INVALID_PAGE", message = "Page must be greater than or equal to 1." });
 
         if (pageSize < 1 || pageSize > 100)
-            return BadRequest(new { message = "PageSize must be between 1 and 100." });
+            return BadRequest(new { code = "INVALID_PAGE_SIZE", message = "PageSize must be between 1 and 100." });
 
-        if (from.HasValue && to.HasValue && from.Value > to.Value)
-            return BadRequest(new { message = "'from' date cannot be after 'to' date." });
+        var filterValidation = ValidateFilters(from, to, eventId: null);
+        if (!filterValidation.IsValid)
+            return filterValidation.ErrorResult!;
 
         var result = await _analyticsService.GetOrganizerEventsBookingListAsync(organizerId, search, from, to, page, pageSize, ct);
         return Ok(result);
@@ -82,7 +87,7 @@ public class OrganizerBookingAnalyticsController : ControllerBase
 
     /// <summary>
     /// GET /api/organizer/analytics/bookings/events/{eventId}
-    /// EP-389: Retrieves booking analytics for a specific event owned by the authenticated organizer,
+    /// EP-389 / EP-395: Retrieves booking analytics for a specific event owned by the authenticated organizer,
     /// including breakdown by ticket type, cancellation rate, and remaining capacity.
     /// Enforces event ownership verification. Returns 404 if event does not exist or belongs to another organizer.
     /// </summary>
@@ -93,18 +98,99 @@ public class OrganizerBookingAnalyticsController : ControllerBase
         [FromQuery] DateTimeOffset? to,
         CancellationToken ct)
     {
-        if (!TryGetOrganizerId(out var organizerId))
-            return Unauthorized(new { message = "Invalid or missing organizer identity." });
+        var authCheck = ValidateOrganizerAuthorization(out var organizerId);
+        if (!authCheck.IsValid)
+            return authCheck.ErrorResult!;
 
-        if (from.HasValue && to.HasValue && from.Value > to.Value)
-            return BadRequest(new { message = "'from' date cannot be after 'to' date." });
+        var filterValidation = ValidateFilters(from, to, eventId);
+        if (!filterValidation.IsValid)
+            return filterValidation.ErrorResult!;
 
         var analytics = await _analyticsService.GetEventBookingAnalyticsAsync(organizerId, eventId, from, to, ct);
         if (analytics == null)
         {
-            return NotFound(new { message = $"Event {eventId} was not found or is not accessible." });
+            return NotFound(new
+            {
+                code = "EVENT_NOT_FOUND",
+                message = $"Event {eventId} was not found or is not accessible."
+            });
         }
 
         return Ok(analytics);
+    }
+
+    private (bool IsValid, ActionResult? ErrorResult) ValidateOrganizerAuthorization(out Guid organizerId)
+    {
+        organizerId = Guid.Empty;
+
+        // Prohibit client-supplied organizerId filter for organizers (EP-393 Section 4.2 & 7.1)
+        if (Request?.Query?.ContainsKey("organizerId") == true)
+        {
+            return (false, StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                code = "UNAUTHORIZED_FILTER",
+                message = "You do not have permission to filter by organizer."
+            }));
+        }
+
+        if (!TryGetOrganizerId(out organizerId))
+        {
+            return (false, Unauthorized(new
+            {
+                code = "UNAUTHORIZED",
+                message = "Invalid or missing organizer identity."
+            }));
+        }
+
+        return (true, null);
+    }
+
+    private (bool IsValid, ActionResult? ErrorResult) ValidateFilters(DateTimeOffset? from, DateTimeOffset? to, Guid? eventId)
+    {
+        if (from.HasValue && to.HasValue && from.Value > to.Value)
+        {
+            return (false, BadRequest(new
+            {
+                code = "INVALID_DATE_RANGE",
+                message = "The start date ('from') must be earlier than or equal to the end date ('to')."
+            }));
+        }
+
+        if (from.HasValue && to.HasValue && (to.Value - from.Value).TotalDays > 730)
+        {
+            return (false, BadRequest(new
+            {
+                code = "DATE_RANGE_EXCEEDED",
+                message = "The requested date range exceeds the maximum allowed reporting period of 730 days (2 years)."
+            }));
+        }
+
+        if (Request?.Query != null)
+        {
+            if (Request.Query.TryGetValue("category", out var categoryVal) &&
+                !string.IsNullOrWhiteSpace(categoryVal) &&
+                !categoryVal.ToString().Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!ReportCategories.IsValid(categoryVal))
+                {
+                    return (false, BadRequest(new
+                    {
+                        code = "INVALID_CATEGORY",
+                        message = $"Unsupported event category '{categoryVal}'. Valid categories are Music, Sports, Conference, Workshop, Festival, Arts & Theatre, Community, Other."
+                    }));
+                }
+            }
+
+            if (Request.Query.ContainsKey("ticketTypeId") && !eventId.HasValue)
+            {
+                return (false, BadRequest(new
+                {
+                    code = "MISSING_EVENT_FOR_TIER",
+                    message = "An event must be selected when filtering by ticket type."
+                }));
+            }
+        }
+
+        return (true, null);
     }
 }
