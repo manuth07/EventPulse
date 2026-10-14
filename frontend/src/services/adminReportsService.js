@@ -1,10 +1,10 @@
 import { apiClient } from './apiClient.js';
 
 /**
- * Dynamic Reports API Service (EP-378 / EP-379)
+ * Dynamic Reports API Service (EP-378 / EP-379 / EP-396)
  * 
  * Provides client methods to interact with backend administrative reporting endpoints
- * with secure token injection, role validation, and sanitized error handling.
+ * with secure token injection, role validation, filter parameter mappings, and sanitized error handling.
  */
 
 /**
@@ -22,6 +22,9 @@ export function formatReportApiError(error) {
   }
 
   if (status === 403) {
+    if (errorData?.code === 'UNAUTHORIZED_FILTER') {
+      return errorData?.message || 'You do not have permission to filter by organizer.';
+    }
     return 'Access denied. You must be a platform Administrator to access dynamic reports.';
   }
 
@@ -35,6 +38,22 @@ export function formatReportApiError(error) {
 
   if (errorData?.code === 'UNSUPPORTED_REPORT_TYPE') {
     return errorData?.message || 'The selected report type is not supported.';
+  }
+
+  if (errorData?.code === 'INVALID_CATEGORY') {
+    return errorData?.message || 'Unsupported event category selected.';
+  }
+
+  if (errorData?.code === 'MISSING_EVENT_FOR_TIER') {
+    return errorData?.message || 'An event must be selected when filtering by ticket type.';
+  }
+
+  if (errorData?.code === 'INVALID_TICKET_TYPE') {
+    return errorData?.message || 'The specified ticket type does not belong to the selected event.';
+  }
+
+  if (errorData?.code === 'EVENT_NOT_FOUND') {
+    return errorData?.message || 'The specified event was not found or is inaccessible.';
   }
 
   if (errorData?.code === 'INVALID_BOOKING_STATUS') {
@@ -66,15 +85,19 @@ export function formatReportApiError(error) {
  * @param {string} [params.eventId] - Optional event UUID
  * @param {string} [params.organizerId] - Optional organizer UUID
  * @param {string} [params.bookingStatus] - Optional booking status
+ * @param {string} [params.ticketTypeId] - Optional ticket type UUID
+ * @param {string} [params.category] - Optional category
  * @returns {Promise<Object>} BookingsReportDataDto
  */
 export async function getBookingsReport(params = {}) {
   const query = new URLSearchParams();
   if (params.from) query.append('from', params.from);
   if (params.to) query.append('to', params.to);
-  if (params.eventId) query.append('eventId', params.eventId);
+  if (params.eventId && params.eventId !== 'ALL') query.append('eventId', params.eventId);
   if (params.organizerId) query.append('organizerId', params.organizerId);
   if (params.bookingStatus && params.bookingStatus !== 'All') query.append('bookingStatus', params.bookingStatus);
+  if (params.ticketTypeId && params.ticketTypeId !== 'ALL') query.append('ticketTypeId', params.ticketTypeId);
+  if (params.category && params.category !== 'All') query.append('category', params.category);
 
   const queryString = query.toString();
   const endpoint = `/api/admin/reports/bookings${queryString ? `?${queryString}` : ''}`;
@@ -91,15 +114,21 @@ export async function getBookingsReport(params = {}) {
  * @param {string} [params.eventId] - Optional event UUID
  * @param {string} [params.organizerId] - Optional organizer UUID
  * @param {string} [params.currency] - Optional currency (USD, LKR)
+ * @param {string} [params.ticketTypeId] - Optional ticket type UUID
+ * @param {string} [params.category] - Optional category
+ * @param {string} [params.bookingStatus] - Optional booking status
  * @returns {Promise<Object>} RevenueReportDataDto
  */
 export async function getRevenueReport(params = {}) {
   const query = new URLSearchParams();
   if (params.from) query.append('from', params.from);
   if (params.to) query.append('to', params.to);
-  if (params.eventId) query.append('eventId', params.eventId);
+  if (params.eventId && params.eventId !== 'ALL') query.append('eventId', params.eventId);
   if (params.organizerId) query.append('organizerId', params.organizerId);
   if (params.currency && params.currency !== 'ALL') query.append('currency', params.currency);
+  if (params.ticketTypeId && params.ticketTypeId !== 'ALL') query.append('ticketTypeId', params.ticketTypeId);
+  if (params.category && params.category !== 'All') query.append('category', params.category);
+  if (params.bookingStatus && params.bookingStatus !== 'All') query.append('bookingStatus', params.bookingStatus);
 
   const queryString = query.toString();
   const endpoint = `/api/admin/reports/revenue${queryString ? `?${queryString}` : ''}`;
@@ -115,14 +144,22 @@ export async function getRevenueReport(params = {}) {
  * @param {string} [params.to] - ISO date string end
  * @param {string} [params.eventId] - Optional event UUID
  * @param {string} [params.organizerId] - Optional organizer UUID
+ * @param {string} [params.bookingStatus] - Optional booking status
+ * @param {string} [params.currency] - Optional currency (USD, LKR)
+ * @param {string} [params.ticketTypeId] - Optional ticket type UUID
+ * @param {string} [params.category] - Optional category
  * @returns {Promise<Object>} PlatformActivityReportDataDto
  */
 export async function getPlatformSummaryReport(params = {}) {
   const query = new URLSearchParams();
   if (params.from) query.append('from', params.from);
   if (params.to) query.append('to', params.to);
-  if (params.eventId) query.append('eventId', params.eventId);
+  if (params.eventId && params.eventId !== 'ALL') query.append('eventId', params.eventId);
   if (params.organizerId) query.append('organizerId', params.organizerId);
+  if (params.bookingStatus && params.bookingStatus !== 'All') query.append('bookingStatus', params.bookingStatus);
+  if (params.currency && params.currency !== 'ALL') query.append('currency', params.currency);
+  if (params.ticketTypeId && params.ticketTypeId !== 'ALL') query.append('ticketTypeId', params.ticketTypeId);
+  if (params.category && params.category !== 'All') query.append('category', params.category);
 
   const queryString = query.toString();
   const endpoint = `/api/admin/reports/platform-summary${queryString ? `?${queryString}` : ''}`;
@@ -141,6 +178,8 @@ export async function getPlatformSummaryReport(params = {}) {
  * @param {string} [request.organizerId]
  * @param {string} [request.bookingStatus]
  * @param {string} [request.currency]
+ * @param {string} [request.ticketTypeId]
+ * @param {string} [request.category]
  * @returns {Promise<Object>} GeneratedReportEnvelopeDto
  */
 export async function generateDynamicReport(request) {

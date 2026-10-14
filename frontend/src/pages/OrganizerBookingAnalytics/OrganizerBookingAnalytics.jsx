@@ -38,6 +38,12 @@ import {
   isZeroBookings,
   formatBookingDate,
 } from '../../utils/bookingAnalyticsDashboardUtils';
+import {
+  CATEGORY_OPTIONS,
+  validateFilterInputs,
+  getActiveFilterChips,
+  hasActiveFilters,
+} from '../../utils/reportFilterUtils';
 
 export function OrganizerBookingAnalytics() {
   const navigate = useNavigate();
@@ -59,8 +65,11 @@ export function OrganizerBookingAnalytics() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedEventId, setSelectedEventId] = useState(routeEventId || 'ALL');
+  const [category, setCategory] = useState('All');
+  const [ticketTypeId, setTicketTypeId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [validationError, setValidationError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
@@ -91,6 +100,21 @@ export function OrganizerBookingAnalytics() {
 
   // Load overall booking summary
   const loadSummary = useCallback(async () => {
+    const validation = validateFilterInputs({
+      from: dateFrom,
+      to: dateTo,
+      category,
+      eventId: selectedEventId === 'ALL' ? '' : selectedEventId,
+      ticketTypeId,
+    }, { role: 'Organizer' });
+
+    if (!validation.isValid) {
+      setValidationError(validation.error);
+      setSummaryLoading(false);
+      return;
+    }
+
+    setValidationError(null);
     setSummaryLoading(true);
     setSummaryError(null);
 
@@ -102,6 +126,8 @@ export function OrganizerBookingAnalytics() {
         toDate.setHours(23, 59, 59, 999);
         params.to = toDate.toISOString();
       }
+      if (category && category !== 'All') params.category = category;
+      if (ticketTypeId) params.ticketTypeId = ticketTypeId;
 
       const data = await getOrganizerBookingSummary(params);
       setSummary(data);
@@ -110,10 +136,22 @@ export function OrganizerBookingAnalytics() {
     } finally {
       setSummaryLoading(false);
     }
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, category, ticketTypeId, selectedEventId]);
 
   // Load events booking list
   const loadEventsList = useCallback(async () => {
+    const validation = validateFilterInputs({
+      from: dateFrom,
+      to: dateTo,
+      category,
+    }, { role: 'Organizer' });
+
+    if (!validation.isValid) {
+      setValidationError(validation.error);
+      setEventsLoading(false);
+      return;
+    }
+
     setEventsLoading(true);
     setEventsError(null);
 
@@ -129,6 +167,7 @@ export function OrganizerBookingAnalytics() {
         toDate.setHours(23, 59, 59, 999);
         params.to = toDate.toISOString();
       }
+      if (category && category !== 'All') params.category = category;
 
       const data = await getOrganizerEventsBookingList(params);
       setEventsData({
@@ -142,7 +181,7 @@ export function OrganizerBookingAnalytics() {
     } finally {
       setEventsLoading(false);
     }
-  }, [debouncedSearch, dateFrom, dateTo, currentPage]);
+  }, [debouncedSearch, dateFrom, dateTo, category, currentPage]);
 
   // Load individual event details for drilldown
   const handleOpenEventModal = async (eventId) => {
@@ -425,6 +464,38 @@ export function OrganizerBookingAnalytics() {
               </select>
             </div>
 
+            {/* Category Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '180px' }}>
+              <label htmlFor="booking-category-filter" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)' }}>
+                Category:
+              </label>
+              <select
+                id="booking-category-filter"
+                data-testid="booking-category-filter"
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 'var(--ep-radius-btn)',
+                  border: '1px solid var(--ep-border)',
+                  fontSize: '13px',
+                  color: 'var(--ep-text-primary)',
+                  backgroundColor: '#ffffff',
+                  outline: 'none',
+                  flex: 1,
+                }}
+              >
+                {CATEGORY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Quick Period Presets */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '12px', color: 'var(--ep-text-secondary)', marginRight: '4px', fontWeight: 500 }}>
@@ -598,9 +669,143 @@ export function OrganizerBookingAnalytics() {
                   boxSizing: 'border-box',
                 }}
               />
+              {/* Active Filter Badges & Reset Button */}
+              {(hasActiveFilters({ from: dateFrom, to: dateTo, category, eventId: selectedEventId, ticketTypeId }, 'Organizer') || searchQuery) && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                    width: '100%',
+                    borderTop: '1px solid var(--ep-border)',
+                    paddingTop: '12px',
+                    marginTop: '4px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--ep-text-secondary)', marginRight: '4px' }}>
+                      Active Filters:
+                    </span>
+                    {getActiveFilterChips({ from: dateFrom, to: dateTo, category, eventId: selectedEventId, ticketTypeId }, {
+                      role: 'Organizer',
+                      onRemove: (field) => {
+                        if (field === 'dateRange') { setDateFrom(''); setDateTo(''); }
+                        if (field === 'category') { setCategory('All'); }
+                        if (field === 'eventId') { setSelectedEventId('ALL'); setTicketTypeId(''); }
+                        if (field === 'ticketTypeId') { setTicketTypeId(''); }
+                      },
+                      eventLabels: eventsData.items.reduce((acc, ev) => { acc[ev.eventId] = ev.eventName; return acc; }, {}),
+                    }).map((chip) => (
+                      <span
+                        key={chip.id}
+                        data-testid={`booking-active-chip-${chip.id}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 8px',
+                          borderRadius: 'var(--ep-radius-pill)',
+                          backgroundColor: 'rgba(255, 90, 39, 0.08)',
+                          color: 'var(--ep-primary)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <span>{chip.label}</span>
+                        <button
+                          type="button"
+                          onClick={chip.onRemove}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', display: 'flex' }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                    {searchQuery && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 8px',
+                          borderRadius: 'var(--ep-radius-pill)',
+                          backgroundColor: 'rgba(255, 90, 39, 0.08)',
+                          color: 'var(--ep-primary)',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <span>Search: "{searchQuery}"</span>
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery('')}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', display: 'flex' }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    data-testid="booking-clear-filters-btn"
+                    onClick={() => {
+                      setSelectedEventId('ALL');
+                      setCategory('All');
+                      setDateFrom('');
+                      setDateTo('');
+                      setTicketTypeId('');
+                      setSearchQuery('');
+                      setValidationError(null);
+                      setCurrentPage(1);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--ep-primary)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <RotateCcw size={12} />
+                    <span>Reset All Filters</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Validation Error Banner */}
+        {validationError && (
+          <div
+            role="alert"
+            data-testid="booking-validation-alert"
+            style={{
+              backgroundColor: '#FEF2F2',
+              border: '1px solid #FECACA',
+              borderRadius: 'var(--ep-radius-card)',
+              padding: '12px 18px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              color: '#991B1B',
+              fontSize: '13px',
+              fontWeight: 500,
+            }}
+          >
+            <AlertCircle size={16} />
+            <span>{validationError}</span>
+          </div>
+        )}
 
         {/* Summary Error Banner with Retry */}
         {summaryError && (

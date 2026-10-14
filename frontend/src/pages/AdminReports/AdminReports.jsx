@@ -39,6 +39,8 @@ import {
   getDatePresetRange,
   isReportDataEmpty,
 } from '../../utils/adminReportsUtils';
+import { ReportFilterPanel } from '../../components/common/ReportFilterPanel';
+import { getDefaultFilters } from '../../utils/reportFilterUtils';
 
 export function AdminReports() {
   // Criteria State
@@ -46,11 +48,12 @@ export function AdminReports() {
   const [activePreset, setActivePreset] = useState('allTime');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [category, setCategory] = useState('All');
   const [bookingStatus, setBookingStatus] = useState('All');
   const [currency, setCurrency] = useState('ALL');
   const [eventId, setEventId] = useState('');
+  const [ticketTypeId, setTicketTypeId] = useState('');
   const [organizerId, setOrganizerId] = useState('');
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   // Generation & Results State
   const [loading, setLoading] = useState(false);
@@ -60,29 +63,45 @@ export function AdminReports() {
   const [appliedCriteria, setAppliedCriteria] = useState(null);
   const [generatedAt, setGeneratedAt] = useState(null);
 
-  // Apply Quick Date Preset
-  const handleApplyPreset = (presetKey) => {
-    setActivePreset(presetKey);
-    const range = getDatePresetRange(presetKey);
-    setDateFrom(range.from);
-    setDateTo(range.to);
+  // Handler when filters change in ReportFilterPanel
+  const handleFilterPanelChange = (next) => {
+    setDateFrom(next.from);
+    setDateTo(next.to);
+    setActivePreset(next.activePreset);
+    setCategory(next.category);
+    setEventId(next.eventId);
+    setTicketTypeId(next.ticketTypeId);
+    setBookingStatus(next.bookingStatus);
+    setCurrency(next.currency);
+    setOrganizerId(next.organizerId);
     setValidationError(null);
   };
 
-  // Custom date change handler
-  const handleCustomDateChange = (field, value) => {
-    setActivePreset('custom');
-    if (field === 'from') setDateFrom(value);
-    if (field === 'to') setDateTo(value);
+  // Clear all filters back to default
+  const handleClearFilters = () => {
+    const defaults = getDefaultFilters('Administrator');
+    setDateFrom(defaults.from);
+    setDateTo(defaults.to);
+    setActivePreset(defaults.activePreset);
+    setCategory(defaults.category);
+    setEventId(defaults.eventId);
+    setTicketTypeId(defaults.ticketTypeId);
+    setBookingStatus(defaults.bookingStatus);
+    setCurrency(defaults.currency);
+    setOrganizerId(defaults.organizerId);
     setValidationError(null);
-  };
 
-  // Clear all dates
-  const handleClearDates = () => {
-    setActivePreset('allTime');
-    setDateFrom('');
-    setDateTo('');
-    setValidationError(null);
+    handleGenerateReport({
+      dateFrom: defaults.from,
+      dateTo: defaults.to,
+      activePreset: defaults.activePreset,
+      category: defaults.category,
+      eventId: defaults.eventId,
+      ticketTypeId: defaults.ticketTypeId,
+      bookingStatus: defaults.bookingStatus,
+      currency: defaults.currency,
+      organizerId: defaults.organizerId,
+    });
   };
 
   // Fetch Report Data
@@ -90,9 +109,12 @@ export function AdminReports() {
     const targetType = customOverrides.reportType || reportType;
     const targetFrom = customOverrides.dateFrom !== undefined ? customOverrides.dateFrom : dateFrom;
     const targetTo = customOverrides.dateTo !== undefined ? customOverrides.dateTo : dateTo;
+    const targetPreset = customOverrides.activePreset !== undefined ? customOverrides.activePreset : activePreset;
     const targetStatus = customOverrides.bookingStatus !== undefined ? customOverrides.bookingStatus : bookingStatus;
     const targetCurrency = customOverrides.currency !== undefined ? customOverrides.currency : currency;
+    const targetCategory = customOverrides.category !== undefined ? customOverrides.category : category;
     const targetEventId = customOverrides.eventId !== undefined ? customOverrides.eventId : eventId;
+    const targetTicketTypeId = customOverrides.ticketTypeId !== undefined ? customOverrides.ticketTypeId : ticketTypeId;
     const targetOrganizerId = customOverrides.organizerId !== undefined ? customOverrides.organizerId : organizerId;
 
     // Build criteria payload
@@ -106,16 +128,24 @@ export function AdminReports() {
       })() : undefined,
     };
 
-    if (targetType === 'bookings' && targetStatus && targetStatus !== 'All') {
+    if (targetStatus && targetStatus !== 'All') {
       criteria.bookingStatus = targetStatus;
     }
 
-    if (targetType === 'revenue' && targetCurrency && targetCurrency !== 'ALL') {
+    if (targetCurrency && targetCurrency !== 'ALL') {
       criteria.currency = targetCurrency;
     }
 
-    if (targetEventId && targetEventId.trim()) {
+    if (targetCategory && targetCategory !== 'All') {
+      criteria.category = targetCategory;
+    }
+
+    if (targetEventId && targetEventId.trim() && targetEventId !== 'ALL') {
       criteria.eventId = targetEventId.trim();
+    }
+
+    if (targetTicketTypeId && targetTicketTypeId.trim() && targetTicketTypeId !== 'ALL') {
+      criteria.ticketTypeId = targetTicketTypeId.trim();
     }
 
     if (targetOrganizerId && targetOrganizerId.trim()) {
@@ -128,7 +158,11 @@ export function AdminReports() {
       from: targetFrom,
       to: targetTo,
       currency: targetCurrency,
-    });
+      category: targetCategory,
+      eventId: targetEventId,
+      ticketTypeId: targetTicketTypeId,
+      organizerId: targetOrganizerId,
+    }, 'Administrator');
 
     if (!validation.isValid) {
       setValidationError(validation.error);
@@ -150,9 +184,12 @@ export function AdminReports() {
         reportType: targetType,
         from: targetFrom,
         to: targetTo,
+        activePreset: targetPreset,
         bookingStatus: targetStatus,
         currency: targetCurrency,
+        category: targetCategory,
         eventId: targetEventId,
+        ticketTypeId: targetTicketTypeId,
         organizerId: targetOrganizerId,
       });
     } catch (err) {
@@ -161,7 +198,7 @@ export function AdminReports() {
     } finally {
       setLoading(false);
     }
-  }, [reportType, dateFrom, dateTo, bookingStatus, currency, eventId, organizerId]);
+  }, [reportType, dateFrom, dateTo, activePreset, bookingStatus, currency, category, eventId, ticketTypeId, organizerId]);
 
   // Initial load: Generate default summary report on mount
   useEffect(() => {
@@ -405,346 +442,34 @@ export function AdminReports() {
             </div>
           </div>
 
-          {/* Date Range Selection & Contextual Filters */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              borderTop: '1px solid var(--ep-border)',
-              paddingTop: '20px',
-            }}
-          >
-            {/* Quick Presets & Date Pickers */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '16px',
+          {/* Reusable Filter Controls Panel */}
+          <div style={{ borderTop: '1px solid var(--ep-border)', paddingTop: '20px' }}>
+            <ReportFilterPanel
+              role="Administrator"
+              title="Report Filter Controls"
+              filters={{
+                from: dateFrom,
+                to: dateTo,
+                activePreset,
+                category,
+                eventId,
+                ticketTypeId,
+                bookingStatus,
+                currency,
+                organizerId,
               }}
-            >
-              {/* Presets */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: 'var(--ep-text-primary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <Calendar size={14} color="var(--ep-text-secondary)" />
-                  Period:
-                </span>
-                {[
-                  { key: 'allTime', label: 'All Time' },
-                  { key: 'last7Days', label: 'Last 7 Days' },
-                  { key: 'last30Days', label: 'Last 30 Days' },
-                  { key: 'thisMonth', label: 'This Month' },
-                ].map((preset) => {
-                  const isActive = activePreset === preset.key;
-                  return (
-                    <button
-                      key={preset.key}
-                      type="button"
-                      onClick={() => handleApplyPreset(preset.key)}
-                      style={{
-                        padding: '6px 12px',
-                        fontSize: '12px',
-                        fontWeight: isActive ? 600 : 500,
-                        borderRadius: 'var(--ep-radius-pill)',
-                        border: isActive
-                          ? '1px solid var(--ep-primary)'
-                          : '1px solid var(--ep-border)',
-                        backgroundColor: isActive ? 'var(--ep-primary)' : '#ffffff',
-                        color: isActive ? '#ffffff' : 'var(--ep-text-secondary)',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Date Pickers */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <label
-                    htmlFor="report-date-from"
-                    style={{ fontSize: '12px', fontWeight: 500, color: 'var(--ep-text-secondary)' }}
-                  >
-                    From:
-                  </label>
-                  <input
-                    id="report-date-from"
-                    type="date"
-                    data-testid="report-date-from"
-                    value={dateFrom}
-                    onChange={(e) => handleCustomDateChange('from', e.target.value)}
-                    style={{
-                      padding: '6px 10px',
-                      fontSize: '12px',
-                      borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
-                      color: 'var(--ep-text-primary)',
-                      backgroundColor: '#ffffff',
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <label
-                    htmlFor="report-date-to"
-                    style={{ fontSize: '12px', fontWeight: 500, color: 'var(--ep-text-secondary)' }}
-                  >
-                    To:
-                  </label>
-                  <input
-                    id="report-date-to"
-                    type="date"
-                    data-testid="report-date-to"
-                    value={dateTo}
-                    onChange={(e) => handleCustomDateChange('to', e.target.value)}
-                    style={{
-                      padding: '6px 10px',
-                      fontSize: '12px',
-                      borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
-                      color: 'var(--ep-text-primary)',
-                      backgroundColor: '#ffffff',
-                    }}
-                  />
-                </div>
-
-                {(dateFrom || dateTo) && (
-                  <button
-                    type="button"
-                    onClick={handleClearDates}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--ep-primary)',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      padding: '4px 6px',
-                    }}
-                  >
-                    Clear Dates
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Contextual Filters: Booking Status for Bookings, Currency for Revenue */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '20px',
-                flexWrap: 'wrap',
-                backgroundColor: 'var(--ep-canvas)',
-                padding: '12px 16px',
-                borderRadius: 'var(--ep-radius-btn)',
-              }}
-            >
-              {reportType === 'bookings' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <label
-                    htmlFor="report-booking-status"
-                    style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)' }}
-                  >
-                    Booking Status:
-                  </label>
-                  <select
-                    id="report-booking-status"
-                    data-testid="report-booking-status"
-                    value={bookingStatus}
-                    onChange={(e) => setBookingStatus(e.target.value)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
-                      fontSize: '13px',
-                      color: 'var(--ep-text-primary)',
-                      backgroundColor: '#ffffff',
-                    }}
-                  >
-                    {BOOKING_STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {reportType === 'revenue' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <label
-                    htmlFor="report-currency-filter"
-                    style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ep-text-primary)' }}
-                  >
-                    Currency:
-                  </label>
-                  <select
-                    id="report-currency-filter"
-                    data-testid="report-currency-filter"
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
-                    style={{
-                      padding: '6px 12px',
-                      borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
-                      fontSize: '13px',
-                      color: 'var(--ep-text-primary)',
-                      backgroundColor: '#ffffff',
-                    }}
-                  >
-                    {CURRENCY_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Advanced Filter Toggle (Event ID & Organizer ID) */}
-              <button
-                type="button"
-                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--ep-text-secondary)',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  cursor: 'pointer',
-                  marginLeft: 'auto',
-                }}
-              >
-                <span>Targeted ID Filters (Optional)</span>
-                {showAdvancedFilters ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-            </div>
-
-            {/* Advanced Filters Drawer */}
-            {showAdvancedFilters && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  gap: '12px',
-                  padding: '12px 16px',
-                  backgroundColor: '#ffffff',
-                  borderRadius: 'var(--ep-radius-btn)',
-                  border: '1px solid var(--ep-border)',
-                }}
-              >
-                <div>
-                  <label
-                    htmlFor="report-filter-event-id"
-                    style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}
-                  >
-                    Event ID (Optional UUID):
-                  </label>
-                  <input
-                    id="report-filter-event-id"
-                    type="text"
-                    placeholder="e.g. 00000000-0000-0000-0000-000000000000"
-                    value={eventId}
-                    onChange={(e) => setEventId(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      fontSize: '12px',
-                      borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
-                      color: 'var(--ep-text-primary)',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="report-filter-organizer-id"
-                    style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--ep-text-secondary)', marginBottom: '4px' }}
-                  >
-                    Organizer ID (Optional UUID):
-                  </label>
-                  <input
-                    id="report-filter-organizer-id"
-                    type="text"
-                    placeholder="e.g. 00000000-0000-0000-0000-000000000000"
-                    value={organizerId}
-                    onChange={(e) => setOrganizerId(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      fontSize: '12px',
-                      borderRadius: 'var(--ep-radius-btn)',
-                      border: '1px solid var(--ep-border)',
-                      color: 'var(--ep-text-primary)',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Validation Error Banner */}
-            {validationError && (
-              <div
-                role="alert"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 14px',
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: 'var(--ep-radius-btn)',
-                  color: '#991b1b',
-                  fontSize: '13px',
-                }}
-              >
-                <AlertCircle size={16} />
-                <span>{validationError}</span>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button
-                type="button"
-                data-testid="generate-report-submit-btn"
-                onClick={() => handleGenerateReport()}
-                disabled={loading}
-                className="ep-btn-primary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 24px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.7 : 1,
-                }}
-              >
-                <BarChart3 size={16} />
-                <span>{loading ? 'Generating Report...' : 'Generate Report'}</span>
-              </button>
-            </div>
+              onFilterChange={handleFilterPanelChange}
+              onApply={() => handleGenerateReport()}
+              onClear={handleClearFilters}
+              loading={loading}
+              validationError={validationError}
+              showCategory={true}
+              showBookingStatus={reportType === 'bookings' || reportType === 'platform-summary'}
+              showCurrency={reportType === 'revenue' || reportType === 'platform-summary'}
+              showOrganizer={true}
+              applyButtonLabel="Generate Report"
+              applyButtonTestId="generate-report-submit-btn"
+            />
           </div>
         </section>
 
@@ -790,7 +515,52 @@ export function AdminReports() {
                 {formatReportingPeriodLabel({ from: appliedCriteria.from, to: appliedCriteria.to })}
               </span>
 
-              {appliedCriteria.reportType === 'bookings' && appliedCriteria.bookingStatus !== 'All' && (
+              {appliedCriteria.category && appliedCriteria.category !== 'All' && (
+                <span
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: 'var(--ep-primary)',
+                    backgroundColor: 'rgba(255, 90, 39, 0.08)',
+                    padding: '4px 10px',
+                    borderRadius: 'var(--ep-radius-pill)',
+                  }}
+                >
+                  Category: {appliedCriteria.category}
+                </span>
+              )}
+
+              {appliedCriteria.eventId && (
+                <span
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: 'var(--ep-primary)',
+                    backgroundColor: 'rgba(255, 90, 39, 0.08)',
+                    padding: '4px 10px',
+                    borderRadius: 'var(--ep-radius-pill)',
+                  }}
+                >
+                  Event: {appliedCriteria.eventId}
+                </span>
+              )}
+
+              {appliedCriteria.ticketTypeId && (
+                <span
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: 'var(--ep-primary)',
+                    backgroundColor: 'rgba(255, 90, 39, 0.08)',
+                    padding: '4px 10px',
+                    borderRadius: 'var(--ep-radius-pill)',
+                  }}
+                >
+                  Ticket Tier: {appliedCriteria.ticketTypeId}
+                </span>
+              )}
+
+              {appliedCriteria.bookingStatus && appliedCriteria.bookingStatus !== 'All' && (
                 <span
                   style={{
                     fontSize: '12px',
@@ -805,7 +575,7 @@ export function AdminReports() {
                 </span>
               )}
 
-              {appliedCriteria.reportType === 'revenue' && appliedCriteria.currency !== 'ALL' && (
+              {appliedCriteria.currency && appliedCriteria.currency !== 'ALL' && (
                 <span
                   style={{
                     fontSize: '12px',
@@ -817,6 +587,21 @@ export function AdminReports() {
                   }}
                 >
                   Currency: {appliedCriteria.currency}
+                </span>
+              )}
+
+              {appliedCriteria.organizerId && (
+                <span
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: 'var(--ep-primary)',
+                    backgroundColor: 'rgba(255, 90, 39, 0.08)',
+                    padding: '4px 10px',
+                    borderRadius: 'var(--ep-radius-pill)',
+                  }}
+                >
+                  Organizer: {appliedCriteria.organizerId}
                 </span>
               )}
             </div>

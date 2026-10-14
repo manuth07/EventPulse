@@ -37,6 +37,10 @@ export const CURRENCY_OPTIONS = [
   { value: 'LKR', label: 'LKR (Rs.)' },
 ];
 
+import { validateFilterInputs, CATEGORY_OPTIONS } from './reportFilterUtils.js';
+
+export { CATEGORY_OPTIONS };
+
 /**
  * Validates report criteria before triggering generation.
  * 
@@ -45,9 +49,10 @@ export const CURRENCY_OPTIONS = [
  * @param {string} [criteria.from] - YYYY-MM-DD or ISO string
  * @param {string} [criteria.to] - YYYY-MM-DD or ISO string
  * @param {string} [criteria.currency]
+ * @param {string} [role='Administrator']
  * @returns {{ isValid: boolean, error: string | null }}
  */
-export function validateReportCriteria(criteria) {
+export function validateReportCriteria(criteria, role = 'Administrator') {
   if (!criteria || !criteria.reportType) {
     return { isValid: false, error: 'Please select a report type.' };
   }
@@ -57,32 +62,7 @@ export function validateReportCriteria(criteria) {
     return { isValid: false, error: `Unsupported report type '${criteria.reportType}'.` };
   }
 
-  if (criteria.from && criteria.to) {
-    const fromDate = new Date(criteria.from);
-    const toDate = new Date(criteria.to);
-
-    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-      return { isValid: false, error: 'Invalid date format selected.' };
-    }
-
-    if (fromDate > toDate) {
-      return { isValid: false, error: "The start date ('from') must be earlier than or equal to the end date ('to')." };
-    }
-
-    const diffDays = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays > 730) {
-      return { isValid: false, error: 'The selected date range exceeds the maximum allowed period of 730 days (2 years).' };
-    }
-  }
-
-  if (criteria.currency && criteria.currency !== 'ALL') {
-    const trimmed = criteria.currency.trim().toUpperCase();
-    if (trimmed.length !== 3 || !/^[A-Z]{3}$/.test(trimmed)) {
-      return { isValid: false, error: "Currency must be a valid 3-letter ISO code (e.g. 'USD', 'LKR')." };
-    }
-  }
-
-  return { isValid: true, error: null };
+  return validateFilterInputs(criteria, { role });
 }
 
 /**
