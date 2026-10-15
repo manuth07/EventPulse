@@ -86,8 +86,23 @@ export async function removeUserAvatar(token) {
   return apiClient.delete('/api/users/me/avatar', { headers });
 }
 
+/**
+ * Update authenticated user's profile (EP-406).
+ *
+ * @param {{ firstName: string, lastName: string, phoneNumber?: string }} payload
+ * @param {string} [token] - Optional JWT token override.
+ * @returns {Promise<object>}
+ */
+export async function updateUserProfile(payload, token) {
+  const authToken = token || getStoredToken();
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+
+  return apiClient.put('/api/users/profile', payload, { headers });
+}
+
 export default {
   getCurrentUserProfile,
+  updateUserProfile,
   updateUserEmail,
   updateUserPhone,
   changeUserPassword,
