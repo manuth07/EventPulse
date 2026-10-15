@@ -32,3 +32,24 @@ public class ChangePasswordRequest
     [Required(ErrorMessage = "Password confirmation is required.")]
     public string ConfirmPassword { get; set; } = string.Empty;
 }
+
+/// <summary>Request body for PUT /api/users/profile (EP-406)</summary>
+public class UpdateUserProfileRequest
+{
+    [Required(ErrorMessage = "First name is required.")]
+    [MaxLength(100, ErrorMessage = "First name cannot exceed 100 characters.")]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Last name is required.")]
+    [MaxLength(100, ErrorMessage = "Last name cannot exceed 100 characters.")]
+    public string LastName { get; set; } = string.Empty;
+
+    [RegularExpression(@"^\+?[0-9\s\-()]{7,20}$", ErrorMessage = "Please enter a valid phone number (7-20 digits).")]
+    public string? PhoneNumber { get; set; }
+}
+
+/// <summary>Alias for UpdateUserProfileRequest</summary>
+public class UpdateProfileRequest : UpdateUserProfileRequest
+{
+}
+

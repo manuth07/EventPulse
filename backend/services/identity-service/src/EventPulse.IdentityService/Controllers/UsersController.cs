@@ -74,6 +74,37 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// PUT /api/users/profile
+    /// Protected endpoint (EP-406) — updates the authenticated user's profile (firstName, lastName, phoneNumber).
+    /// User identity is derived strictly from the authenticated JWT claims.
+    /// </summary>
+    [HttpPut("profile")]
+    [HttpPut("me")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateUserProfileRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+            return BadRequest(new { code = "INVALID_REQUEST", message = "Validation failed.", errors });
+        }
+
+        var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? User.FindFirst("sub")?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token." });
+        }
+
+        var result = await _profileService.UpdateProfileAsync(userId, request);
+
+        if (!result.Succeeded)
+        {
+            return StatusCode(result.StatusCode, new { code = result.Code, message = result.Message });
+        }
+
+        return Ok(result.Response);
+    }
+
+    /// <summary>
     /// PUT /api/users/me/email
     /// Protected endpoint — updates the authenticated user's email address.
     /// User identity is derived strictly from the authenticated JWT claims.

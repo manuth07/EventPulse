@@ -1,4 +1,5 @@
 using EventPulse.BookingService.Data;
+using EventPulse.BookingService.DTOs;
 using EventPulse.BookingService.Models;
 using EventPulse.Contracts.Kafka;
 using Microsoft.EntityFrameworkCore;
@@ -343,5 +344,115 @@ public class SalesReportingService : ISalesReportingService
             .Where(s => s.OrganizerId == organizerId)
             .OrderByDescending(s => s.PaymentTimestampUtc)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<PagedResult<SalesReportDto>> GetSalesReportsAsync(
+        ReportFilterDto filter,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.SalesReports
+            .Include(s => s.Items)
+            .Include(s => s.RefundAdjustments)
+            .AsNoTracking();
+
+        // Cross-service category resolution if requested
+        if (!string.IsNullOrWhiteSpace(filter.Category) && !filter.Category.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            var normalizedCat = ReportCategories.Normalize(filter.Category) ?? filter.Category.Trim();
+            try
+            {
+                var catEvents = await _eventAvailabilityClient.GetEventsByCategoryAsync(normalizedCat, cancellationToken);
+                var allowedEventIds = catEvents.Select(e => e.Id).ToList();
+                query = query.Where(s => allowedEventIds.Contains(s.EventId));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to resolve events for category {Category}", normalizedCat);
+            }
+        }
+
+        if (filter.EventId.HasValue)
+        {
+            query = query.Where(s => s.EventId == filter.EventId.Value);
+        }
+
+        if (filter.OrganizerId.HasValue)
+        {
+            query = query.Where(s => s.OrganizerId == filter.OrganizerId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Currency) && !filter.Currency.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            var normalizedCurrency = filter.Currency.Trim().ToUpperInvariant();
+            query = query.Where(s => s.Currency.ToUpper() == normalizedCurrency);
+        }
+
+        if (filter.From.HasValue)
+        {
+            query = query.Where(s => s.PaymentTimestampUtc >= filter.From.Value);
+        }
+
+        if (filter.To.HasValue)
+        {
+            query = query.Where(s => s.PaymentTimestampUtc <= filter.To.Value);
+        }
+
+        if (filter.TicketTypeId.HasValue)
+        {
+            query = query.Where(s => s.Items.Any(i => i.TicketTypeId == filter.TicketTypeId.Value));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.BookingReference))
+        {
+            var refPattern = filter.BookingReference.Trim();
+            query = query.Where(s => s.BookingReference.Contains(refPattern));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var searchPattern = filter.Search.Trim();
+            query = query.Where(s => s.BookingReference.Contains(searchPattern));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.BookingStatus) && !filter.BookingStatus.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            if (Enum.TryParse<SalesRefundStatus>(filter.BookingStatus.Trim(), true, out var refundStatus))
+            {
+                query = query.Where(s => s.RefundStatus == refundStatus);
+            }
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var page = Math.Max(1, filter.Page);
+        var pageSize = Math.Clamp(filter.PageSize, 1, 100);
+
+        if (totalCount == 0)
+        {
+            return new PagedResult<SalesReportDto>
+            {
+                Items = Array.Empty<SalesReportDto>(),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = 0
+            };
+        }
+
+        var reports = await query
+            .OrderByDescending(s => s.PaymentTimestampUtc)
+            .ThenByDescending(s => s.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        var dtos = reports.Select(SalesReportDto.FromEntity).ToList();
+
+        return new PagedResult<SalesReportDto>
+        {
+            Items = dtos,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
     }
 }

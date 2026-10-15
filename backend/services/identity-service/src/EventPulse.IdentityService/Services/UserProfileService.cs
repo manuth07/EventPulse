@@ -23,6 +23,7 @@ public interface IUserProfileService
 {
     Task<ProfileResult> GetProfileAsync(Guid userId);
     Task<ProfileResult> CompleteProfileAsync(Guid userId, CompleteProfileRequest request);
+    Task<ProfileResult> UpdateProfileAsync(Guid userId, UpdateUserProfileRequest request);
     Task<ProfileResult> UpdateEmailAsync(Guid userId, string newEmail);
     Task<ProfileResult> UpdatePhoneAsync(Guid userId, string newPhoneNumber);
     Task<ProfileResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request);
@@ -115,6 +116,68 @@ public class UserProfileService : IUserProfileService
             countryCode = user.CountryCode,
             profileCompleted = user.ProfileCompleted
         });
+    }
+
+    public async Task<ProfileResult> UpdateProfileAsync(Guid userId, UpdateUserProfileRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+        {
+            return ProfileResult.BadRequest("INVALID_NAME", "First name and last name are required.");
+        }
+
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("UpdateProfile: user {UserId} not found.", userId);
+            return ProfileResult.NotFound();
+        }
+
+        user.FirstName = request.FirstName.Trim();
+        user.LastName = request.LastName.Trim();
+
+        if (request.PhoneNumber != null)
+        {
+            user.PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber)
+                ? null
+                : request.PhoneNumber.Trim().Replace(" ", "").Replace("-", "");
+        }
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            _logger.LogError("UpdateProfile: failed for user {UserId}: {Errors}",
+                userId, string.Join(", ", result.Errors.Select(e => e.Description)));
+            return ProfileResult.ServerError();
+        }
+
+        _logger.LogInformation("UpdateProfile: successfully updated profile for user {UserId}.", userId);
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var primaryRole = roles.Contains(AppRoles.Administrator)
+            ? AppRoles.Administrator
+            : roles.Contains(AppRoles.Organizer)
+            ? AppRoles.Organizer
+            : AppRoles.Customer;
+
+        var hasPassword = await _userManager.HasPasswordAsync(user);
+
+        var profile = new UserProfileResponse
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email ?? string.Empty,
+            PhoneNumber = user.PhoneNumber,
+            CountryCode = user.CountryCode,
+            ProfileCompleted = user.ProfileCompleted,
+            HasPassword = hasPassword,
+            Role = primaryRole,
+            Roles = roles.ToList(),
+            ProfilePictureUrl = user.ProfilePictureUrl,
+            CreatedAt = user.CreatedAt
+        };
+
+        return ProfileResult.Success(profile);
     }
 
     public async Task<ProfileResult> UpdateEmailAsync(Guid userId, string newEmail)

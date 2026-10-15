@@ -12,6 +12,12 @@
 
 $ErrorActionPreference = "Stop"
 
+# -- Tool & Prerequisite Validation -------------------------------------------
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    Write-Host "ERROR: dotnet CLI was not found in PATH. Please install .NET SDK 10." -ForegroundColor Red
+    exit 1
+}
+
 # -- Helper: Terminate lingering processes on service ports and EventPulse.* --
 function Stop-EventPulseProcesses {
     param([int[]]$Ports = @(7000, 7101, 7102, 7103, 7104))
@@ -74,6 +80,20 @@ if (Test-Path $EnvFile) {
 $BackendRoot = $PSScriptRoot
 $RepoRoot = Split-Path $BackendRoot -Parent
 
+# -- Check & Start Required Docker Infrastructure (Postgres, Kafka, Azurite) ---
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    try {
+        $pgContainer = docker ps --filter "name=eventpulse-postgres" --filter "status=running" --format "{{.Names}}" 2>$null
+        if (-not $pgContainer -or $pgContainer.Trim() -ne "eventpulse-postgres") {
+            Write-Host "Starting Docker infrastructure containers..." -ForegroundColor Yellow
+            docker compose up -d postgres kafka azurite 2>&1 | Out-Null
+            Start-Sleep -Seconds 2
+        }
+    } catch {
+        Write-Host "Note: Docker daemon check failed or docker compose returned error. Proceeding with local configuration." -ForegroundColor DarkGray
+    }
+}
+
 # -- Ensure Kafka topics exist if Kafka container is active --------------------
 $setupKafkaScript = Join-Path $RepoRoot "scripts\setup-kafka.ps1"
 if (Test-Path $setupKafkaScript) {
@@ -99,52 +119,78 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "Build completed successfully.`n" -ForegroundColor Green
 
-$Services = @(
+# -- Service Definitions -------------------------------------------------------
+$IdentityService = @{
+    Name  = "IdentityService"
+    Color = "Green"
+    Path  = "$BackendRoot\services\identity-service\src\EventPulse.IdentityService"
+    Port  = 7101
+}
+
+$Microservices = @(
     @{
-        Name    = "Gateway"
-        Color   = "Cyan"
-        Path    = "$BackendRoot\gateway\src\EventPulse.Gateway"
-        Port    = 7000
+        Name  = "EventService"
+        Color = "Yellow"
+        Path  = "$BackendRoot\services\event-service\src\EventPulse.EventService"
+        Port  = 7102
     },
     @{
-        Name    = "IdentityService"
-        Color   = "Green"
-        Path    = "$BackendRoot\services\identity-service\src\EventPulse.IdentityService"
-        Port    = 7101
+        Name  = "BookingService"
+        Color = "Magenta"
+        Path  = "$BackendRoot\services\booking-service\src\EventPulse.BookingService"
+        Port  = 7103
     },
     @{
-        Name    = "EventService"
-        Color   = "Yellow"
-        Path    = "$BackendRoot\services\event-service\src\EventPulse.EventService"
-        Port    = 7102
-    },
-    @{
-        Name    = "BookingService"
-        Color   = "Magenta"
-        Path    = "$BackendRoot\services\booking-service\src\EventPulse.BookingService"
-        Port    = 7103
-    },
-    @{
-        Name    = "PaymentService"
-        Color   = "Blue"
-        Path    = "$BackendRoot\services\payment-service\src\EventPulse.PaymentService"
-        Port    = 7104
+        Name  = "PaymentService"
+        Color = "Blue"
+        Path  = "$BackendRoot\services\payment-service\src\EventPulse.PaymentService"
+        Port  = 7104
     }
 )
 
+$Gateway = @{
+    Name  = "Gateway"
+    Color = "Cyan"
+    Path  = "$BackendRoot\gateway\src\EventPulse.Gateway"
+    Port  = 7000
+}
+
+$AllServices = @($IdentityService) + $Microservices + @($Gateway)
+
 # -- Validate project directories exist ----------------------------------------
-foreach ($svc in $Services) {
+foreach ($svc in $AllServices) {
     if (-not (Test-Path $svc.Path)) {
         Write-Host "ERROR: Project directory not found: $($svc.Path)" -ForegroundColor Red
         exit 1
     }
 }
 
+# -- Helper: Poll Health Endpoint ---------------------------------------------
+function Wait-ForServiceHealth {
+    param(
+        [string]$Name,
+        [int]$Port,
+        [int]$TimeoutSeconds = 30
+    )
+    $url = "http://localhost:$Port/health"
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        try {
+            $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+            if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 300) {
+                return $true
+            }
+        } catch {}
+        Start-Sleep -Milliseconds 400
+    }
+    return $false
+}
+
 # -- Print startup banner ------------------------------------------------------
 Write-Host ""
 Write-Host "  EventPulse Backend Dev Runner" -ForegroundColor White
 Write-Host "  ------------------------------------------" -ForegroundColor DarkGray
-foreach ($svc in $Services) {
+foreach ($svc in $AllServices) {
     Write-Host "  [$($svc.Name)]" -ForegroundColor $svc.Color -NoNewline
     Write-Host " -> http://localhost:$($svc.Port)" -ForegroundColor DarkGray
 }
@@ -152,20 +198,54 @@ Write-Host "  ------------------------------------------" -ForegroundColor DarkG
 Write-Host "  Press Ctrl+C to stop all services." -ForegroundColor DarkGray
 Write-Host ""
 
-# -- Start each service as a background job with --no-build --------------------
-$Jobs = @()
-
-foreach ($svc in $Services) {
-    $job = Start-Job -Name $svc.Name -ScriptBlock {
+# -- Helper to launch a service as a background job ---------------------------
+function Start-ServiceJob {
+    param($Service)
+    $job = Start-Job -Name $Service.Name -ScriptBlock {
         param($projectPath, $port)
         Set-Location $projectPath
         $env:ASPNETCORE_ENVIRONMENT = "Development"
         $env:ASPNETCORE_URLS        = "http://localhost:$port"
         dotnet run --no-build --no-launch-profile 2>&1
-    } -ArgumentList $svc.Path, $svc.Port
+    } -ArgumentList $Service.Path, $Service.Port
+    return @{ Job = $job; Service = $Service }
+}
 
-    $Jobs += @{ Job = $job; Service = $svc }
-    Write-Host "  Started [$($svc.Name)] - job #$($job.Id)" -ForegroundColor $svc.Color
+$Jobs = @()
+
+# Stage 1: Start IdentityService first (executes EF Core migrations and seeds roles)
+Write-Host "  Starting [IdentityService] and applying database migrations..." -ForegroundColor Green
+$idJobEntry = Start-ServiceJob -Service $IdentityService
+$Jobs += $idJobEntry
+$idHealthy = Wait-ForServiceHealth -Name $IdentityService.Name -Port $IdentityService.Port -TimeoutSeconds 35
+if ($idHealthy) {
+    Write-Host "  [IdentityService] is healthy and listening on http://localhost:$($IdentityService.Port)" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: [IdentityService] health check timed out. Proceeding..." -ForegroundColor Yellow
+}
+
+# Stage 2: Start remaining backend microservices concurrently
+foreach ($svc in $Microservices) {
+    $entry = Start-ServiceJob -Service $svc
+    $Jobs += $entry
+    Write-Host "  Started [$($svc.Name)] - job #$($entry.Job.Id)" -ForegroundColor $svc.Color
+}
+
+# Wait for microservices health checks
+foreach ($svc in $Microservices) {
+    $svcHealthy = Wait-ForServiceHealth -Name $svc.Name -Port $svc.Port -TimeoutSeconds 25
+    if ($svcHealthy) {
+        Write-Host "  [$($svc.Name)] is healthy on http://localhost:$($svc.Port)" -ForegroundColor $svc.Color
+    }
+}
+
+# Stage 3: Start Gateway once backend services are ready
+Write-Host "  Starting [Gateway] reverse proxy..." -ForegroundColor Cyan
+$gwJobEntry = Start-ServiceJob -Service $Gateway
+$Jobs += $gwJobEntry
+$gwHealthy = Wait-ForServiceHealth -Name $Gateway.Name -Port $Gateway.Port -TimeoutSeconds 20
+if ($gwHealthy) {
+    Write-Host "  [Gateway] is healthy on http://localhost:$($Gateway.Port)" -ForegroundColor Cyan
 }
 
 # -- Optional: Stripe Webhook Forwarder ----------------------------------------
@@ -180,6 +260,8 @@ if (Get-Command stripe -ErrorAction SilentlyContinue) {
     Write-Host "  Started [StripeListener] - forwarding to http://localhost:7104/api/payments/webhook" -ForegroundColor DarkYellow
 }
 
+Write-Host ""
+Write-Host "  All services initialized. Streaming logs (Press Ctrl+C to stop)..." -ForegroundColor White
 Write-Host ""
 
 # -- Stream all job output in one terminal loop --------------------------------
@@ -210,8 +292,8 @@ try {
             }
 
             # Report if a job died unexpectedly
-            if ($job.State -eq "Failed" -and $PrintedLines[$job.Id] -ne -1) {
-                Write-Host "[$($svc.Name)] PROCESS EXITED (State: $($job.State))" -ForegroundColor Red
+            if ($job.State -in @("Completed","Failed","Stopped") -and $PrintedLines[$job.Id] -ne -1) {
+                Write-Host "[$($svc.Name)] PROCESS EXITED UNEXPECTEDLY (State: $($job.State))" -ForegroundColor Red
                 $PrintedLines[$job.Id] = -1
             }
         }
