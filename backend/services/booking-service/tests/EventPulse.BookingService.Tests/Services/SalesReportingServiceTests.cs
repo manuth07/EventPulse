@@ -579,4 +579,135 @@ public class SalesReportingServiceTests
         Assert.Single(pendingReport.RefundAdjustments);
         Assert.Equal("Pending", pendingReport.RefundAdjustments.First().Status);
     }
+
+    // =========================================================================
+    // EP-405: GetSalesReportsAsync Service Tests
+    // =========================================================================
+
+    [Fact]
+    public async Task GetSalesReportsAsync_WhenReportsExist_ReturnsPagedResult()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        for (int i = 1; i <= 5; i++)
+        {
+            var booking = CreateTestBooking(eventId, customerId, 100m * i, (Guid.NewGuid(), "Standard", 1, 100m * i));
+
+            var paymentEvent = new PaymentSucceededEvent
+            {
+                EventId = Guid.NewGuid(),
+                PaymentId = Guid.NewGuid(),
+                BookingId = booking.Id,
+                Amount = 100m * i,
+                Currency = "USD"
+            };
+            await _salesReportingService.GenerateSalesReportOnPurchaseAsync(paymentEvent);
+        }
+
+        var filter = new ReportFilterDto { Page = 1, PageSize = 3 };
+
+        // Act
+        var result = await _salesReportingService.GetSalesReportsAsync(filter);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(5, result.TotalCount);
+        Assert.Equal(3, result.Items.Count);
+        Assert.Equal(1, result.Page);
+        Assert.Equal(3, result.PageSize);
+        Assert.Equal(2, result.TotalPages);
+        Assert.True(result.HasNextPage);
+        Assert.False(result.HasPreviousPage);
+    }
+
+    [Fact]
+    public async Task GetSalesReportsAsync_WhenNoReportsMatch_ReturnsEmptyPagedResult()
+    {
+        // Arrange
+        var filter = new ReportFilterDto
+        {
+            EventId = Guid.NewGuid(), // Non-existent event
+            Page = 1,
+            PageSize = 10
+        };
+
+        // Act
+        var result = await _salesReportingService.GetSalesReportsAsync(filter);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(0, result.TotalCount);
+        Assert.Empty(result.Items);
+    }
+
+    [Fact]
+    public async Task GetSalesReportsAsync_AppliesFiltersCorrectly()
+    {
+        // Arrange
+        var targetEventId = Guid.NewGuid();
+        var otherEventId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        var booking1 = CreateTestBooking(targetEventId, customerId, 150m, (Guid.NewGuid(), "VIP", 1, 150m));
+        await _salesReportingService.GenerateSalesReportOnPurchaseAsync(new PaymentSucceededEvent
+        {
+            EventId = Guid.NewGuid(),
+            PaymentId = Guid.NewGuid(),
+            BookingId = booking1.Id,
+            Amount = 150m,
+            Currency = "USD"
+        });
+
+        var booking2 = CreateTestBooking(otherEventId, customerId, 80m, (Guid.NewGuid(), "Regular", 1, 80m));
+        await _salesReportingService.GenerateSalesReportOnPurchaseAsync(new PaymentSucceededEvent
+        {
+            EventId = Guid.NewGuid(),
+            PaymentId = Guid.NewGuid(),
+            BookingId = booking2.Id,
+            Amount = 80m,
+            Currency = "LKR"
+        });
+
+        // Act: filter by targetEventId
+        var result = await _salesReportingService.GetSalesReportsAsync(new ReportFilterDto { EventId = targetEventId });
+
+        // Assert
+        Assert.Single(result.Items);
+        Assert.Equal(150m, result.Items[0].SaleAmount);
+        Assert.Equal(targetEventId, result.Items[0].EventId);
+    }
+
+    [Fact]
+    public async Task GetSalesReportsAsync_PaginatesCorrectly()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        for (int i = 1; i <= 6; i++)
+        {
+            var booking = CreateTestBooking(eventId, customerId, 50m, (Guid.NewGuid(), "General", 1, 50m));
+
+            await _salesReportingService.GenerateSalesReportOnPurchaseAsync(new PaymentSucceededEvent
+            {
+                EventId = Guid.NewGuid(),
+                PaymentId = Guid.NewGuid(),
+                BookingId = booking.Id,
+                Amount = 50m,
+                Currency = "USD"
+            });
+        }
+
+        // Act: Request Page 2 with PageSize 2
+        var page2Result = await _salesReportingService.GetSalesReportsAsync(new ReportFilterDto { Page = 2, PageSize = 2 });
+
+        // Assert
+        Assert.Equal(2, page2Result.Items.Count);
+        Assert.Equal(2, page2Result.Page);
+        Assert.Equal(6, page2Result.TotalCount);
+        Assert.True(page2Result.HasPreviousPage);
+        Assert.True(page2Result.HasNextPage);
+    }
 }

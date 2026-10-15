@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using EventPulse.BookingService.DTOs;
+using EventPulse.BookingService.Models;
 using EventPulse.BookingService.Services;
 
 namespace EventPulse.BookingService.Controllers;
@@ -19,6 +20,71 @@ public class SalesReportsController : ControllerBase
     {
         _salesReportingService = salesReportingService;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// GET /api/bookings/sales-reports
+    /// EP-405: Retrieves a paginated collection of sales reports with optional filtering.
+    /// Strictly protected by AdminOnly policy.
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<PagedResult<SalesReportDto>>> GetAll(
+        [FromQuery] ReportFilterDto filter,
+        CancellationToken ct)
+    {
+        filter ??= new ReportFilterDto();
+
+        if (filter.Page < 1)
+        {
+            return BadRequest(new { code = "INVALID_PAGE", message = "Page must be greater than or equal to 1." });
+        }
+
+        if (filter.PageSize < 1 || filter.PageSize > 100)
+        {
+            return BadRequest(new { code = "INVALID_PAGE_SIZE", message = "PageSize must be between 1 and 100." });
+        }
+
+        if (filter.From.HasValue && filter.To.HasValue && filter.From.Value > filter.To.Value)
+        {
+            return BadRequest(new
+            {
+                code = "INVALID_DATE_RANGE",
+                message = "The start date ('from') must be earlier than or equal to the end date ('to')."
+            });
+        }
+
+        if (filter.From.HasValue && filter.To.HasValue && (filter.To.Value - filter.From.Value).TotalDays > 730)
+        {
+            return BadRequest(new
+            {
+                code = "DATE_RANGE_EXCEEDED",
+                message = "The requested date range exceeds the maximum allowed reporting period of 730 days (2 years)."
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Category) && !filter.Category.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!ReportCategories.IsValid(filter.Category))
+            {
+                return BadRequest(new
+                {
+                    code = "INVALID_CATEGORY",
+                    message = $"Unsupported event category '{filter.Category}'. Valid categories are Music, Sports, Conference, Workshop, Festival, Arts & Theatre, Community, Other."
+                });
+            }
+        }
+
+        if (filter.TicketTypeId.HasValue && !filter.EventId.HasValue)
+        {
+            return BadRequest(new
+            {
+                code = "MISSING_EVENT_FOR_TIER",
+                message = "An event must be selected when filtering by ticket type."
+            });
+        }
+
+        var result = await _salesReportingService.GetSalesReportsAsync(filter, ct);
+        return Ok(result);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using EventPulse.BookingService.DTOs;
 using EventPulse.BookingService.Models;
 using EventPulse.Contracts.Kafka;
 
@@ -35,4 +36,9 @@ public interface ISalesReportingService
     Task<IReadOnlyList<SalesReport>> GetSalesReportsByEventIdAsync(Guid eventId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<SalesReport>> GetSalesReportsByOrganizerIdAsync(Guid organizerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// EP-405: Retrieves a paginated collection of sales reports with server-side filtering and sorting.
+    /// </summary>
+    Task<PagedResult<SalesReportDto>> GetSalesReportsAsync(ReportFilterDto filter, CancellationToken cancellationToken = default);
 }

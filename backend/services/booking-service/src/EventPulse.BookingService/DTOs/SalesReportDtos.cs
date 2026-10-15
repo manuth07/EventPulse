@@ -88,3 +88,23 @@ public class SaleRefundAdjustmentDto
     public string Status { get; set; } = string.Empty;
     public DateTimeOffset AdjustedAtUtc { get; set; }
 }
+
+/// <summary>
+/// Query criteria and pagination parameters for retrieving sales reports collection (EP-405).
+/// </summary>
+public class ReportFilterDto
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public DateTimeOffset? From { get; set; }
+    public DateTimeOffset? To { get; set; }
+    public Guid? EventId { get; set; }
+    public Guid? OrganizerId { get; set; }
+    public string? Currency { get; set; }
+    public Guid? TicketTypeId { get; set; }
+    public string? Category { get; set; }
+    public string? BookingStatus { get; set; }
+    public string? BookingReference { get; set; }
+    public string? Search { get; set; }
+}
+

@@ -379,4 +379,93 @@ public class ReportsAccessControlSecurityTests
             }
         }
     }
+
+    // =========================================================================
+    // EP-405: SalesReports Root Route Security and Gateway Route Tests
+    // =========================================================================
+
+    [Fact]
+    public void SalesReportsController_RootGetAllAction_InheritsAdminOnlyPolicyAndMatchesRoute()
+    {
+        var method = typeof(SalesReportsController).GetMethod("GetAll");
+        Assert.NotNull(method);
+
+        // Verify [HttpGet] without parameters (root route)
+        var httpGet = method.GetCustomAttribute<HttpGetAttribute>();
+        Assert.NotNull(httpGet);
+        Assert.Null(httpGet.Template); // Root route on controller template
+
+        // Verify No [AllowAnonymous]
+        var allowAnon = method.GetCustomAttribute<AllowAnonymousAttribute>();
+        Assert.Null(allowAnon);
+
+        // Verify controller-level AdminOnly policy applies
+        var controllerAuth = typeof(SalesReportsController).GetCustomAttribute<AuthorizeAttribute>();
+        Assert.NotNull(controllerAuth);
+        Assert.Equal(AppPolicies.AdminOnly, controllerAuth.Policy);
+
+        // Verify authorization evaluation against the policy
+        var policy = _authOptions.GetPolicy(AppPolicies.AdminOnly);
+        Assert.NotNull(policy);
+
+        var adminPrincipal = ValidateAndCreatePrincipal(GenerateJwt(Guid.NewGuid(), "Administrator"));
+        var adminHasRole = adminPrincipal.IsInRole("Administrator");
+        Assert.True(adminHasRole);
+
+        var customerPrincipal = ValidateAndCreatePrincipal(GenerateJwt(Guid.NewGuid(), "Customer"));
+        var customerHasRole = customerPrincipal.IsInRole("Administrator");
+        Assert.False(customerHasRole);
+
+        var organizerPrincipal = ValidateAndCreatePrincipal(GenerateJwt(Guid.NewGuid(), "Organizer"));
+        var organizerHasRole = organizerPrincipal.IsInRole("Administrator");
+        Assert.False(organizerHasRole);
+    }
+
+    [Fact]
+    public void GatewayConfiguration_MatchesAndForwardsSalesReportsRoute()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var dir = new DirectoryInfo(baseDir);
+        string? appsettingsPath = null;
+
+        while (dir != null)
+        {
+            var candidate = Path.Combine(dir.FullName, "backend", "gateway", "src", "EventPulse.Gateway", "appsettings.json");
+            if (File.Exists(candidate))
+            {
+                appsettingsPath = candidate;
+                break;
+            }
+            candidate = Path.Combine(dir.FullName, "gateway", "src", "EventPulse.Gateway", "appsettings.json");
+            if (File.Exists(candidate))
+            {
+                appsettingsPath = candidate;
+                break;
+            }
+            dir = dir.Parent;
+        }
+
+        Assert.True(File.Exists(appsettingsPath), $"Gateway appsettings.json not found from {baseDir}");
+
+        var json = File.ReadAllText(appsettingsPath!);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var routes = root.GetProperty("ReverseProxy").GetProperty("Routes");
+        var clusters = root.GetProperty("ReverseProxy").GetProperty("Clusters");
+
+        // 1. Verify bookings-route exists and covers /api/bookings/{**catch-all}
+        Assert.True(routes.TryGetProperty("bookings-route", out var bookingsRoute), "bookings-route missing");
+        var matchPath = bookingsRoute.GetProperty("Match").GetProperty("Path").GetString();
+        Assert.Equal("/api/bookings/{**catch-all}", matchPath);
+
+        var clusterId = bookingsRoute.GetProperty("ClusterId").GetString();
+        Assert.Equal("booking_cluster", clusterId);
+
+        // 2. Verify booking_cluster destination points to BookingService port 7103
+        Assert.True(clusters.TryGetProperty("booking_cluster", out var bookingCluster), "booking_cluster missing");
+        var destination = bookingCluster.GetProperty("Destinations").GetProperty("booking_service");
+        var address = destination.GetProperty("Address").GetString();
+        Assert.Equal("http://localhost:7103", address);
+    }
 }
