@@ -54,6 +54,10 @@ public class EventInventoryService : IEventInventoryService
             if (eventItem.Status != EventStatus.Published)
                 return InventoryOperationResult.Failed($"Event is not open for ticket purchase (Status: {eventItem.Status}).", 400);
 
+            var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+            if (eventItem.EventDate <= nowUtc)
+                return InventoryOperationResult.Failed("Event is no longer open for ticket purchase.", 400);
+
             // Block if event has pending cancellation request
             var hasPendingCancellation = await _context.EventCancellationRequests
                 .AnyAsync(r => r.EventId == eventId && r.Status == EventCancellationRequestStatus.Pending, cancellationToken);
