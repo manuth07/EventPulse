@@ -42,7 +42,8 @@ public class KafkaPaymentEventConsumer : BackgroundService
         var topics = new List<string>
         {
             _kafkaOptions.Topics.PaymentSucceeded,
-            _kafkaOptions.Topics.PaymentFailed
+            _kafkaOptions.Topics.PaymentFailed,
+            _kafkaOptions.Topics.PaymentRefunded
         };
 
         _logger.LogInformation(

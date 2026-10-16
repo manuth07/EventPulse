@@ -23,6 +23,16 @@ public interface ITicketTypeService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Retrieves a single ticket type configured for an event owned by the given organizer.
+    /// EP-400 — Exposes ticket type details including TotalQuantity and RemainingQuantity.
+    /// </summary>
+    Task<(TicketTypeDto? Result, bool IsNotFound, bool IsForbidden)> GetByIdAsync(
+        Guid eventId,
+        Guid ticketTypeId,
+        Guid organizerId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Updates an existing ticket type's name, price, and capacity.
     /// Only permitted for ticket types belonging to events owned by the requesting organizer.
     /// EventId association is preserved and cannot be changed via this operation.

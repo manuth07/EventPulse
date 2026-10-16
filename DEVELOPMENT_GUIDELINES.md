@@ -143,6 +143,21 @@ EventPulse utilizes **Apache Kafka** for asynchronous, cross-service event propa
 - **Idempotent Consumers:** Network partitions and retries can cause duplicate message delivery. Consumers should be designed to handle duplicate events safely.
 - **Architectural Approval:** Do not introduce new Kafka topics or consumers into a feature unless the user story or architecture requires asynchronous event-driven handling.
 
+### Registered Kafka Topics
+
+| Topic Name | Purpose | Producer | Consumer | Configuration Key |
+| :--- | :--- | :--- | :--- | :--- |
+| `event-submitted` | Published when an organizer submits an event requiring administrator review (EP-32). | Event Service | Notification workflow | `Kafka:Topics:EventSubmitted` |
+| `payment-succeeded` | Published when a booking payment is successfully confirmed by Stripe. | Payment Service | Booking Service | `Kafka:Topics:PaymentSucceeded` |
+| `payment-failed` | Published when a payment attempt fails or is declined. | Payment Service | Booking Service | `Kafka:Topics:PaymentFailed` |
+| `booking-refund-requested` | Published when a confirmed booking or ticket cancellation triggers a refund. | Booking Service | Payment Service | `Kafka:Topics:BookingRefundRequested` |
+| `payment-refunded` | Published when Stripe confirms refund completion. | Payment Service | Booking Service | `Kafka:Topics:PaymentRefunded` |
+
+### Kafka Configuration Conventions
+- **Bootstrap Servers:** Default `localhost:9092` in local development (`appsettings.json`). Configurable for staging/production environments via `Kafka__BootstrapServers` environment variable.
+- **Topic Overrides:** Topic names bind to `KafkaOptions.Topics` and can be overridden via `Kafka__Topics__<TopicProperty>` environment variables.
+- **Topic Provisioning:** Handled idempotently by `scripts/setup-kafka.ps1` (and invoked automatically by `backend/dev-start.ps1`). Applications do not auto-create topics on startup.
+
 ---
 
 ## 7. Database Guidelines

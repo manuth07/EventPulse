@@ -12,15 +12,18 @@ public class PaymentFailedEventHandler : IPaymentFailedEventHandler
 {
     private readonly BookingDbContext _dbContext;
     private readonly IBookingPaymentFailureService _failureService;
+    private readonly IEventAvailabilityClient _eventAvailabilityClient;
     private readonly ILogger<PaymentFailedEventHandler> _logger;
 
     public PaymentFailedEventHandler(
         BookingDbContext dbContext,
         IBookingPaymentFailureService failureService,
+        IEventAvailabilityClient eventAvailabilityClient,
         ILogger<PaymentFailedEventHandler> logger)
     {
         _dbContext = dbContext;
         _failureService = failureService;
+        _eventAvailabilityClient = eventAvailabilityClient;
         _logger = logger;
     }
 
@@ -44,6 +47,19 @@ public class PaymentFailedEventHandler : IPaymentFailedEventHandler
                 "PaymentFailedEvent {EventId} for Booking {BookingId} has already been processed. Skipping duplicate.",
                 paymentEvent.EventId, paymentEvent.BookingId);
             return;
+        }
+
+        // EP-401: Release any active temporary inventory hold in EventService
+        var booking = await _dbContext.Bookings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == paymentEvent.BookingId, cancellationToken);
+
+        if (booking != null)
+        {
+            await _eventAvailabilityClient.ReleaseInventoryAsync(
+                booking.EventId,
+                paymentEvent.BookingId,
+                cancellationToken);
         }
 
         // 2. Invoke booking payment-failure transition

@@ -10,16 +10,30 @@ public class BookingCancellationService : IBookingCancellationService
 {
     private readonly BookingDbContext _dbContext;
     private readonly IBookingEventPublisher _eventPublisher;
+    private readonly IEventAvailabilityClient _eventAvailabilityClient;
     private readonly ILogger<BookingCancellationService> _logger;
+
+    private readonly ICancellationEligibilityChecker _eligibilityChecker;
+    private readonly TimeProvider _timeProvider;
 
     public BookingCancellationService(
         BookingDbContext dbContext,
         IBookingEventPublisher eventPublisher,
-        ILogger<BookingCancellationService> logger)
+        IEventAvailabilityClient eventAvailabilityClient,
+        ILogger<BookingCancellationService> logger,
+        ICancellationEligibilityChecker? eligibilityChecker = null,
+        TimeProvider? timeProvider = null)
     {
         _dbContext = dbContext;
         _eventPublisher = eventPublisher;
+        _eventAvailabilityClient = eventAvailabilityClient;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _eligibilityChecker = eligibilityChecker ?? new CancellationEligibilityChecker(
+            dbContext,
+            eventAvailabilityClient,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CancellationEligibilityChecker>.Instance,
+            _timeProvider);
     }
 
     public async Task<(bool IsEligible, string? Reason, Booking? Booking)> EvaluateCancellationEligibilityAsync(
@@ -32,22 +46,12 @@ public class BookingCancellationService : IBookingCancellationService
             .Include(b => b.Tickets)
             .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
-        if (booking == null || booking.CustomerId != customerId)
+        var eligibility = await _eligibilityChecker.EvaluateEligibilityAsync(bookingId, customerId, ct);
+        if (!eligibility.IsEligible)
         {
-            _logger.LogWarning("Cancellation eligibility failed for BookingId {BookingId}, CustomerId {CustomerId}: Booking not found or access denied.", bookingId, customerId);
-            return (false, "Booking not found or access denied", null);
-        }
-
-        if (booking.Status == BookingStatus.Cancelled)
-        {
-            _logger.LogInformation("Cancellation eligibility failed for BookingId {BookingId}: Booking is already cancelled.", bookingId);
-            return (false, "Booking is already cancelled", booking);
-        }
-
-        if (booking.Status == BookingStatus.PaymentFailed)
-        {
-            _logger.LogInformation("Cancellation eligibility failed for BookingId {BookingId}: Cannot cancel a failed payment booking.", bookingId);
-            return (false, "Cannot cancel a failed payment booking", booking);
+            _logger.LogInformation("Cancellation eligibility failed for BookingId {BookingId}: {Reason} ({ReasonCode})",
+                bookingId, eligibility.Explanation, eligibility.ReasonCode);
+            return (false, eligibility.Explanation ?? eligibility.ReasonCode, booking);
         }
 
         return (true, null, booking);
@@ -59,23 +63,35 @@ public class BookingCancellationService : IBookingCancellationService
         CancelBookingRequest? request,
         CancellationToken ct = default)
     {
-        var (isEligible, reason, booking) = await EvaluateCancellationEligibilityAsync(bookingId, customerId, ct);
+        var booking = await _dbContext.Bookings
+            .Include(b => b.Items)
+            .Include(b => b.Tickets)
+            .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
-        if (!isEligible || booking == null)
+        var eligibility = await _eligibilityChecker.EvaluateEligibilityAsync(bookingId, customerId, ct);
+
+        if (!eligibility.IsEligible || booking == null)
         {
             return new BookingCancellationResultDto(
                 bookingId: bookingId,
                 bookingReference: booking?.BookingReference ?? string.Empty,
                 previousStatus: booking?.Status.ToString() ?? string.Empty,
                 newStatus: booking?.Status.ToString() ?? string.Empty,
-                cancelledAt: DateTimeOffset.UtcNow,
+                cancelledAt: _timeProvider.GetUtcNow(),
                 success: false,
-                message: reason ?? "Booking is not eligible for cancellation"
+                message: eligibility.Explanation ?? "Booking is not eligible for cancellation",
+                cancelledBy: booking?.CancelledBy,
+                reasonCode: eligibility.ReasonCode
             );
         }
 
         var previousStatus = booking.Status.ToString();
+        var cancelledAt = _timeProvider.GetUtcNow();
+
         booking.Status = BookingStatus.Cancelled;
+        booking.CancelledAt = cancelledAt;
+        booking.CancelledBy = customerId.ToString();
+        booking.CancellationReason = request?.Reason ?? "Booking cancelled by customer";
 
         if (booking.Tickets != null)
         {
@@ -85,11 +101,76 @@ public class BookingCancellationService : IBookingCancellationService
             }
         }
 
-        await _dbContext.SaveChangesAsync(ct);
+        try
+        {
+            await _dbContext.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            _logger.LogWarning(ex, "Concurrency conflict during cancellation of Booking {BookingId}. Checking current database state.", bookingId);
+
+            var currentBooking = await _dbContext.Bookings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
+
+            if (currentBooking != null && currentBooking.Status == BookingStatus.Cancelled)
+            {
+                _logger.LogInformation("Booking {BookingId} was already cancelled concurrently.", bookingId);
+                return new BookingCancellationResultDto(
+                    bookingId: currentBooking.Id,
+                    bookingReference: currentBooking.BookingReference,
+                    previousStatus: BookingStatus.Cancelled.ToString(),
+                    newStatus: BookingStatus.Cancelled.ToString(),
+                    cancelledAt: currentBooking.CancelledAt ?? _timeProvider.GetUtcNow(),
+                    success: false,
+                    message: "Booking is already cancelled",
+                    cancelledBy: currentBooking.CancelledBy,
+                    reasonCode: CancellationReasonCodes.AlreadyCancelled
+                );
+            }
+
+            throw;
+        }
+
+        // EP-401: Restore inventory if booking was confirmed (sold), or release reservation if pending payment
+        if (previousStatus == BookingStatus.Confirmed.ToString())
+        {
+            var cancellationKey = $"booking-{booking.Id}-cancelled";
+            var itemsToRestore = booking.Items
+                .Select(i => new ReserveInventoryItemDto { TicketTypeId = i.TicketTypeId, Quantity = i.Quantity })
+                .ToList();
+
+            try
+            {
+                await _eventAvailabilityClient.RestoreInventoryAsync(
+                    booking.EventId,
+                    booking.Id,
+                    cancellationKey,
+                    itemsToRestore,
+                    ticketId: null,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to call RestoreInventoryAsync via REST client for Booking {BookingId}. Kafka event will serve as asynchronous compensation.", booking.Id);
+            }
+        }
+        else if (previousStatus == BookingStatus.PendingPayment.ToString())
+        {
+            try
+            {
+                await _eventAvailabilityClient.ReleaseInventoryAsync(
+                    booking.EventId,
+                    booking.Id,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to call ReleaseInventoryAsync via REST client for Booking {BookingId}. Kafka event will serve as asynchronous compensation.", booking.Id);
+            }
+        }
 
         // Publish outbound domain event to release capacity and notify downstream services
-        // Note: Capacity restoration is handled asynchronously via Kafka event emission (topic: booking-cancelled).
-        var cancelledAt = DateTimeOffset.UtcNow;
         var releasedTickets = booking.Items
             .Select(i => new CancelledTicketItemDto(i.TicketTypeId, i.Quantity))
             .ToList();
@@ -141,7 +222,9 @@ public class BookingCancellationService : IBookingCancellationService
             newStatus: BookingStatus.Cancelled.ToString(),
             cancelledAt: cancelledAt,
             success: true,
-            message: "Booking cancelled successfully"
+            message: "Booking cancelled successfully",
+            cancelledBy: booking.CancelledBy,
+            reasonCode: null
         );
     }
 
@@ -198,6 +281,24 @@ public class BookingCancellationService : IBookingCancellationService
 
         await _dbContext.SaveChangesAsync(ct);
 
+        // EP-401: Restore inventory if parent booking was Confirmed
+        if (parentWasConfirmed)
+        {
+            var cancellationKey = $"ticket-{ticket.Id}-cancelled";
+            var itemToRestore = new List<ReserveInventoryItemDto>
+            {
+                new() { TicketTypeId = ticket.TicketTypeId, Quantity = 1 }
+            };
+
+            await _eventAvailabilityClient.RestoreInventoryAsync(
+                ticket.EventId,
+                ticket.Booking.Id,
+                cancellationKey,
+                itemToRestore,
+                ticketId: ticket.Id,
+                ct);
+        }
+
         // Emit TicketCancelledEvent for inventory/capacity restoration
         var cancelledEvent = new TicketCancelledEvent
         {
@@ -208,7 +309,7 @@ public class BookingCancellationService : IBookingCancellationService
             EventId = ticket.EventId,
             TicketTypeId = ticket.TicketTypeId,
             TicketCode = ticket.TicketCode,
-            CancelledAt = DateTimeOffset.UtcNow,
+            CancelledAt = _timeProvider.GetUtcNow(),
             Reason = reason
         };
 
@@ -232,7 +333,7 @@ public class BookingCancellationService : IBookingCancellationService
                 EventId: ticket.EventId,
                 RefundAmount: refundAmount,
                 Reason: reason ?? $"Individual ticket {ticket.TicketCode} cancelled by customer",
-                RequestedAt: DateTimeOffset.UtcNow
+                RequestedAt: _timeProvider.GetUtcNow()
             );
 
             await _eventPublisher.PublishBookingRefundRequestedAsync(refundEvent, ct);

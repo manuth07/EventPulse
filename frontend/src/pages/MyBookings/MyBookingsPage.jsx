@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Header } from '../../components/Header/Header';
+import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../context/AuthContext';
-import { getMyBookings, cancelBooking } from '../../services/bookingService';
+import { getMyBookings, cancelBooking, checkCancellationEligibility } from '../../services/bookingService';
 import { createCheckoutSession } from '../../services/paymentService';
+import {
+  getCancellationReasonMessage,
+  getRefundOutcomeInfo,
+} from '../../utils/cancellationHelper';
 import {
   Ticket,
   Calendar,
@@ -24,6 +28,7 @@ import {
   AlertTriangle,
   X,
   Ban,
+  MapPin,
 } from 'lucide-react';
 
 const STATUS_TABS = [
@@ -44,6 +49,24 @@ function formatCurrency(amount) {
 
 function formatDate(dateString) {
   if (!dateString) return 'Date unavailable';
+  try {
+    const d = new Date(dateString);
+    const day = d.getDate();
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    const year = d.getFullYear();
+    const time = d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    return `${day} ${month} ${year} · ${time}`;
+  } catch {
+    return dateString;
+  }
+}
+
+function formatEventDate(dateString) {
+  if (!dateString) return null;
   try {
     const d = new Date(dateString);
     const day = d.getDate();
@@ -208,12 +231,27 @@ export function MyBookingsPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState(null);
+  const [eligibility, setEligibility] = useState(null);
+  const [checkingEligibility, setCheckingEligibility] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const handleOpenCancelModal = (booking) => {
+  const handleOpenCancelModal = async (booking) => {
     setBookingToCancel(booking);
     setCancelReason('');
     setCancelError(null);
+    setEligibility(null);
+
+    if (booking?.id) {
+      setCheckingEligibility(true);
+      try {
+        const result = await checkCancellationEligibility(booking.id, accessToken);
+        setEligibility(result);
+      } catch (err) {
+        console.warn('Unable to pre-check cancellation eligibility:', err);
+      } finally {
+        setCheckingEligibility(false);
+      }
+    }
   };
 
   const handleCloseCancelModal = () => {
@@ -221,22 +259,38 @@ export function MyBookingsPage() {
     setBookingToCancel(null);
     setCancelReason('');
     setCancelError(null);
+    setEligibility(null);
   };
 
   const handleConfirmCancel = async () => {
-    if (!bookingToCancel) return;
+    if (!bookingToCancel || cancelling) return;
     setCancelling(true);
     setCancelError(null);
     try {
-      await cancelBooking(bookingToCancel.id, cancelReason || undefined, accessToken);
+      const result = await cancelBooking(bookingToCancel.id, cancelReason.trim() || undefined, accessToken);
+      const refundOutcome = getRefundOutcomeInfo(bookingToCancel, result);
+      const cancelledRef = bookingToCancel.bookingReference;
+
       setBookingToCancel(null);
       setCancelReason('');
-      setToast({ message: 'Booking successfully cancelled', type: 'success' });
-      setTimeout(() => setToast(null), 5000);
+      setEligibility(null);
+
+      setToast({
+        message: `Booking #${cancelledRef} has been cancelled successfully.`,
+        refundStatus: refundOutcome.refundStatus,
+        refundExplanation: refundOutcome.refundExplanation,
+        refundBadgeBg: refundOutcome.badgeBg,
+        refundBadgeColor: refundOutcome.badgeColor,
+        type: 'success',
+      });
+      setTimeout(() => setToast(null), 8000);
       await fetchBookings(currentPage, activeTab);
     } catch (err) {
       console.error('Failed to cancel booking:', err);
-      setCancelError(err?.message || 'Unable to cancel this booking. Please try again.');
+      const reasonCode = err?.reasonCode || err?.data?.reasonCode || err?.data?.code;
+      const rawMessage = err?.data?.message || err?.response?.data?.message || err?.message;
+      const friendlyMessage = getCancellationReasonMessage(reasonCode, rawMessage);
+      setCancelError(friendlyMessage);
     } finally {
       setCancelling(false);
     }
@@ -315,10 +369,7 @@ export function MyBookingsPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--ep-canvas)' }}>
-      <Header />
-
-      <main style={{ flex: 1, padding: '36px 16px 64px' }}>
+    <Layout style={{ backgroundColor: 'var(--ep-canvas)' }} mainStyle={{ padding: '36px 16px 64px' }}>
         <div style={{ maxWidth: '960px', margin: '0 auto' }}>
           {/* Breadcrumb / Back Link */}
           <div style={{ marginBottom: '20px' }}>
@@ -349,8 +400,10 @@ export function MyBookingsPage() {
           {/* Page Header */}
           <div style={{
             display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '16px',
             marginBottom: '28px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -374,18 +427,42 @@ export function MyBookingsPage() {
                   color: 'var(--ep-text-primary)',
                   letterSpacing: '-0.5px',
                   fontFamily: 'var(--ep-font-heading)',
-                }}>
-                  My Booking History
+                }} data-testid="my-bookings-page-title">
+                  My Booked Tickets
                 </h1>
                 <p style={{
                   margin: '4px 0 0',
                   fontSize: '14px',
                   color: 'var(--ep-text-secondary)',
                 }}>
-                  Track your reservations, review payment status, and view digital tickets.
+                  View your booked tickets history, track reservations, review payment status, and access digital tickets.
                 </p>
               </div>
             </div>
+
+            <Link
+              to="/payment-history"
+              data-testid="my-bookings-payment-history-link"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 16px',
+                backgroundColor: '#ffffff',
+                color: 'var(--ep-text-primary)',
+                border: '1px solid var(--ep-border)',
+                borderRadius: 'var(--ep-radius-btn)',
+                fontSize: '13px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                transition: 'var(--ep-transition)',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ep-primary)')}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ep-border)')}
+            >
+              <CreditCard size={14} color="var(--ep-text-secondary)" />
+              <span>Payment History</span>
+            </Link>
           </div>
 
           {/* Status Filter Tabs */}
@@ -395,7 +472,7 @@ export function MyBookingsPage() {
             marginBottom: '24px',
             overflowX: 'auto',
             paddingBottom: '4px',
-          }}>
+          }} data-testid="status-filter-tabs">
             {STATUS_TABS.map((tab) => {
               const isActive = activeTab === tab.value;
               return (
@@ -403,6 +480,7 @@ export function MyBookingsPage() {
                   key={tab.value}
                   type="button"
                   id={`filter-tab-${tab.value}`}
+                  data-testid={`filter-tab-${tab.value}`}
                   onClick={() => handleTabChange(tab.value)}
                   style={{
                     padding: '8px 18px',
@@ -438,7 +516,7 @@ export function MyBookingsPage() {
 
           {/* Loading State */}
           {loading && (
-            <div style={{
+            <div data-testid="bookings-loading-state" style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -458,7 +536,7 @@ export function MyBookingsPage() {
 
           {/* Error State */}
           {!loading && error && (
-            <div style={{
+            <div data-testid="bookings-error-state" style={{
               padding: '32px 24px',
               backgroundColor: '#ffffff',
               borderRadius: 'var(--ep-radius-card)',
@@ -475,6 +553,8 @@ export function MyBookingsPage() {
               </p>
               <button
                 type="button"
+                id="retry-fetch-bookings"
+                data-testid="retry-fetch-bookings"
                 onClick={() => fetchBookings(currentPage, activeTab)}
                 style={{
                   display: 'inline-flex',
@@ -501,7 +581,7 @@ export function MyBookingsPage() {
 
           {/* Empty State */}
           {!loading && !error && data.items.length === 0 && (
-            <div style={{
+            <div data-testid="bookings-empty-state" style={{
               padding: '56px 24px',
               backgroundColor: '#ffffff',
               borderRadius: 'var(--ep-radius-card)',
@@ -544,6 +624,7 @@ export function MyBookingsPage() {
               </p>
               <Link
                 to="/"
+                data-testid="explore-events-btn"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -618,6 +699,7 @@ export function MyBookingsPage() {
                   <div
                     key={booking.id}
                     id={`booking-card-${booking.bookingReference}`}
+                    data-testid={`booking-card-${booking.bookingReference}`}
                     style={{
                       backgroundColor: '#ffffff',
                       borderRadius: 'var(--ep-radius-card)',
@@ -644,7 +726,7 @@ export function MyBookingsPage() {
                           color: 'var(--ep-text-primary)',
                           fontFamily: 'monospace',
                           letterSpacing: '0.5px',
-                        }}>
+                        }} data-testid={`booking-reference-${booking.bookingReference}`}>
                           {booking.bookingReference}
                         </span>
 
@@ -679,11 +761,61 @@ export function MyBookingsPage() {
                         border: `1px solid ${statusCfg.border}`,
                         fontSize: '12px',
                         fontWeight: 600,
-                      }}>
+                      }} data-testid={`booking-status-${booking.bookingReference}`}>
                         <StatusIcon size={14} />
                         <span>{statusCfg.label}</span>
                       </div>
                     </div>
+
+                    {/* Event Banner Row (if event information is present) */}
+                    {(booking.eventName || booking.eventTitle) && (
+                      <div style={{
+                        padding: '12px 0 4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Link
+                            to={`/my-bookings/${booking.id}`}
+                            data-testid={`booking-event-name-${booking.bookingReference}`}
+                            style={{
+                              fontSize: '16px',
+                              fontWeight: 700,
+                              color: 'var(--ep-text-primary)',
+                              fontFamily: 'var(--ep-font-heading)',
+                              textDecoration: 'none',
+                              transition: 'color 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--ep-primary)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ep-text-primary)')}
+                          >
+                            {booking.eventName || booking.eventTitle}
+                          </Link>
+                        </div>
+                        {booking.eventDate && (
+                          <div
+                            data-testid={`booking-event-date-${booking.bookingReference}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              fontSize: '13px',
+                              color: 'var(--ep-primary)',
+                              fontWeight: 600,
+                              backgroundColor: 'var(--ep-soft-accent)',
+                              padding: '4px 10px',
+                              borderRadius: 'var(--ep-radius-pill)',
+                            }}
+                          >
+                            <Calendar size={13} color="var(--ep-primary)" />
+                            <span>Event: {formatEventDate(booking.eventDate)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Middle Details Grid */}
                     <div style={{
@@ -704,11 +836,18 @@ export function MyBookingsPage() {
 
                       <div>
                         <div style={{ fontSize: '11px', color: 'var(--ep-text-secondary)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>
-                          Tickets Reserved
+                          Ticket Types & Quantity
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--ep-text-primary)', fontWeight: 500 }}>
+                        <div
+                          data-testid={`booking-tickets-quantity-${booking.bookingReference}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--ep-text-primary)', fontWeight: 500 }}
+                        >
                           <Ticket size={14} color="var(--ep-text-secondary)" />
-                          <span>{booking.totalTickets} {booking.totalTickets === 1 ? 'ticket' : 'tickets'}</span>
+                          <span>
+                            {booking.items && booking.items.length > 0
+                              ? `${booking.items.map((i) => `${i.ticketName} (${i.quantity})`).join(', ')} · ${booking.totalTickets} total`
+                              : `${booking.totalTickets} ${booking.totalTickets === 1 ? 'ticket' : 'tickets'}`}
+                          </span>
                         </div>
                       </div>
 
@@ -716,7 +855,10 @@ export function MyBookingsPage() {
                         <div style={{ fontSize: '11px', color: 'var(--ep-text-secondary)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>
                           Total Amount
                         </div>
-                        <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--ep-primary)', fontFamily: 'var(--ep-font-heading)' }}>
+                        <div
+                          data-testid={`booking-total-amount-${booking.bookingReference}`}
+                          style={{ fontSize: '16px', fontWeight: 800, color: 'var(--ep-primary)', fontFamily: 'var(--ep-font-heading)' }}
+                        >
                           {formatCurrency(booking.totalAmount)}
                         </div>
                       </div>
@@ -841,6 +983,7 @@ export function MyBookingsPage() {
                           <button
                             type="button"
                             id={`cancel-booking-${booking.bookingReference}`}
+                            data-testid={`cancel-booking-${booking.bookingReference}`}
                             onClick={() => handleOpenCancelModal(booking)}
                             style={{
                               display: 'inline-flex',
@@ -875,6 +1018,7 @@ export function MyBookingsPage() {
                           <button
                             type="button"
                             id={`pay-now-${booking.bookingReference}`}
+                            data-testid={`pay-now-${booking.bookingReference}`}
                             onClick={() => handleResumePayment(booking.id)}
                             disabled={payingBookingId === booking.id}
                             style={{
@@ -918,10 +1062,43 @@ export function MyBookingsPage() {
                           </button>
                         )}
 
+                        {/* View Full Booking Detail (EP-354 Part 2) */}
+                        <Link
+                          to={`/my-bookings/${booking.id}`}
+                          id={`view-booking-detail-${booking.bookingReference}`}
+                          data-testid={`view-booking-detail-${booking.bookingReference}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            backgroundColor: '#ffffff',
+                            color: 'var(--ep-text-primary)',
+                            textDecoration: 'none',
+                            padding: '8px 14px',
+                            borderRadius: 'var(--ep-radius-btn)',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            border: '1px solid var(--ep-border)',
+                            transition: 'var(--ep-transition)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--ep-primary)';
+                            e.currentTarget.style.color = 'var(--ep-primary)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--ep-border)';
+                            e.currentTarget.style.color = 'var(--ep-text-primary)';
+                          }}
+                        >
+                          <Receipt size={14} />
+                          <span>View Details</span>
+                        </Link>
+
                         {isConfirmed && (
                           <Link
                             to={`/bookings/${booking.id}/tickets`}
                             id={`view-tickets-${booking.bookingReference}`}
+                            data-testid={`view-tickets-${booking.bookingReference}`}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -953,16 +1130,20 @@ export function MyBookingsPage() {
 
           {/* Pagination Controls */}
           {!loading && !error && data.totalPages > 1 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '16px',
-              marginTop: '32px',
-            }}>
+            <div
+              data-testid="bookings-pagination"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '16px',
+                marginTop: '32px',
+              }}
+            >
               <button
                 type="button"
                 id="pagination-prev"
+                data-testid="pagination-prev"
                 disabled={!data.hasPreviousPage}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 style={{
@@ -980,13 +1161,14 @@ export function MyBookingsPage() {
                 Previous
               </button>
 
-              <span style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', fontWeight: 500 }}>
+              <span data-testid="pagination-info" style={{ fontSize: '13px', color: 'var(--ep-text-secondary)', fontWeight: 500 }}>
                 Page {data.page} of {data.totalPages}
               </span>
 
               <button
                 type="button"
                 id="pagination-next"
+                data-testid="pagination-next"
                 disabled={!data.hasNextPage}
                 onClick={() => setCurrentPage((p) => p + 1)}
                 style={{
@@ -1006,11 +1188,11 @@ export function MyBookingsPage() {
             </div>
           )}
         </div>
-      </main>
 
       {/* Floating Toast Notification */}
       {toast && (
         <div
+          data-testid="cancellation-toast-feedback"
           role="status"
           style={{
             position: 'fixed',
@@ -1018,35 +1200,75 @@ export function MyBookingsPage() {
             right: '24px',
             zIndex: 1100,
             display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            backgroundColor: toast.type === 'error' ? '#FEF2F2' : '#ECFDF5',
-            color: toast.type === 'error' ? '#991B1B' : '#065F46',
-            border: `1px solid ${toast.type === 'error' ? '#FECACA' : '#A7F3D0'}`,
-            borderRadius: 'var(--ep-radius-btn)',
-            padding: '12px 20px',
-            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.12)',
-            fontSize: '14px',
-            fontWeight: 600,
+            flexDirection: 'column',
+            gap: '8px',
+            backgroundColor: toast.type === 'error' ? '#FEF2F2' : '#ffffff',
+            color: toast.type === 'error' ? '#991B1B' : '#0F172A',
+            border: `1px solid ${toast.type === 'error' ? '#FECACA' : '#E2E8F0'}`,
+            borderRadius: 'var(--ep-radius-card)',
+            padding: '16px 20px',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)',
+            fontSize: '13px',
+            maxWidth: '420px',
           }}
         >
-          {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-          <span>{toast.message}</span>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '2px',
-              marginLeft: '8px',
-              color: 'inherit',
-              display: 'inline-flex',
-            }}
-          >
-            <X size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {toast.type === 'error' ? <AlertCircle size={18} color="#991B1B" /> : <CheckCircle2 size={18} color="#059669" />}
+              <span style={{ fontWeight: 700, fontSize: '14px', color: toast.type === 'error' ? '#991B1B' : '#065F46' }}>
+                {toast.message}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px',
+                color: 'var(--ep-text-secondary)',
+                display: 'inline-flex',
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {toast.refundStatus && (
+            <div
+              data-testid="toast-refund-outcome-details"
+              style={{
+                backgroundColor: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                marginTop: '4px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Refund Outcome
+                </span>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    backgroundColor: toast.refundBadgeBg || '#FEF3C7',
+                    color: toast.refundBadgeColor || '#92400E',
+                  }}
+                >
+                  {toast.refundStatus}
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: '#475569', lineHeight: 1.4 }}>
+                {toast.refundExplanation}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1140,18 +1362,85 @@ export function MyBookingsPage() {
                 will immediately release your reserved tickets back to the available inventory. Any issued digital tickets will be permanently invalidated.
               </div>
 
+              {/* Expected Refund Outcome Preview */}
+              {(() => {
+                const previewRefund = getRefundOutcomeInfo(bookingToCancel);
+                return (
+                  <div
+                    data-testid="expected-refund-preview"
+                    style={{
+                      padding: '12px 14px',
+                      backgroundColor: '#F8FAFC',
+                      borderRadius: '8px',
+                      border: '1px solid #E2E8F0',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Expected Refund Outcome
+                      </span>
+                      <span
+                        data-testid="preview-refund-badge"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: previewRefund.badgeBg,
+                          color: previewRefund.badgeColor,
+                        }}
+                      >
+                        {previewRefund.refundStatus}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#475569', lineHeight: 1.45 }}>
+                      {previewRefund.refundExplanation}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* Ineligibility Warning if backend pre-check indicates not eligible */}
+              {eligibility && !eligibility.isEligible && (
+                <div
+                  data-testid="cancellation-ineligible-warning"
+                  style={{
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    color: '#991B1B',
+                    fontSize: '13px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                  }}
+                >
+                  <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <div>
+                    <strong>Cancellation Ineligible:</strong>{' '}
+                    {getCancellationReasonMessage(eligibility.reasonCode, eligibility.explanation)}
+                  </div>
+                </div>
+              )}
+
               {cancelError && (
-                <div style={{
-                  backgroundColor: '#FEF2F2',
-                  border: '1px solid #FECACA',
-                  borderRadius: '8px',
-                  padding: '10px 14px',
-                  color: '#B91C1C',
-                  fontSize: '13px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}>
+                <div
+                  data-testid="cancellation-error-message"
+                  style={{
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    color: '#B91C1C',
+                    fontSize: '13px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
                   <AlertCircle size={16} />
                   <span>{cancelError}</span>
                 </div>
@@ -1220,7 +1509,7 @@ export function MyBookingsPage() {
                 type="button"
                 id="confirm-cancel-booking-btn"
                 onClick={handleConfirmCancel}
-                disabled={cancelling}
+                disabled={cancelling || checkingEligibility || (eligibility && !eligibility.isEligible)}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -1233,8 +1522,8 @@ export function MyBookingsPage() {
                   fontSize: '13px',
                   fontWeight: 600,
                   boxShadow: '0 2px 6px rgba(239, 68, 68, 0.3)',
-                  cursor: cancelling ? 'not-allowed' : 'pointer',
-                  opacity: cancelling ? 0.75 : 1,
+                  cursor: cancelling || (eligibility && !eligibility.isEligible) ? 'not-allowed' : 'pointer',
+                  opacity: cancelling || (eligibility && !eligibility.isEligible) ? 0.75 : 1,
                   transition: 'var(--ep-transition)',
                 }}
               >
@@ -1254,7 +1543,7 @@ export function MyBookingsPage() {
           </div>
         </div>
       )}
-    </div>
+    </Layout>
   );
 }
 

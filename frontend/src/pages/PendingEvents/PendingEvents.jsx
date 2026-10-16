@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -101,9 +101,36 @@ export function PendingEvents() {
   const [cancelActionInProgress, setCancelActionInProgress] = useState(false);
   const [cancelActionError, setCancelActionError] = useState(null);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reviewEventId = searchParams.get('reviewId') || searchParams.get('eventId');
+
   const getEffectiveToken = useCallback(() => {
     return accessToken || sessionStorage.getItem('ep_access_token');
   }, [accessToken]);
+
+  const handleOpenReview = useCallback(async (item) => {
+    setActionError(null);
+    setConfirmMode(null);
+    setRejectionNotes('');
+    setSelectedEvent(item);
+    setLoadingDetails(true);
+
+    const token = getEffectiveToken();
+    if (token) {
+      try {
+        const freshDetails = await getPendingEventById(item.id, token);
+        if (freshDetails) {
+          setSelectedEvent(freshDetails);
+        }
+      } catch {
+        // Fallback to item from list if single fetch fails
+      } finally {
+        setLoadingDetails(false);
+      }
+    } else {
+      setLoadingDetails(false);
+    }
+  }, [getEffectiveToken]);
 
   const loadAllData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -133,44 +160,38 @@ export function PendingEvents() {
           return [];
         }),
       ]);
-      setEvents(Array.isArray(eventsData) ? eventsData : []);
+      const validEvents = Array.isArray(eventsData) ? eventsData : [];
+      setEvents(validEvents);
       setUpdateRequests(Array.isArray(updatesData) ? updatesData : []);
       setCancellationRequests(Array.isArray(cancellationsData) ? cancellationsData : []);
+
+      // If reviewId was passed via navigation query parameter, open the review immediately
+      if (reviewEventId && !selectedEvent) {
+        const matchingEvent = validEvents.find((e) => String(e.id).toLowerCase() === reviewEventId.toLowerCase());
+        if (matchingEvent) {
+          handleOpenReview(matchingEvent);
+        } else {
+          try {
+            const singleDetails = await getPendingEventById(reviewEventId, token);
+            if (singleDetails) {
+              handleOpenReview(singleDetails);
+            }
+          } catch {
+            // Event might not be pending or doesn't exist
+          }
+        }
+      }
     } catch (err) {
       setError(err.message || 'Unable to load pending event submissions.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getEffectiveToken]);
+  }, [getEffectiveToken, reviewEventId, selectedEvent, handleOpenReview]);
 
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
-
-  const handleOpenReview = async (item) => {
-    setActionError(null);
-    setConfirmMode(null);
-    setRejectionNotes('');
-    setSelectedEvent(item);
-    setLoadingDetails(true);
-
-    const token = getEffectiveToken();
-    if (token) {
-      try {
-        const freshDetails = await getPendingEventById(item.id, token);
-        if (freshDetails) {
-          setSelectedEvent(freshDetails);
-        }
-      } catch (err) {
-        // Fallback to item from list if single fetch fails
-      } finally {
-        setLoadingDetails(false);
-      }
-    } else {
-      setLoadingDetails(false);
-    }
-  };
 
   const handleCloseReview = () => {
     if (actionInProgress) return;

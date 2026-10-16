@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Crown, Ticket } from 'lucide-react';
 import { formatPrice } from '../../utils/currencyFormatter';
 import { normalizeCategory } from '../../data/eventConstants';
+import { getEventTicketInfo } from '../../utils/ticketHelper';
 
 function parseDateParts(dateString) {
   if (!dateString) return { day: '--', month: 'TBA', time: '--:--', period: '' };
@@ -32,6 +33,7 @@ export function EventCard({ event }) {
 
   const { day, month, time, period } = parseDateParts(eventDate);
   const formattedPrice = formatPrice(price);
+  const ticketInfo = getEventTicketInfo(event);
 
   const posterUrl = imageUrl || imagePath;
   const hasPoster = Boolean(posterUrl) && !imageError;
@@ -171,42 +173,74 @@ export function EventCard({ event }) {
             {venue || 'Location TBA'}
           </div>
 
-          {/* Category / VenueType Chip */}
-          {metadataLabel && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginBottom: '22px',
-            }}>
-              <span style={{
-                backgroundColor: '#FFF0E6',
-                color: '#1D1D1F',
-                border: '1px solid rgba(255, 91, 0, 0.18)',
-                borderRadius: '9999px',
-                padding: '5px 14px',
-                fontSize: '12px',
-                fontWeight: 600,
-                letterSpacing: '0.01em',
+          {/* Category / VenueType Chip & Ticket Badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            marginBottom: '20px',
+            flexWrap: 'wrap',
+          }}>
+            {metadataLabel ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}>
-                {metadataLabel}
-              </span>
-              <span style={{
-                width: '26px',
-                height: '26px',
-                borderRadius: '50%',
-                backgroundColor: '#FFF0E6',
-                border: '1px solid rgba(255, 91, 0, 0.18)',
+                <span style={{
+                  backgroundColor: '#FFF0E6',
+                  color: '#1D1D1F',
+                  border: '1px solid rgba(255, 91, 0, 0.18)',
+                  borderRadius: '9999px',
+                  padding: '5px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.01em',
+                }}>
+                  {metadataLabel}
+                </span>
+                <span style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  backgroundColor: '#FFF0E6',
+                  border: '1px solid rgba(255, 91, 0, 0.18)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--ep-primary, #FF5B00)',
+                  flexShrink: 0,
+                }}>
+                  <Crown size={12} />
+                </span>
+              </div>
+            ) : <div />}
+
+            {/* Ticket Counter Badge near Date / Price Section */}
+            <div
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                ticketInfo.isUrgent
+                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}
+              style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--ep-primary, #FF5B00)',
-                flexShrink: 0,
-              }}>
-                <Crown size={13} />
-              </span>
+                gap: '5px',
+                padding: '2px 8px',
+                borderRadius: '9999px',
+                fontSize: '11px',
+                fontWeight: 600,
+                backgroundColor: ticketInfo.isUrgent ? '#fef3c7' : '#ecfdf5',
+                color: ticketInfo.isUrgent ? '#b45309' : '#047857',
+                border: ticketInfo.isUrgent ? '1px solid #fde68a' : '1px solid #a7f3d0',
+              }}
+            >
+              <Ticket size={11} className={ticketInfo.isUrgent ? 'text-amber-600' : 'text-emerald-600'} />
+              <span>{ticketInfo.badgeText}</span>
             </div>
-          )}
+          </div>
 
           {/* Date / Time & Price Row */}
           <div style={{

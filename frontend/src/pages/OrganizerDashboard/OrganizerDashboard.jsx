@@ -13,6 +13,8 @@ import {
   AlertCircle,
   Image as ImageIcon,
   ChevronRight,
+  TrendingUp,
+  Ticket,
 } from 'lucide-react';
 
 function formatEventDateTime(dateString) {
@@ -174,23 +176,69 @@ export function OrganizerDashboard() {
             </p>
           </div>
 
-          <Link
-            to="/events/create"
-            className="ep-btn-primary"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 20px',
-              fontSize: '14px',
-              fontWeight: 600,
-              textDecoration: 'none',
-              borderRadius: 'var(--ep-radius-btn)',
-            }}
-          >
-            <Plus size={16} />
-            <span>Create Event</span>
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <Link
+              to="/organizer/booking-analytics"
+              data-testid="organizer-booking-analytics-link"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                borderRadius: 'var(--ep-radius-btn)',
+                border: '1px solid var(--ep-border)',
+                color: 'var(--ep-text-primary)',
+                backgroundColor: '#ffffff',
+                transition: 'var(--ep-transition)',
+              }}
+            >
+              <Ticket size={16} color="var(--ep-primary)" />
+              <span>Booking Analytics</span>
+            </Link>
+
+            <Link
+              to="/organizer/sales-analytics"
+              data-testid="organizer-sales-analytics-link"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 18px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                borderRadius: 'var(--ep-radius-btn)',
+                border: '1px solid var(--ep-border)',
+                color: 'var(--ep-text-primary)',
+                backgroundColor: '#ffffff',
+                transition: 'var(--ep-transition)',
+              }}
+            >
+              <TrendingUp size={16} color="var(--ep-primary)" />
+              <span>Sales Analytics</span>
+            </Link>
+
+            <Link
+              to="/events/create"
+              className="ep-btn-primary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                borderRadius: 'var(--ep-radius-btn)',
+              }}
+            >
+              <Plus size={16} />
+              <span>Create Event</span>
+            </Link>
+          </div>
         </div>
 
         {/* Dashboard Shell Content */}
@@ -585,6 +633,26 @@ export function OrganizerDashboard() {
                             {item.createdAt && (
                               <span>{formatSubmittedDate(item.createdAt)}</span>
                             )}
+                            <Link
+                              to={`/organizer/sales-analytics?eventId=${item.id}`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                color: 'var(--ep-text-secondary)',
+                                textDecoration: 'none',
+                                padding: '4px 10px',
+                                borderRadius: 'var(--ep-radius-btn)',
+                                border: '1px solid var(--ep-border)',
+                                backgroundColor: '#ffffff',
+                                transition: 'var(--ep-transition)',
+                              }}
+                            >
+                              <TrendingUp size={13} color="var(--ep-primary)" />
+                              <span>Sales</span>
+                            </Link>
                             <Link
                               to={`/organizer/events/${item.id}`}
                               style={{

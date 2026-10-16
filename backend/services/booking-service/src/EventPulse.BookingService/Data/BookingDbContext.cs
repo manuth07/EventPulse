@@ -16,6 +16,9 @@ public class BookingDbContext : DbContext
     public DbSet<BookingItem> BookingItems => Set<BookingItem>();
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<ProcessedIntegrationEvent> ProcessedIntegrationEvents => Set<ProcessedIntegrationEvent>();
+    public DbSet<SalesReport> SalesReports => Set<SalesReport>();
+    public DbSet<SalesReportItem> SalesReportItems => Set<SalesReportItem>();
+    public DbSet<SaleRefundAdjustment> SaleRefundAdjustments => Set<SaleRefundAdjustment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -83,9 +86,18 @@ public class BookingDbContext : DbContext
             
             entity.HasIndex(b => b.BookingReference).IsUnique();
 
+            entity.Property(b => b.Status)
+                .IsConcurrencyToken();
+
             entity.Property(b => b.TotalAmount)
                 .HasColumnType("decimal(18,2)")
                 .IsRequired();
+
+            entity.Property(b => b.CancelledBy)
+                .HasMaxLength(150);
+
+            entity.Property(b => b.CancellationReason)
+                .HasMaxLength(500);
 
             entity.HasMany(b => b.Items)
                 .WithOne(i => i.Booking)
@@ -173,6 +185,108 @@ public class BookingDbContext : DbContext
 
             entity.Property(e => e.ProcessedAtUtc)
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<SalesReport>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+
+            entity.Property(s => s.PaymentId)
+                .IsRequired();
+
+            entity.HasIndex(s => s.PaymentId)
+                .IsUnique();
+
+            entity.Property(s => s.BookingId)
+                .IsRequired();
+
+            entity.HasIndex(s => s.BookingId)
+                .IsUnique();
+
+            entity.Property(s => s.BookingReference)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(s => s.SaleAmount)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.Property(s => s.RefundedAmount)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.Property(s => s.Currency)
+                .IsRequired()
+                .HasMaxLength(10);
+
+            entity.Property(s => s.RefundStatus)
+                .IsRequired();
+
+            entity.Property(s => s.CreatedAtUtc)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.Property(s => s.UpdatedAtUtc)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(s => s.EventId);
+            entity.HasIndex(s => s.OrganizerId);
+            entity.HasIndex(s => s.CustomerId);
+
+            entity.HasMany(s => s.Items)
+                .WithOne(i => i.SalesReport)
+                .HasForeignKey(i => i.SalesReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(s => s.RefundAdjustments)
+                .WithOne(r => r.SalesReport)
+                .HasForeignKey(r => r.SalesReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SalesReportItem>(entity =>
+        {
+            entity.HasKey(i => i.Id);
+
+            entity.Property(i => i.TicketTypeName)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(i => i.UnitPrice)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.Property(i => i.Subtotal)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.Property(i => i.RefundedAmount)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.HasIndex(i => i.TicketTypeId);
+            entity.HasIndex(i => i.BookingItemId);
+        });
+
+        modelBuilder.Entity<SaleRefundAdjustment>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.RefundId)
+                .IsRequired();
+
+            entity.Property(r => r.Amount)
+                .HasColumnType("decimal(18,2)")
+                .IsRequired();
+
+            entity.Property(r => r.Status)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(r => r.Reason)
+                .HasMaxLength(500);
+
+            entity.HasIndex(r => new { r.SalesReportId, r.RefundId })
+                .IsUnique();
         });
     }
 }

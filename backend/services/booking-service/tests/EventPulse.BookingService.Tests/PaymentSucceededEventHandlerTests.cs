@@ -16,6 +16,9 @@ public class PaymentSucceededEventHandlerTests
     private readonly BookingDbContext _dbContext;
     private readonly Mock<IBookingConfirmationService> _confirmationServiceMock;
     private readonly Mock<ITicketGenerationService> _ticketGenerationServiceMock;
+    private readonly Mock<IEventAvailabilityClient> _eventAvailabilityClientMock;
+    private readonly Mock<IBookingEventPublisher> _eventPublisherMock;
+    private readonly Mock<ISalesReportingService> _salesReportingServiceMock;
     private readonly Mock<ILogger<PaymentSucceededEventHandler>> _loggerMock;
     private readonly PaymentSucceededEventHandler _handler;
 
@@ -29,11 +32,20 @@ public class PaymentSucceededEventHandlerTests
 
         _confirmationServiceMock = new Mock<IBookingConfirmationService>();
         _ticketGenerationServiceMock = new Mock<ITicketGenerationService>();
+        _eventAvailabilityClientMock = new Mock<IEventAvailabilityClient>();
+        _eventAvailabilityClientMock
+            .Setup(c => c.CommitInventoryAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ClientInventoryResult.Ok());
+        _eventPublisherMock = new Mock<IBookingEventPublisher>();
+        _salesReportingServiceMock = new Mock<ISalesReportingService>();
         _loggerMock = new Mock<ILogger<PaymentSucceededEventHandler>>();
         _handler = new PaymentSucceededEventHandler(
             _dbContext,
             _confirmationServiceMock.Object,
             _ticketGenerationServiceMock.Object,
+            _eventAvailabilityClientMock.Object,
+            _eventPublisherMock.Object,
+            _salesReportingServiceMock.Object,
             _loggerMock.Object);
     }
 
@@ -261,10 +273,19 @@ public class PaymentSucceededEventHandlerTests
             ticketGenLogger.Object);
 
         var handlerLogger = new Mock<ILogger<PaymentSucceededEventHandler>>();
+        var eventClientMock = new Mock<IEventAvailabilityClient>();
+        eventClientMock
+            .Setup(c => c.CommitInventoryAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ClientInventoryResult.Ok());
+        var eventPublisherMock = new Mock<IBookingEventPublisher>();
+
         var realHandler = new PaymentSucceededEventHandler(
             dbContext,
             confirmationService,
             ticketGenerationService,
+            eventClientMock.Object,
+            eventPublisherMock.Object,
+            _salesReportingServiceMock.Object,
             handlerLogger.Object);
 
         var paymentEvent = new PaymentSucceededEvent
@@ -380,5 +401,55 @@ public class PaymentSucceededEventHandlerTests
         var inbox = await _dbContext.ProcessedIntegrationEvents.FindAsync(paymentEvent.EventId);
         Assert.NotNull(inbox);
         Assert.Equal(KafkaTopics.PaymentSucceeded, inbox.Topic);
+    }
+
+    [Fact]
+    public async Task HandleAsync_WhenInventoryCommitFails_TriggersRefundRequestedCompensation()
+    {
+        // Arrange
+        var bookingId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var booking = new Booking
+        {
+            Id = bookingId,
+            EventId = eventId,
+            CustomerId = customerId,
+            BookingReference = "EP-2026-REFUND",
+            TotalAmount = 5000m,
+            Status = BookingStatus.PendingPayment
+        };
+        _dbContext.Bookings.Add(booking);
+        await _dbContext.SaveChangesAsync();
+
+        var paymentEvent = new PaymentSucceededEvent
+        {
+            EventId = Guid.NewGuid(),
+            BookingId = bookingId,
+            PaymentId = Guid.NewGuid(),
+            BookingReference = "EP-2026-REFUND",
+            CustomerId = customerId,
+            Amount = 5000m,
+            Currency = "lkr"
+        };
+
+        _eventAvailabilityClientMock
+            .Setup(c => c.CommitInventoryAsync(eventId, bookingId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ClientInventoryResult.Fail("Inventory hold expired or exhausted", 409));
+
+        // Act
+        await _handler.HandleAsync(paymentEvent);
+
+        // Assert: Booking NOT confirmed, tickets NOT generated
+        _confirmationServiceMock.Verify(c => c.ConfirmBookingAfterPaymentAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ticketGenerationServiceMock.Verify(t => t.GenerateTicketsForBookingAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // Assert: Refund requested event published as compensation
+        _eventPublisherMock.Verify(p => p.PublishBookingRefundRequestedAsync(
+            It.Is<EventPulse.Contracts.Kafka.Events.BookingRefundRequestedEvent>(e =>
+                e.BookingId == bookingId &&
+                e.RefundAmount == 5000m &&
+                e.Reason.Contains("Inventory commit failed")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

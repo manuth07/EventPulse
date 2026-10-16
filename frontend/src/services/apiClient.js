@@ -8,7 +8,8 @@
  * - Normalizes error responses for consistent UI handling
  */
 
-import { getApiBaseUrl } from './apiConfig';
+import { getApiBaseUrl } from './apiConfig.js';
+import { handleApiAuthError } from '../utils/routeSecurity.js';
 
 const TOKEN_KEY = 'ep_access_token';
 
@@ -77,8 +78,38 @@ export async function apiRequest(endpoint, options = {}) {
     error.status = response.status;
     error.data = errorData;
 
-    if (response.status === 401) {
-      console.warn(`[apiClient] 401 Unauthorized encountered on ${url}. Session may be expired.`);
+    if (response.status === 401 || response.status === 403) {
+      const currentPath = typeof window !== 'undefined' && window.location ? window.location.pathname : '/';
+      handleApiAuthError({
+        status: response.status,
+        url,
+        currentPath,
+      });
+
+      if (typeof window !== 'undefined') {
+        if (response.status === 401) {
+          window.dispatchEvent(new CustomEvent('ep:auth-unauthorized', { detail: { url } }));
+        } else if (response.status === 403) {
+          window.dispatchEvent(new CustomEvent('ep:auth-forbidden', { detail: { url } }));
+        }
+      }
+
+      if (response.status === 401) {
+        console.warn(`[apiClient] 401 Unauthorized encountered on ${url}. Session expired or invalid.`);
+        if (typeof window !== 'undefined' && window.location) {
+          if (currentPath !== '/login' && currentPath !== '/register') {
+            const returnUrl = encodeURIComponent(currentPath + window.location.search);
+            window.location.assign(`/login?from=${returnUrl}`);
+          }
+        }
+      } else if (response.status === 403) {
+        console.warn(`[apiClient] 403 Forbidden encountered on ${url}. Access denied.`);
+        if (typeof window !== 'undefined' && window.location) {
+          if (currentPath !== '/forbidden' && (url.includes('/api/admin') || currentPath.startsWith('/admin') || url.includes('/api/organizer') || currentPath.startsWith('/organizer'))) {
+            window.location.assign('/forbidden');
+          }
+        }
+      }
     }
 
     throw error;
@@ -112,6 +143,12 @@ export const apiClient = {
     apiRequest(endpoint, {
       ...options,
       method: 'PUT',
+      body: body instanceof FormData ? body : JSON.stringify(body),
+    }),
+  patch: (endpoint, body, options = {}) =>
+    apiRequest(endpoint, {
+      ...options,
+      method: 'PATCH',
       body: body instanceof FormData ? body : JSON.stringify(body),
     }),
   delete: (endpoint, options = {}) => apiRequest(endpoint, { ...options, method: 'DELETE' }),

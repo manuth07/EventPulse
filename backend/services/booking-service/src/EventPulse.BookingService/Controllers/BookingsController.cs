@@ -23,6 +23,7 @@ public class BookingsController : ControllerBase
     private readonly ICartService _cartService;
     private readonly IBookingHistoryService _bookingHistoryService;
     private readonly IBookingCancellationService _cancellationService;
+    private readonly ICancellationEligibilityChecker _eligibilityChecker;
 
     public BookingsController(
         BookingDbContext dbContext,
@@ -32,7 +33,8 @@ public class BookingsController : ControllerBase
         ILogger<BookingsController> logger,
         ICartService cartService,
         IBookingHistoryService bookingHistoryService,
-        IBookingCancellationService cancellationService)
+        IBookingCancellationService cancellationService,
+        ICancellationEligibilityChecker? eligibilityChecker = null)
     {
         _dbContext = dbContext;
         _eventClient = eventClient;
@@ -42,6 +44,10 @@ public class BookingsController : ControllerBase
         _cartService = cartService;
         _bookingHistoryService = bookingHistoryService;
         _cancellationService = cancellationService;
+        _eligibilityChecker = eligibilityChecker ?? new CancellationEligibilityChecker(
+            dbContext,
+            eventClient,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<CancellationEligibilityChecker>.Instance);
     }
 
     private bool TryGetCustomerId(out Guid customerId)
@@ -105,6 +111,37 @@ public class BookingsController : ControllerBase
     }
 
     /// <summary>
+    /// Retrieves a single booking detail entry for the authenticated customer (EP-353).
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(CustomerBookingDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetBookingDetail([FromRoute] Guid id, CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid or missing token identity." });
+        }
+
+        var isAdmin = User.IsInRole("Administrator");
+        var result = await _bookingHistoryService.GetCustomerBookingDetailAsync(id, customerId, isAdmin, cancellationToken);
+
+        if (!result.Found)
+        {
+            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
+        }
+
+        if (!result.IsAuthorized)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view this booking." });
+        }
+
+        return Ok(result.Booking);
+    }
+
+    /// <summary>
     /// Authoritative customer ticket retrieval for a booking.
     /// </summary>
     [HttpGet("{id:guid}/tickets")]
@@ -130,6 +167,25 @@ public class BookingsController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, new { code = "FORBIDDEN", message = "You are not authorized to view tickets for this booking." });
         }
 
+        string? eventName = null;
+        DateTime? eventDate = null;
+        string? eventVenue = null;
+
+        try
+        {
+            var eventSummary = await _eventClient.GetEventSummaryAsync(booking.EventId, cancellationToken);
+            if (eventSummary != null)
+            {
+                eventName = eventSummary.Title;
+                eventDate = eventSummary.EventDate;
+                eventVenue = eventSummary.Venue;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve event summary for booking tickets: {BookingId}", booking.Id);
+        }
+
         var ticketDtos = booking.Tickets
             .OrderBy(t => t.TicketSequence)
             .Select(t => new CustomerTicketDto
@@ -139,6 +195,9 @@ public class BookingsController : ControllerBase
                 BookingId = booking.Id,
                 BookingReference = booking.BookingReference,
                 EventId = booking.EventId,
+                EventName = eventName,
+                EventDate = eventDate,
+                EventVenue = eventVenue,
                 TicketTypeId = t.TicketTypeId,
                 TicketName = t.TicketName,
                 TicketSequence = t.TicketSequence,
@@ -154,6 +213,9 @@ public class BookingsController : ControllerBase
             BookingId = booking.Id,
             BookingReference = booking.BookingReference,
             EventId = booking.EventId,
+            EventName = eventName,
+            EventDate = eventDate,
+            EventVenue = eventVenue,
             BookingStatus = booking.Status.ToString(),
             TotalAmount = booking.TotalAmount,
             CreatedAt = booking.CreatedAt,
@@ -227,6 +289,7 @@ public class BookingsController : ControllerBase
 
         var booking = new Booking
         {
+            Id = Guid.NewGuid(),
             BookingReference = bookingReference,
             CustomerId = customerId,
             EventId = request.EventId,
@@ -235,6 +298,20 @@ public class BookingsController : ControllerBase
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(3),
             Items = bookingItems
         };
+
+        // EP-401: Place temporary inventory hold in EventService before saving booking to prevent concurrent overselling
+        var reserveResult = await _eventClient.ReserveInventoryAsync(
+            request.EventId,
+            booking.Id,
+            request.Items.Select(i => new ReserveInventoryItemDto { TicketTypeId = i.TicketTypeId, Quantity = i.Quantity }),
+            holdDurationMinutes: 15,
+            cancellationToken);
+
+        if (!reserveResult.Success)
+        {
+            return StatusCode(reserveResult.StatusCode == 409 ? StatusCodes.Status409Conflict : StatusCodes.Status400BadRequest,
+                new { code = "INSUFFICIENT_INVENTORY", message = reserveResult.ErrorMessage ?? "Not enough tickets available." });
+        }
 
         using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
@@ -302,6 +379,38 @@ public class BookingsController : ControllerBase
     }
 
     /// <summary>
+    /// Checks cancellation eligibility for the authenticated customer's booking (EP-362).
+    /// </summary>
+    [HttpGet("{id:guid}/cancellation-eligibility")]
+    [ProducesResponseType(typeof(CancellationEligibilityResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CheckCancellationEligibility(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCustomerId(out var customerId))
+        {
+            return Unauthorized(new { code = "UNAUTHORIZED", message = "Invalid token identity." });
+        }
+
+        var result = await _eligibilityChecker.EvaluateEligibilityAsync(id, customerId, cancellationToken);
+        if (result.ReasonCode == CancellationReasonCodes.BookingNotFound ||
+            result.ReasonCode == CancellationReasonCodes.Unauthorized)
+        {
+            return NotFound(new { code = "BOOKING_NOT_FOUND", message = "Booking not found." });
+        }
+
+        return Ok(new CancellationEligibilityResponseDto(
+            result.IsEligible,
+            result.ReasonCode,
+            result.Explanation,
+            result.CutoffUtc,
+            result.TimeRemaining
+        ));
+    }
+
+    /// <summary>
     /// Cancels a booking for the authenticated customer (US-28 / EP-308).
     /// </summary>
     [HttpPost("{id:guid}/cancel")]
@@ -323,7 +432,10 @@ public class BookingsController : ControllerBase
 
         if (!result.Success)
         {
-            if (result.Message == "Booking not found or access denied")
+            if (result.ReasonCode == CancellationReasonCodes.BookingNotFound ||
+                result.ReasonCode == CancellationReasonCodes.Unauthorized ||
+                result.Message == "Booking not found or access denied" ||
+                result.Message == "Booking not found")
             {
                 return NotFound(result);
             }

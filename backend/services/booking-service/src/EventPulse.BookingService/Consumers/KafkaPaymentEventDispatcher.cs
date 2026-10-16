@@ -1,6 +1,7 @@
 using System.Text.Json;
 using EventPulse.BookingService.Events;
 using EventPulse.Contracts.Kafka;
+using EventPulse.Contracts.Kafka.Events;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -11,6 +12,7 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
     private readonly KafkaOptions _kafkaOptions;
     private readonly IPaymentSucceededEventHandler _succeededHandler;
     private readonly IPaymentFailedEventHandler _failedHandler;
+    private readonly IPaymentRefundedEventHandler _refundedHandler;
     private readonly ILogger<KafkaPaymentEventDispatcher> _logger;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -22,11 +24,13 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
         IOptions<KafkaOptions> kafkaOptions,
         IPaymentSucceededEventHandler succeededHandler,
         IPaymentFailedEventHandler failedHandler,
+        IPaymentRefundedEventHandler refundedHandler,
         ILogger<KafkaPaymentEventDispatcher> logger)
     {
         _kafkaOptions = kafkaOptions.Value;
         _succeededHandler = succeededHandler;
         _failedHandler = failedHandler;
+        _refundedHandler = refundedHandler;
         _logger = logger;
     }
 
@@ -107,6 +111,42 @@ public class KafkaPaymentEventDispatcher : IKafkaPaymentEventDispatcher
             {
                 _logger.LogError(ex, "Error handling PaymentFailedEvent {EventId} for Booking {BookingId}",
                     failedEvent.EventId, failedEvent.BookingId);
+                return EventDispatchResult.Retryable(ex.Message, ex.GetType().Name);
+            }
+        }
+        else if (string.Equals(topic, _kafkaOptions.Topics.PaymentRefunded, StringComparison.OrdinalIgnoreCase))
+        {
+            PaymentRefundedEvent? refundedEvent;
+            try
+            {
+                refundedEvent = JsonSerializer.Deserialize<PaymentRefundedEvent>(value, SerializerOptions);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize PaymentRefundedEvent from topic {Topic} with key {Key}", topic, key);
+                return EventDispatchResult.NonRetryable($"Malformed JSON payload: {ex.Message}", ex.GetType().Name);
+            }
+
+            if (refundedEvent == null)
+            {
+                _logger.LogError("Deserialized PaymentRefundedEvent was null from topic {Topic} with key {Key}", topic, key);
+                return EventDispatchResult.NonRetryable("Deserialized PaymentRefundedEvent was null");
+            }
+
+            _logger.LogInformation("Received PaymentRefundedEvent {RefundId} for Booking {BookingId} from {Topic} (Key: {Key})",
+                refundedEvent.RefundId, refundedEvent.BookingId, topic, key);
+
+            try
+            {
+                await _refundedHandler.HandleAsync(refundedEvent, cancellationToken);
+                _logger.LogInformation("Successfully handled PaymentRefundedEvent {RefundId} for Booking {BookingId}",
+                    refundedEvent.RefundId, refundedEvent.BookingId);
+                return EventDispatchResult.Success();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Error handling PaymentRefundedEvent {RefundId} for Booking {BookingId}",
+                    refundedEvent.RefundId, refundedEvent.BookingId);
                 return EventDispatchResult.Retryable(ex.Message, ex.GetType().Name);
             }
         }

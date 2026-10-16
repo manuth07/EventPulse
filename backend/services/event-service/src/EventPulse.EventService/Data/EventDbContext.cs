@@ -13,6 +13,11 @@ public class EventDbContext : DbContext
     public DbSet<TicketType> TicketTypes => Set<TicketType>();
     public DbSet<EventUpdateRequest> EventUpdateRequests => Set<EventUpdateRequest>();
     public DbSet<EventCancellationRequest> EventCancellationRequests => Set<EventCancellationRequest>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<ProcessedIntegrationEvent> ProcessedIntegrationEvents => Set<ProcessedIntegrationEvent>();
+    public DbSet<AdminNotification> AdminNotifications => Set<AdminNotification>();
+    public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
+    public DbSet<InventoryRestoration> InventoryRestorations => Set<InventoryRestoration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -98,6 +103,10 @@ public class EventDbContext : DbContext
             entity.Property(t => t.BookedQuantity)
                 .HasDefaultValue(0)
                 .IsRequired();
+
+            entity.Ignore(t => t.TotalQuantity);
+            entity.Ignore(t => t.SoldQuantity);
+            entity.Ignore(t => t.RemainingQuantity);
         });
 
         modelBuilder.Entity<EventUpdateRequest>(entity =>
@@ -210,6 +219,184 @@ public class EventDbContext : DbContext
                 .IsUnique()
                 .HasFilter("\"Status\" = 'Pending'");
         });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+
+            entity.Property(o => o.EventId)
+                .IsRequired();
+
+            entity.HasIndex(o => o.EventId)
+                .IsUnique();
+
+            entity.Property(o => o.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.MessageKey)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(o => o.Payload)
+                .IsRequired();
+
+            entity.Property(o => o.CreatedAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(o => o.PublishedAtUtc);
+
+            entity.HasIndex(o => new { o.PublishedAtUtc, o.CreatedAtUtc });
+
+            entity.HasIndex(o => o.CreatedAtUtc)
+                .HasDatabaseName("IX_OutboxMessages_CreatedAtUtc_Unpublished")
+                .HasFilter("\"PublishedAtUtc\" IS NULL");
+        });
+
+        modelBuilder.Entity<ProcessedIntegrationEvent>(entity =>
+        {
+            entity.HasKey(e => e.EventId);
+
+            entity.Property(e => e.EventType)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.Topic)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(e => e.ProcessedAtUtc)
+                .IsRequired();
+        });
+
+        modelBuilder.Entity<AdminNotification>(entity =>
+        {
+            entity.HasKey(n => n.Id);
+
+            entity.Property(n => n.EventMessageId)
+                .IsRequired();
+
+            entity.HasIndex(n => n.EventMessageId)
+                .IsUnique();
+
+            entity.Property(n => n.EventId)
+                .IsRequired();
+
+            entity.HasIndex(n => n.EventId);
+
+            entity.Property(n => n.EventTitle)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(n => n.OrganizerId)
+                .IsRequired();
+
+            entity.Property(n => n.Message)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(n => n.NavigationTarget)
+                .IsRequired()
+                .HasMaxLength(250);
+
+            entity.Property(n => n.SubmittedAtUtc)
+                .IsRequired();
+
+            entity.Property(n => n.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(n => n.IsRead)
+                .IsRequired()
+                .HasDefaultValue(false);
+
+            entity.Property(n => n.ReadAtUtc)
+                .IsRequired(false);
+
+            entity.HasIndex(n => n.CreatedAtUtc);
+            entity.HasIndex(n => n.IsRead);
+
+            entity.HasOne(n => n.Event)
+                .WithMany()
+                .HasForeignKey(n => n.EventId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryReservation>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.BookingId)
+                .IsRequired();
+
+            entity.Property(r => r.EventId)
+                .IsRequired();
+
+            entity.Property(r => r.TicketTypeId)
+                .IsRequired();
+
+            entity.Property(r => r.Quantity)
+                .IsRequired();
+
+            entity.Property(r => r.Status)
+                .HasConversion<string>()
+                .IsRequired();
+
+            entity.Property(r => r.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(r => r.ExpiresAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(r => r.BookingId);
+            entity.HasIndex(r => r.TicketTypeId);
+            entity.HasIndex(r => new { r.TicketTypeId, r.Status });
+            entity.HasIndex(r => r.ExpiresAtUtc);
+
+            entity.HasOne(r => r.TicketType)
+                .WithMany()
+                .HasForeignKey(r => r.TicketTypeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InventoryRestoration>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.CancellationKey)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(r => r.BookingId)
+                .IsRequired();
+
+            entity.Property(r => r.EventId)
+                .IsRequired();
+
+            entity.Property(r => r.TicketTypeId)
+                .IsRequired();
+
+            entity.Property(r => r.RestoredQuantity)
+                .IsRequired();
+
+            entity.Property(r => r.RestoredAtUtc)
+                .IsRequired();
+
+            entity.HasIndex(r => r.CancellationKey)
+                .IsUnique();
+
+            entity.HasIndex(r => r.BookingId);
+            entity.HasIndex(r => r.TicketTypeId);
+
+            entity.HasOne(r => r.TicketType)
+                .WithMany()
+                .HasForeignKey(r => r.TicketTypeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }
+
 

@@ -106,4 +106,91 @@ If you didn't create an EventPulse account, you can ignore this email.
             throw; // Re-throw to inform caller the delivery failed
         }
     }
+
+    public async Task SendPasswordResetEmailAsync(string toEmail, string resetUrl, int expiryMinutes)
+    {
+        try
+        {
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(_settings.FromName, _settings.FromAddress));
+            message.To.Add(new MailboxAddress(toEmail, toEmail));
+            message.Subject = "Reset your EventPulse password";
+
+            var textBody = $@"EventPulse
+
+Reset your password
+
+We received a request to reset the password for your EventPulse account.
+
+To reset your password, visit the link below:
+{resetUrl}
+
+This link will expire in {expiryMinutes} minutes.
+
+If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
+";
+
+            var htmlBody = $@"
+<div style=""font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 30px 20px; color: #1D1D1F;"">
+    <h2 style=""margin-bottom: 20px; font-weight: 700; color: #1D1D1F;"">
+        Event<span style=""color: #FF5B00;"">Pulse</span>
+    </h2>
+    
+    <h3 style=""font-size: 20px; font-weight: 600; margin-bottom: 12px;"">Reset your password</h3>
+    
+    <p style=""font-size: 15px; line-height: 1.5; color: #1D1D1F; margin-bottom: 24px;"">
+        We received a request to reset the password for your EventPulse account. Click the button below to choose a new password.
+    </p>
+    
+    <div style=""text-align: center; margin-bottom: 24px;"">
+        <a href=""{resetUrl}"" style=""background-color: #FF5B00; color: #FFFFFF; display: inline-block; padding: 14px 28px; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;"">Reset Password</a>
+    </div>
+
+    <p style=""font-size: 13px; line-height: 1.5; color: #515154; margin-bottom: 24px; word-break: break-all;"">
+        If the button above doesn't work, copy and paste this URL into your browser:<br/>
+        <a href=""{resetUrl}"" style=""color: #FF5B00; text-decoration: underline;"">{resetUrl}</a>
+    </p>
+    
+    <p style=""font-size: 14px; color: #86868B; margin-bottom: 30px;"">
+        This link expires in {expiryMinutes} minutes.
+    </p>
+    
+    <hr style=""border: none; border-top: 1px solid #E5E5EA; margin-bottom: 24px;"">
+    
+    <p style=""font-size: 13px; color: #86868B; line-height: 1.5;"">
+        If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
+    </p>
+</div>
+";
+
+            var bodyBuilder = new BodyBuilder
+            {
+                TextBody = textBody,
+                HtmlBody = htmlBody
+            };
+
+            message.Body = bodyBuilder.ToMessageBody();
+
+            using var client = new SmtpClient();
+
+            var secureSocketOptions = _settings.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+            await client.ConnectAsync(_settings.SmtpHost, _settings.SmtpPort, secureSocketOptions);
+
+            if (!string.IsNullOrEmpty(_settings.Username) && !string.IsNullOrEmpty(_settings.Password))
+            {
+                await client.AuthenticateAsync(_settings.Username, _settings.Password);
+            }
+
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+
+            _logger.LogInformation("Password reset email successfully sent to {Email}", toEmail);
+        }
+        catch (Exception ex)
+        {
+            // Log failure but never expose credentials or raw tokens
+            _logger.LogError(ex, "Failed to send password reset email to {Email}", toEmail);
+            throw;
+        }
+    }
 }

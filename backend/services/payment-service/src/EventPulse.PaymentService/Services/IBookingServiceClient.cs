@@ -5,4 +5,5 @@ namespace EventPulse.PaymentService.Services;
 public interface IBookingServiceClient
 {
     Task<BookingSummaryDto?> GetBookingSummaryAsync(Guid bookingId, string? bearerToken = null, CancellationToken cancellationToken = default);
+    Task<string?> GetBookingEventNameAsync(Guid bookingId, string? bearerToken = null, CancellationToken cancellationToken = default);
 }

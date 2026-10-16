@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using EventPulse.Contracts.Kafka;
 using EventPulse.EventService.Data;
 using EventPulse.EventService.DTOs;
 using EventPulse.EventService.Models;
@@ -19,6 +20,7 @@ public class EventSubmissionService : IEventSubmissionService
 {
     private readonly EventDbContext _context;
     private readonly IEventImageStorage _imageStorage;
+    private readonly IEventOutboxWriter? _outboxWriter;
     private readonly ILogger<EventSubmissionService>? _logger;
 
     private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -41,11 +43,13 @@ public class EventSubmissionService : IEventSubmissionService
     public EventSubmissionService(
         EventDbContext context,
         IEventImageStorage imageStorage,
-        ILogger<EventSubmissionService>? logger = null)
+        ILogger<EventSubmissionService>? logger = null,
+        IEventOutboxWriter? outboxWriter = null)
     {
         _context = context;
         _imageStorage = imageStorage;
         _logger = logger;
+        _outboxWriter = outboxWriter;
     }
 
     /// <inheritdoc/>
@@ -181,6 +185,20 @@ public class EventSubmissionService : IEventSubmissionService
         };
 
         _context.Events.Add(newEvent);
+
+        if (_outboxWriter != null)
+        {
+            var eventSubmitted = new EventSubmittedEvent
+            {
+                EventMessageId = Guid.NewGuid(),
+                EventVersion = 1,
+                SubmittedAtUtc = DateTimeOffset.UtcNow,
+                EventId = newEvent.Id,
+                EventTitle = newEvent.Title,
+                OrganizerId = newEvent.OrganizerId
+            };
+            _outboxWriter.EnqueueEventSubmitted(eventSubmitted);
+        }
 
         try
         {
@@ -463,6 +481,20 @@ public class EventSubmissionService : IEventSubmissionService
 
         // State transition: Server controls status to Pending
         eventItem.Status = EventStatus.Pending;
+
+        if (_outboxWriter != null)
+        {
+            var eventSubmitted = new EventSubmittedEvent
+            {
+                EventMessageId = Guid.NewGuid(),
+                EventVersion = 1,
+                SubmittedAtUtc = DateTimeOffset.UtcNow,
+                EventId = eventItem.Id,
+                EventTitle = eventItem.Title,
+                OrganizerId = eventItem.OrganizerId
+            };
+            _outboxWriter.EnqueueEventSubmitted(eventSubmitted);
+        }
 
         try
         {

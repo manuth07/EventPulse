@@ -125,6 +125,10 @@ docker compose ps
   ```powershell
   docker exec eventpulse-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
   ```
+- **Provision Required Topics**:
+  ```powershell
+  .\scripts\setup-kafka.ps1
+  ```
 
 ### 4. Configure Development Secrets (.NET User Secrets)
 

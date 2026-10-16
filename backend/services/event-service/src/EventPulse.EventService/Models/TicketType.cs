@@ -16,5 +16,22 @@ public class TicketType
     /// </summary>
     public int BookedQuantity { get; set; } = 0;
 
+    /// <summary>
+    /// Total quantity configured for this ticket type. Authoritative total inventory (alias for Capacity).
+    /// </summary>
+    public int TotalQuantity => Capacity;
+
+    /// <summary>
+    /// Sold quantity booked against this ticket type. Authoritative sold inventory (alias for BookedQuantity).
+    /// </summary>
+    public int SoldQuantity => BookedQuantity;
+
+    /// <summary>
+    /// Calculated remaining unsold ticket quantity.
+    /// Clamped between 0 and TotalQuantity to satisfy business invariants:
+    /// Remaining quantity must never be negative and must never exceed total quantity.
+    /// </summary>
+    public int RemainingQuantity => Math.Clamp(Capacity - BookedQuantity, 0, Capacity);
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

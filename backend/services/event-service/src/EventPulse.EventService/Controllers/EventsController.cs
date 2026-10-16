@@ -21,6 +21,7 @@ public class EventsController : ControllerBase
     private readonly IEventCancellationRequestService? _cancellationRequestService;
     private readonly IEventImageStorage? _imageStorage;
     private readonly ILogger<EventsController>? _logger;
+    private readonly TimeProvider _timeProvider;
 
     public EventsController(
         EventDbContext context,
@@ -29,7 +30,8 @@ public class EventsController : ControllerBase
         IEventUpdateRequestService? updateRequestService = null,
         IEventCancellationRequestService? cancellationRequestService = null,
         IEventImageStorage? imageStorage = null,
-        ILogger<EventsController>? logger = null)
+        ILogger<EventsController>? logger = null,
+        TimeProvider? timeProvider = null)
     {
         _context = context;
         _submissionService = submissionService;
@@ -38,6 +40,7 @@ public class EventsController : ControllerBase
         _cancellationRequestService = cancellationRequestService;
         _imageStorage = imageStorage;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     // =========================================================================
@@ -53,9 +56,10 @@ public class EventsController : ControllerBase
         [FromQuery] EventDiscoveryQuery? query = null,
         CancellationToken cancellationToken = default)
     {
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
         var baseQuery = _context.Events
             .AsNoTracking()
-            .WhereCustomerVisible();
+            .WhereCustomerVisible(now);
 
         if (query != null && !string.IsNullOrWhiteSpace(query.Search))
         {
@@ -103,7 +107,6 @@ public class EventsController : ControllerBase
         if (query != null && !string.IsNullOrWhiteSpace(query.Date))
         {
             var rawDate = query.Date.Trim().ToLower().Replace("-", "").Replace("_", "");
-            var now = DateTime.UtcNow;
             var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
 
             if (rawDate == "today")
@@ -176,9 +179,10 @@ public class EventsController : ControllerBase
         var search = rawQuery.ToLower();
         var normalizedCategory = EventCategories.Normalize(rawQuery);
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
         var items = await _context.Events
             .AsNoTracking()
-            .WhereCustomerVisible()
+            .WhereCustomerVisible(now)
             .Where(e =>
                 (e.Title != null && e.Title.ToLower().Contains(search)) ||
                 (e.Venue != null && e.Venue.ToLower().Contains(search)) ||
@@ -244,7 +248,8 @@ public class EventsController : ControllerBase
         if (eventItem == null)
             return NotFound();
 
-        if (eventItem.Status != EventStatus.Published)
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (eventItem.Status != EventStatus.Published || eventItem.EventDate <= now)
             return NotFound();
         var details = new EventDetailsDto
         {
@@ -262,6 +267,72 @@ public class EventsController : ControllerBase
         };
 
         return Ok(details);
+    }
+
+    /// <summary>
+    /// GET /api/events/internal/{id}
+    /// Internal service-to-service endpoint for resolving event details regardless of public status.
+    /// </summary>
+    [HttpGet("internal/{id}")]
+    public async Task<ActionResult<EventDetailsDto>> GetEventInternalById(string id)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+            return NotFound();
+
+        var eventItem = await _context.Events
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == guidId);
+
+        if (eventItem == null)
+            return NotFound();
+
+        var details = new EventDetailsDto
+        {
+            Id = eventItem.Id,
+            Title = eventItem.Title,
+            Description = eventItem.Description,
+            Venue = eventItem.Venue,
+            EventDate = eventItem.EventDate,
+            Price = eventItem.Price,
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
+            OrganizerId = eventItem.OrganizerId,
+            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage?.GetPublicUrl(eventItem.CoverBlobName)
+        };
+
+        return Ok(details);
+    }
+
+    /// <summary>
+    /// GET /api/events/internal/organizer/{organizerId}
+    /// Internal service-to-service endpoint for retrieving all events owned by an organizer.
+    /// </summary>
+    [HttpGet("internal/organizer/{organizerId:guid}")]
+    public async Task<ActionResult<IReadOnlyList<EventDetailsDto>>> GetEventsByOrganizerInternal(Guid organizerId)
+    {
+        var events = await _context.Events
+            .AsNoTracking()
+            .Where(e => e.OrganizerId == organizerId)
+            .OrderByDescending(e => e.EventDate)
+            .ToListAsync();
+
+        var dtos = events.Select(eventItem => new EventDetailsDto
+        {
+            Id = eventItem.Id,
+            Title = eventItem.Title,
+            Description = eventItem.Description,
+            Venue = eventItem.Venue,
+            EventDate = eventItem.EventDate,
+            Price = eventItem.Price,
+            Category = eventItem.Category,
+            VenueType = eventItem.VenueType,
+            OrganizerId = eventItem.OrganizerId,
+            ImageUrl = _imageStorage?.GetPublicUrl(eventItem.ImageBlobName),
+            CoverUrl = _imageStorage?.GetPublicUrl(eventItem.CoverBlobName)
+        }).ToList();
+
+        return Ok(dtos);
     }
 
     // =========================================================================

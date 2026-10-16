@@ -33,6 +33,17 @@ namespace EventPulse.BookingService.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CancelledBy")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
                     b.Property<DateTimeOffset?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -49,6 +60,7 @@ namespace EventPulse.BookingService.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.Property<decimal>("TotalAmount")
@@ -198,6 +210,160 @@ namespace EventPulse.BookingService.Migrations
                     b.ToTable("ProcessedIntegrationEvents");
                 });
 
+            modelBuilder.Entity("EventPulse.BookingService.Models.SaleRefundAdjustment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AdjustedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("RefundId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SalesReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SalesReportId", "RefundId")
+                        .IsUnique();
+
+                    b.ToTable("SaleRefundAdjustments");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.SalesReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BookingReference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrganizerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("PaymentTimestampUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RefundStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("RefundedAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset?>("RefundedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("SaleAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique();
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("OrganizerId");
+
+                    b.HasIndex("PaymentId")
+                        .IsUnique();
+
+                    b.ToTable("SalesReports");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.SalesReportItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BookingItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("RefundedAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RefundedQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SalesReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("TicketTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TicketTypeName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingItemId");
+
+                    b.HasIndex("SalesReportId");
+
+                    b.HasIndex("TicketTypeId");
+
+                    b.ToTable("SalesReportItems");
+                });
+
             modelBuilder.Entity("EventPulse.BookingService.Models.Ticket", b =>
                 {
                     b.Property<Guid>("Id")
@@ -282,6 +448,28 @@ namespace EventPulse.BookingService.Migrations
                     b.Navigation("Cart");
                 });
 
+            modelBuilder.Entity("EventPulse.BookingService.Models.SaleRefundAdjustment", b =>
+                {
+                    b.HasOne("EventPulse.BookingService.Models.SalesReport", "SalesReport")
+                        .WithMany("RefundAdjustments")
+                        .HasForeignKey("SalesReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SalesReport");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.SalesReportItem", b =>
+                {
+                    b.HasOne("EventPulse.BookingService.Models.SalesReport", "SalesReport")
+                        .WithMany("Items")
+                        .HasForeignKey("SalesReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SalesReport");
+                });
+
             modelBuilder.Entity("EventPulse.BookingService.Models.Ticket", b =>
                 {
                     b.HasOne("EventPulse.BookingService.Models.Booking", "Booking")
@@ -316,6 +504,13 @@ namespace EventPulse.BookingService.Migrations
             modelBuilder.Entity("EventPulse.BookingService.Models.Cart", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("EventPulse.BookingService.Models.SalesReport", b =>
+                {
+                    b.Navigation("Items");
+
+                    b.Navigation("RefundAdjustments");
                 });
 #pragma warning restore 612, 618
         }

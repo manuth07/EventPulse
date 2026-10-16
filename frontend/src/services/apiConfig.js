@@ -11,11 +11,11 @@
  * - Localhost is never included as a fallback in production builds.
  */
 
-const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const rawApiBaseUrl = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_API_BASE_URL : '';
 
 function resolveApiBaseUrl() {
   // Local development fallback: only available in dev server (import.meta.env.DEV === true)
-  if (import.meta.env.DEV) {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
     if (rawApiBaseUrl && typeof rawApiBaseUrl === 'string' && rawApiBaseUrl.trim() !== '') {
       return rawApiBaseUrl.trim().replace(/\/+$/, '');
     }

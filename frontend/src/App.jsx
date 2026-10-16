@@ -7,23 +7,33 @@ import { EventDetails } from './pages/EventDetails/EventDetails';
 import { Register } from './pages/Register/Register';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { Login } from './pages/Login/Login';
+import { ForgotPassword } from './pages/ForgotPassword/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword/ResetPassword';
 import { CompleteProfile } from './pages/CompleteProfile/CompleteProfile';
 import { Forbidden } from './pages/Forbidden/Forbidden';
 import { OrganizerDashboard } from './pages/OrganizerDashboard/OrganizerDashboard';
+import { OrganizerSalesAnalytics } from './pages/OrganizerSalesAnalytics/OrganizerSalesAnalytics';
+import { OrganizerBookingAnalytics } from './pages/OrganizerBookingAnalytics/OrganizerBookingAnalytics';
 import { OrganizerEventDetails } from './pages/OrganizerEventDetails/OrganizerEventDetails';
 import { CreateEvent } from './pages/CreateEvent/CreateEvent';
 import { EditEvent } from './pages/EditEvent/EditEvent';
 import { AdminDashboard } from './pages/AdminDashboard/AdminDashboard';
 import { PendingEvents } from './pages/PendingEvents/PendingEvents';
-import { RequireAuth, RequireRole } from './components/RouteGuards/RouteGuards';
+import { RequireAuth, RequireRole, AdminRoute, OrganizerRoute } from './components/RouteGuards/RouteGuards';
 import { ListYourEvent } from './pages/ListYourEvent/ListYourEvent';
 import { AdminOrganizerApplications } from './pages/AdminOrganizerApplications/AdminOrganizerApplications';
+import { AdminReports } from './pages/AdminReports/AdminReports';
 import { Cart } from './pages/Cart/Cart';
 import { SelectTickets } from './pages/SelectTickets/SelectTickets';
 import { PaymentSuccess } from './pages/PaymentSuccess/PaymentSuccess';
 import { PaymentCancel } from './pages/PaymentCancel/PaymentCancel';
 import { Tickets } from './pages/Tickets/Tickets';
 import { MyBookingsPage } from './pages/MyBookings/MyBookingsPage';
+import { BookingDetailPage } from './pages/BookingDetail/BookingDetailPage';
+import { ProfilePage } from './pages/Profile/ProfilePage';
+import { PaymentHistoryPage } from './pages/PaymentHistory/PaymentHistoryPage';
+import { WhoWeAre } from './pages/WhoWeAre/WhoWeAre';
+import { ContactUs } from './pages/ContactUs/ContactUs';
 
 function App() {
   return (
@@ -34,32 +44,55 @@ function App() {
             {/* Public / Customer Routes */}
             <Route path="/" element={<Home />} />
             <Route path="/events/:id" element={<EventDetails />} />
+            <Route path="/who-we-are" element={<WhoWeAre />} />
+            <Route path="/about" element={<WhoWeAre />} />
+            <Route path="/contact" element={<ContactUs />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/request-password-reset" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/password-reset" element={<ResetPassword />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/complete-profile" element={<CompleteProfile />} />
             <Route path="/forbidden" element={<Forbidden />} />
             <Route path="/list-your-event" element={<ListYourEvent />} />
             <Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} />
+            <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+            <Route path="/payment-history" element={<RequireAuth><PaymentHistoryPage /></RequireAuth>} />
             <Route path="/events/:id/tickets" element={<SelectTickets />} />
             <Route path="/payment-success" element={<PaymentSuccess />} />
             <Route path="/payment-cancel" element={<PaymentCancel />} />
             <Route path="/bookings/:bookingId/tickets" element={<RequireAuth><Tickets /></RequireAuth>} />
             <Route path="/my-bookings" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/my-bookings/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
+            <Route path="/my-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/my-tickets/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
+            <Route path="/booked-tickets" element={<RequireAuth><MyBookingsPage /></RequireAuth>} />
+            <Route path="/booked-tickets/:bookingId" element={<RequireAuth><BookingDetailPage /></RequireAuth>} />
 
-            {/* Organizer Protected Routes */}
-            <Route element={<RequireRole allowedRoles="Organizer" />}>
+            {/* Organizer Protected Routes (EP-386) */}
+            <Route element={<OrganizerRoute />}>
               <Route path="/organizer" element={<OrganizerDashboard />} />
               <Route path="/organizer/events/:id" element={<OrganizerEventDetails />} />
               <Route path="/organizer/events/:id/edit" element={<EditEvent />} />
+              <Route path="/organizer/sales-analytics" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/analytics" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/analytics/sales" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/events/:id/sales" element={<OrganizerSalesAnalytics />} />
+              <Route path="/organizer/booking-analytics" element={<OrganizerBookingAnalytics />} />
+              <Route path="/organizer/analytics/bookings" element={<OrganizerBookingAnalytics />} />
+              <Route path="/organizer/events/:id/bookings" element={<OrganizerBookingAnalytics />} />
               <Route path="/events/create" element={<CreateEvent />} />
             </Route>
 
-            {/* Administrator Protected Routes */}
-            <Route element={<RequireRole allowedRoles="Administrator" />}>
+            {/* Administrator Protected Routes (EP-373) */}
+            <Route element={<AdminRoute />}>
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/users" element={<AdminDashboard />} />
               <Route path="/admin/events/pending" element={<PendingEvents />} />
               <Route path="/admin/organizer-applications" element={<AdminOrganizerApplications />} />
+              <Route path="/admin/reports" element={<AdminReports />} />
             </Route>
 
             {/* Catch-all */}

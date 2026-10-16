@@ -8,4 +8,10 @@ public interface IBookingHistoryService
         Guid customerId,
         BookingHistoryQueryParameters queryParams,
         CancellationToken ct = default);
+
+    Task<CustomerBookingDetailResult> GetCustomerBookingDetailAsync(
+        Guid bookingId,
+        Guid customerId,
+        bool isAdmin = false,
+        CancellationToken ct = default);
 }

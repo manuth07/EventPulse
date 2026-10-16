@@ -5,6 +5,7 @@ import { Header } from '../../components/Header/Header';
 import { useAuth } from '../../context/AuthContext';
 import { getBookingTickets, cancelTicket } from '../../services/bookingService';
 import { fetchEventById } from '../../services/eventService';
+import { getCancellationReasonMessage } from '../../utils/cancellationHelper';
 import {
   Ticket as TicketIcon,
   Calendar,
@@ -193,12 +194,14 @@ export function Tickets() {
       setCancelReason('');
     } catch (err) {
       console.error('Failed to cancel ticket:', err);
-      const msg =
+      const reasonCode = err?.reasonCode || err?.data?.reasonCode || err?.data?.code;
+      const rawMsg =
         err?.response?.data?.message ||
         err?.data?.message ||
         err?.message ||
         'Failed to cancel the ticket. Please try again.';
-      setCancelError(msg);
+      const friendlyMsg = getCancellationReasonMessage(reasonCode, rawMsg);
+      setCancelError(friendlyMsg);
     } finally {
       setIsSubmittingCancel(false);
     }

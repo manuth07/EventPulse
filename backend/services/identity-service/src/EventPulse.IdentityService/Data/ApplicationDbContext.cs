@@ -18,6 +18,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
     public DbSet<OrganizerApplication> OrganizerApplications => Set<OrganizerApplication>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -38,6 +40,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
             entity.Property(u => u.CountryCode)
                 .HasMaxLength(2);
+
+            entity.Property(u => u.ProfilePictureUrl)
+                .HasMaxLength(2048);
 
             entity.Property(u => u.CreatedAt)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
@@ -70,6 +75,42 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
             // Index to support active-code lookup by user + expiry
             entity.HasIndex(e => new { e.UserId, e.ExpiresAt });
+        });
+
+        // -----------------------------------------------------------------------
+        // PasswordResetToken
+        // -----------------------------------------------------------------------
+        builder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.ToTable("PasswordResetTokens");
+            entity.HasKey(t => t.Id);
+
+            entity.Property(t => t.TokenHash)
+                .IsRequired()
+                .HasMaxLength(256);
+
+            entity.Property(t => t.ExpiresAt)
+                .IsRequired();
+
+            entity.Property(t => t.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.Property(t => t.UsedAt)
+                .IsConcurrencyToken();
+
+            entity.HasOne(t => t.User)
+                .WithMany(u => u.PasswordResetTokens)
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Index to quickly find all reset tokens for a given user
+            entity.HasIndex(t => t.UserId);
+
+            // Index to look up a token by hash
+            entity.HasIndex(t => t.TokenHash);
+
+            // Composite index to support active token lookup by user + expiry
+            entity.HasIndex(t => new { t.UserId, t.ExpiresAt });
         });
 
         // -----------------------------------------------------------------------
@@ -119,6 +160,38 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // Exactly one application per user is enforced at DB level
             entity.HasIndex(a => a.UserId)
                 .IsUnique();
+        });
+
+        // -----------------------------------------------------------------------
+        // AdminAuditLog
+        // -----------------------------------------------------------------------
+        builder.Entity<AdminAuditLog>(entity =>
+        {
+            entity.ToTable("AdminAuditLogs");
+            entity.HasKey(a => a.Id);
+
+            entity.Property(a => a.Action)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(a => a.ActorEmail)
+                .HasMaxLength(256);
+
+            entity.Property(a => a.TargetEmail)
+                .HasMaxLength(256);
+
+            entity.Property(a => a.Outcome)
+                .HasMaxLength(50);
+
+            entity.Property(a => a.Reason)
+                .HasMaxLength(1000);
+
+            entity.Property(a => a.Timestamp)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasIndex(a => a.TargetUserId);
+            entity.HasIndex(a => a.ActorAdminId);
+            entity.HasIndex(a => a.Timestamp);
         });
     }
 }

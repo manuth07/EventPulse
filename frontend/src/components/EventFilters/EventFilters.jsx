@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, LayoutGrid, List } from 'lucide-react';
 import { EVENT_CATEGORIES, VENUE_TYPES } from '../../data/eventConstants';
 
 const DATE_OPTIONS = [
@@ -17,6 +17,8 @@ export function EventFilters({
   onVenueTypeChange,
   onDateChange,
   onClearFilters,
+  viewMode = 'grid',
+  onViewModeChange,
 }) {
   const hasActiveFilters = Boolean(category || venueType || date);
 
@@ -151,23 +153,101 @@ export function EventFilters({
           </div>
         </div>
 
-        {/* Clear filters link */}
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={onClearFilters}
-            className="ep-btn-secondary"
+        {/* Right side: Clear filters + Grid/List View Toggle Group */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+        }}>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="ep-btn-secondary"
+              style={{
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                minHeight: '34px',
+                color: 'var(--ep-text-secondary, #86868B)',
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+
+          {/* Grid / List View Toggle Group */}
+          <div
+            className="inline-flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200/80 gap-1"
+            role="group"
+            aria-label="Event display view mode"
             style={{
-              padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: 600,
-              minHeight: '34px',
-              color: 'var(--ep-text-secondary, #86868B)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '3px',
+              backgroundColor: '#f1f5f9',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              gap: '4px',
             }}
           >
-            Clear filters
-          </button>
-        )}
+            <button
+              type="button"
+              id="view-grid-btn"
+              aria-label="Grid view"
+              onClick={() => onViewModeChange && onViewModeChange('grid')}
+              className={`p-1.5 rounded-md transition flex items-center justify-center ${
+                viewMode === 'grid'
+                  ? 'bg-orange-500 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:text-slate-900'
+              }`}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                border: viewMode === 'grid' ? 'none' : '1px solid #e2e8f0',
+                backgroundColor: viewMode === 'grid' ? '#ea580c' : '#ffffff',
+                color: viewMode === 'grid' ? '#ffffff' : '#475569',
+                cursor: 'pointer',
+                transition: 'all 150ms ease',
+              }}
+              title="Grid View"
+            >
+              <LayoutGrid size={16} />
+            </button>
+
+            <button
+              type="button"
+              id="view-list-btn"
+              aria-label="List view"
+              onClick={() => onViewModeChange && onViewModeChange('list')}
+              className={`p-1.5 rounded-md transition flex items-center justify-center ${
+                viewMode === 'list'
+                  ? 'bg-orange-500 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:text-slate-900'
+              }`}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                border: viewMode === 'list' ? 'none' : '1px solid #e2e8f0',
+                backgroundColor: viewMode === 'list' ? '#ea580c' : '#ffffff',
+                color: viewMode === 'list' ? '#ffffff' : '#475569',
+                cursor: 'pointer',
+                transition: 'all 150ms ease',
+              }}
+              title="List View"
+            >
+              <List size={16} />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Active Filter Chips */}
