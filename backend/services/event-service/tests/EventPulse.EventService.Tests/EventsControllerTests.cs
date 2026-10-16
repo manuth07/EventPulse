@@ -22,9 +22,14 @@ public class EventsControllerTests
         return context;
     }
 
-    private static EventsController CreateController(EventDbContext context)
+    private static EventsController CreateController(EventDbContext context, TimeProvider? timeProvider = null)
     {
-        return new EventsController(context, null);
+        return new EventsController(context, timeProvider: timeProvider);
+    }
+
+    private sealed class TestTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     private static Event MakeEvent(EventStatus status, string title = "Test Event") => new()
@@ -457,13 +462,15 @@ public class EventsControllerTests
     [Fact]
     public async Task GetEvents_WithDateFilter_Today_ReturnsEventsHappeningToday()
     {
+        var fakeNow = new DateTimeOffset(2026, 10, 16, 9, 0, 0, TimeSpan.Zero);
+        var timeProvider = new TestTimeProvider(fakeNow);
         var todayEvent = MakeEvent(EventStatus.Published, "Today Show");
-        todayEvent.EventDate = DateTime.UtcNow.Date.AddHours(14); // Today at 14:00 UTC
+        todayEvent.EventDate = fakeNow.UtcDateTime.Date.AddHours(14); // Today at 14:00 UTC
         var nextMonthEvent = MakeEvent(EventStatus.Published, "Future Show");
-        nextMonthEvent.EventDate = DateTime.UtcNow.Date.AddDays(40);
+        nextMonthEvent.EventDate = fakeNow.UtcDateTime.Date.AddDays(40);
 
         using var context = CreateContextWithEvents(todayEvent, nextMonthEvent);
-        var controller = CreateController(context);
+        var controller = CreateController(context, timeProvider);
 
         var result = await controller.GetEvents(new EventDiscoveryQuery { Date = "today" });
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
@@ -476,7 +483,9 @@ public class EventsControllerTests
     [Fact]
     public async Task GetEvents_WithDateFilter_ThisWeek_ReturnsEventsWithinCurrentWeek()
     {
-        var now = DateTime.UtcNow;
+        var fakeNow = new DateTimeOffset(2026, 10, 12, 9, 0, 0, TimeSpan.Zero);
+        var timeProvider = new TestTimeProvider(fakeNow);
+        var now = fakeNow.UtcDateTime;
         var todayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
         int diff = (7 + (int)now.DayOfWeek - (int)DayOfWeek.Monday) % 7;
         var startOfWeek = todayStart.AddDays(-diff);
@@ -487,7 +496,7 @@ public class EventsControllerTests
         farEvent.EventDate = startOfWeek.AddDays(25);
 
         using var context = CreateContextWithEvents(thisWeekEvent, farEvent);
-        var controller = CreateController(context);
+        var controller = CreateController(context, timeProvider);
 
         var result = await controller.GetEvents(new EventDiscoveryQuery { Date = "this-week" });
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
@@ -500,14 +509,16 @@ public class EventsControllerTests
     [Fact]
     public async Task GetEvents_WithDateFilter_ThisMonth_ReturnsEventsWithinCurrentMonth()
     {
-        var now = DateTime.UtcNow;
+        var fakeNow = new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.Zero);
+        var timeProvider = new TestTimeProvider(fakeNow);
+        var now = fakeNow.UtcDateTime;
         var thisMonthEvent = MakeEvent(EventStatus.Published, "Month Gala");
         thisMonthEvent.EventDate = new DateTime(now.Year, now.Month, 15, 12, 0, 0, DateTimeKind.Utc);
         var nextYearEvent = MakeEvent(EventStatus.Published, "Next Year Gala");
         nextYearEvent.EventDate = thisMonthEvent.EventDate.AddYears(1);
 
         using var context = CreateContextWithEvents(thisMonthEvent, nextYearEvent);
-        var controller = CreateController(context);
+        var controller = CreateController(context, timeProvider);
 
         var result = await controller.GetEvents(new EventDiscoveryQuery { Date = "this-month" });
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
@@ -601,7 +612,9 @@ public class EventsControllerTests
     [Fact]
     public async Task GetEvents_WithSearchCategoryVenueTypeAndDate_CombinesAllFilters()
     {
-        var now = DateTime.UtcNow;
+        var fakeNow = new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.Zero);
+        var timeProvider = new TestTimeProvider(fakeNow);
+        var now = fakeNow.UtcDateTime;
         var match = MakeEvent(EventStatus.Published, "Lakeside Acoustic");
         match.Category = "Music";
         match.VenueType = "Outdoor";
@@ -618,7 +631,7 @@ public class EventsControllerTests
         wrongDate.EventDate = match.EventDate.AddMonths(2);
 
         using var context = CreateContextWithEvents(match, wrongVenue, wrongDate);
-        var controller = CreateController(context);
+        var controller = CreateController(context, timeProvider);
 
         var result = await controller.GetEvents(new EventDiscoveryQuery
         {

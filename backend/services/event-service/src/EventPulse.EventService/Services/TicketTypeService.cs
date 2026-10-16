@@ -15,6 +15,7 @@ public class TicketTypeService : ITicketTypeService
 {
     private readonly EventDbContext _context;
     private readonly ILogger<TicketTypeService>? _logger;
+    private readonly TimeProvider _timeProvider;
 
     private static readonly HashSet<EventStatus> EligibleStatuses = new()
     {
@@ -22,10 +23,14 @@ public class TicketTypeService : ITicketTypeService
         EventStatus.Published,
     };
 
-    public TicketTypeService(EventDbContext context, ILogger<TicketTypeService>? logger = null)
+    public TicketTypeService(
+        EventDbContext context,
+        ILogger<TicketTypeService>? logger = null,
+        TimeProvider? timeProvider = null)
     {
         _context = context;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <inheritdoc/>
@@ -158,10 +163,11 @@ public class TicketTypeService : ITicketTypeService
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken);
 
-        // Only Published events expose ticket data to visitors. Pending, Approved
-        // (not yet published), and Rejected events are treated as not found so
-        // no purchasable ticket information ever leaks before an event goes live.
-        if (eventItem == null || eventItem.Status != EventStatus.Published)
+        // Only future Published events expose ticket data to visitors. Concluded/past events,
+        // and Pending, Approved (not yet published), and Rejected events are treated as not found so
+        // no purchasable ticket information ever leaks before an event goes live or after it has concluded.
+        var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        if (eventItem == null || eventItem.Status != EventStatus.Published || eventItem.EventDate <= nowUtc)
             return (null, true);
 
         var ticketTypes = await _context.TicketTypes
