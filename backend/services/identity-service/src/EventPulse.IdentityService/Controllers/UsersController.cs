@@ -199,7 +199,7 @@ public class UsersController : ControllerBase
     /// Protected endpoint — uploads/changes profile picture (EP-26 Phase 3).
     /// </summary>
     [HttpPost("me/avatar")]
-    public async Task<IActionResult> UploadAvatar([FromForm(Name = "file")] IFormFile? file = null, [FromForm(Name = "avatar")] IFormFile? avatar = null)
+    public async Task<IActionResult> UploadAvatar(IFormFile? file = null, IFormFile? avatar = null)
     {
         var targetFile = file ?? avatar ?? (Request.HasFormContentType ? Request.Form.Files.FirstOrDefault() : null);
         if (targetFile == null || targetFile.Length == 0)

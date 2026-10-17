@@ -9,6 +9,7 @@ using EventPulse.Contracts.Kafka;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -152,6 +153,34 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "EventPulse Booking Service API",
+        Version = "v1",
+        Description = "Booking, cart, and reservation microservice for EventPulse."
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter the JWT access token."
+    });
+
+    options.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecuritySchemeReference("Bearer", doc),
+            new List<string>()
+        }
+    });
+});
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 builder.Services.AddApplicationInsightsTelemetry();
@@ -168,6 +197,13 @@ app.UseRouting();
 
 // Prometheus HTTP metrics middleware
 app.UseHttpMetrics();
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "EventPulse Booking Service API v1");
+    options.RoutePrefix = "swagger";
+});
 
 if (app.Environment.IsDevelopment())
 {

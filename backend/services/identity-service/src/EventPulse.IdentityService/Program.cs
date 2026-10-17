@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -198,6 +199,34 @@ builder.Services.AddAuthorization(options =>
 // API & Infrastructure
 // ---------------------------------------------------------------------------
 builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "EventPulse Identity Service API",
+        Version = "v1",
+        Description = "Identity and authentication microservice for EventPulse."
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter the JWT access token."
+    });
+
+    options.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecuritySchemeReference("Bearer", doc),
+            new List<string>()
+        }
+    });
+});
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
@@ -220,6 +249,13 @@ var app = builder.Build();
 // Prometheus HTTP Request Metrics (TECH-12)
 app.UseRouting();
 app.UseHttpMetrics();
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "EventPulse Identity Service API v1");
+    options.RoutePrefix = "swagger";
+});
 
 if (app.Environment.IsDevelopment())
 {
