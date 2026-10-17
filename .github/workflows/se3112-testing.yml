@@ -65,3 +65,34 @@ jobs:
         run: |
           dotnet sonarscanner end \
             /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+
+  unit-testing:
+    name: Unit Testing & Mocking - xUnit + Moq
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore backend/EventPulse.Backend.sln
+
+      - name: Run unit tests (xUnit + Moq)
+        run: >
+          dotnet test backend/services/booking-service/tests/EventPulse.BookingService.Tests/EventPulse.BookingService.Tests.csproj
+          --configuration Release --no-restore
+          --filter "Category=SE3112-Unit"
+          --logger "trx;LogFileName=unit-tests.trx"
+          --results-directory ./TestResults/unit
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: TestResults/unit/*.trx  
+  
