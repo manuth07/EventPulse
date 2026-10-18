@@ -41,4 +41,9 @@ public interface ISalesReportingService
     /// EP-405: Retrieves a paginated collection of sales reports with server-side filtering and sorting.
     /// </summary>
     Task<PagedResult<SalesReportDto>> GetSalesReportsAsync(ReportFilterDto filter, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// EP-405: Retrieves an unpaginated collection of sales reports optionally filtered by date range.
+    /// </summary>
+    Task<IReadOnlyList<SalesReport>> GetAllSalesReportsAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default);
 }

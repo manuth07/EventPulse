@@ -84,7 +84,7 @@ $RepoRoot = Split-Path $BackendRoot -Parent
 if (Get-Command docker -ErrorAction SilentlyContinue) {
     try {
         $pgContainer = docker ps --filter "name=eventpulse-postgres" --filter "status=running" --format "{{.Names}}" 2>$null
-        if (-not $pgContainer -or $pgContainer.Trim() -ne "eventpulse-postgres") {
+        if (-not $pgContainer -or $pgContainer -notmatch "eventpulse-postgres") {
             Write-Host "Starting Docker infrastructure containers..." -ForegroundColor Yellow
             docker compose up -d postgres kafka azurite 2>&1 | Out-Null
             Start-Sleep -Seconds 2
@@ -99,7 +99,7 @@ $setupKafkaScript = Join-Path $RepoRoot "scripts\setup-kafka.ps1"
 if (Test-Path $setupKafkaScript) {
     try {
         $kafkaContainer = docker ps --filter "name=eventpulse-kafka" --filter "status=running" --format "{{.Names}}" 2>$null
-        if ($kafkaContainer -eq "eventpulse-kafka") {
+        if ($kafkaContainer -match "eventpulse-kafka") {
             Write-Host "Ensuring Kafka topics are provisioned..." -ForegroundColor DarkGray
             & powershell -ExecutionPolicy Bypass -File $setupKafkaScript | Out-Null
             Write-Host "Kafka topics verified." -ForegroundColor Green
