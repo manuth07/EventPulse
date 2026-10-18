@@ -46,10 +46,9 @@ export function formatPaymentDate(dateString, includeTime = false) {
  */
 export function formatCurrency(amount, currency = 'LKR') {
   const num = Number(amount);
-  const curr = (currency || 'LKR').toUpperCase();
-  if (isNaN(num)) return `${curr} 0.00`;
+  if (isNaN(num)) return 'LKR 0.00';
 
-  return `${curr} ${num.toLocaleString('en-US', {
+  return `LKR ${num.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

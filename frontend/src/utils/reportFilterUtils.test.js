@@ -42,8 +42,8 @@ describe('Report Filter Controls Utilities (EP-396 / EP-393)', () => {
 
       const currencies = CURRENCY_OPTIONS.map((c) => c.value);
       assert.ok(currencies.includes('ALL'));
-      assert.ok(currencies.includes('USD'));
       assert.ok(currencies.includes('LKR'));
+      assert.ok(!currencies.includes('USD'));
     });
 
     it('enforces role-based permissions: only Administrator can filter by organizerId', () => {

@@ -10,7 +10,6 @@ import {
   Tag,
   Briefcase,
   Layers,
-  DollarSign,
   Ticket,
 } from 'lucide-react';
 import {

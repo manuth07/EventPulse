@@ -25,7 +25,7 @@ test('Payment History Helpers (EP-358 / EP-54)', async (t) => {
 
   await t.test('formatCurrency formats valid numbers and strings', () => {
     assert.equal(formatCurrency(5000, 'LKR'), 'LKR 5,000.00');
-    assert.equal(formatCurrency('125.5', 'usd'), 'USD 125.50');
+    assert.equal(formatCurrency('125.5', 'usd'), 'LKR 125.50');
     assert.equal(formatCurrency(0, 'lkr'), 'LKR 0.00');
     assert.equal(formatCurrency('invalid'), 'LKR 0.00');
   });
