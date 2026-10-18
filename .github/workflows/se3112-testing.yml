@@ -103,5 +103,53 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-results
-          path: TestResults/unit/*.trx  
+          path: TestResults/unit/*.trx
+
+  selenium-e2e:
+    name: UI / E2E Testing - Selenium WebDriver
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Restore Selenium test dependencies
+        run: dotnet restore tests/e2e-selenium/EventPulse.E2E.Tests.csproj
+
+      - name: Build Selenium test project
+        run: dotnet build tests/e2e-selenium/EventPulse.E2E.Tests.csproj --configuration Release --no-restore
+
+      - name: Run Selenium E2E Tests (Headless Chrome)
+        env:
+          EVENTPULSE_BASE_URL: ${{ vars.EVENTPULSE_BASE_URL || 'http://localhost:5173' }}
+          TEST_CUSTOMER_EMAIL: ${{ secrets.TEST_CUSTOMER_EMAIL || 'nimal.test01@example.com' }}
+          TEST_CUSTOMER_PASSWORD: ${{ secrets.TEST_CUSTOMER_PASSWORD || 'SecurePass123!' }}
+          SELENIUM_SCREENSHOT_DIR: ${{ github.workspace }}/TestResults/selenium/screenshots
+        run: >
+          dotnet test tests/e2e-selenium/EventPulse.E2E.Tests.csproj
+          --configuration Release --no-restore
+          --filter "FullyQualifiedName~LoginTests|FullyQualifiedName~BrowseEventsTests|FullyQualifiedName~CustomerBookingHistoryTests"
+          --logger "trx;LogFileName=selenium-results.trx"
+          --results-directory ./TestResults/selenium
+
+      - name: Upload Selenium TRX Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-test-results
+          path: TestResults/selenium/*.trx
+
+      - name: Upload Selenium Failure Screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-failure-screenshots
+          path: TestResults/selenium/screenshots/*.png
+          if-no-files-found: ignore
   
