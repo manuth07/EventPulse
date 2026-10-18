@@ -12,10 +12,13 @@ import {
 describe('Sales Analytics Dashboard Utilities (EP-385)', () => {
   // 1. Currency Formatting
   it('formatCurrencyAmount formats standard currency amounts correctly', () => {
-    assert.equal(formatCurrencyAmount(1500, 'USD'), 'USD 1,500.00');
+    assert.equal(formatCurrencyAmount(1500, 'USD'), 'LKR 1,500.00');
     assert.equal(formatCurrencyAmount(250000, 'LKR'), 'LKR 250,000.00');
-    assert.equal(formatCurrencyAmount(0, 'USD'), 'USD 0.00');
-    assert.equal(formatCurrencyAmount(null, 'USD'), 'USD 0.00');
+    assert.equal(formatCurrencyAmount(1500), 'LKR 1,500.00');
+    assert.equal(formatCurrencyAmount(0), 'LKR 0.00');
+    assert.equal(formatCurrencyAmount(null), 'LKR 0.00');
+    assert.equal(formatCurrencyAmount(0, 'USD'), 'LKR 0.00');
+    assert.equal(formatCurrencyAmount(null, 'USD'), 'LKR 0.00');
     assert.equal(formatCurrencyAmount(120, 'MULTIPLE'), 'Multi-Currency');
   });
 
@@ -29,14 +32,14 @@ describe('Sales Analytics Dashboard Utilities (EP-385)', () => {
   // 3. Multi-Currency Breakdown
   it('formatMultiCurrencyBreakdown creates separate breakdown items without merging currencies', () => {
     const currencies = [
-      { currency: 'USD', grossRevenue: 1000, netRevenue: 900, ticketsSold: 10 },
+      { currency: 'LKR', grossRevenue: 1000, netRevenue: 900, ticketsSold: 10 },
       { currency: 'EUR', grossRevenue: 500, netRevenue: 450, ticketsSold: 5 },
     ];
 
     const result = formatMultiCurrencyBreakdown(currencies);
     assert.equal(result.length, 2);
-    assert.equal(result[0].currency, 'USD');
-    assert.equal(result[0].gross, 'USD 1,000.00');
+    assert.equal(result[0].currency, 'LKR');
+    assert.equal(result[0].gross, 'LKR 1,000.00');
     assert.equal(result[1].currency, 'EUR');
     assert.equal(result[1].gross, 'EUR 500.00');
   });

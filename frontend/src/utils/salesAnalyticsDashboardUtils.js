@@ -7,21 +7,22 @@
 
 /**
  * Formats a monetary amount with currency code.
- * Example: formatCurrencyAmount(1250.5, 'USD') -> "USD 1,250.50"
+ * Example: formatCurrencyAmount(1250.5, 'LKR') -> "LKR 1,250.50"
  * 
  * @param {number|string} amount - Monetary amount
- * @param {string} [currency='USD'] - ISO currency code
+ * @param {string} [currency='LKR'] - ISO currency code
  * @returns {string} Formatted currency string
  */
-export function formatCurrencyAmount(amount, currency = 'USD') {
+export function formatCurrencyAmount(amount, currency = 'LKR') {
   if (currency === 'MULTIPLE') {
     return 'Multi-Currency';
   }
+  const curr = (!currency || currency.toUpperCase() === 'USD') ? 'LKR' : currency.toUpperCase();
   const num = Number(amount);
   if (isNaN(num)) {
-    return `${currency || 'USD'} 0.00`;
+    return `${curr} 0.00`;
   }
-  return `${currency || 'USD'} ${num.toLocaleString('en-US', {
+  return `${curr} ${num.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -51,13 +52,16 @@ export function formatMultiCurrencyBreakdown(currencies) {
     return [];
   }
 
-  return currencies.map((c) => ({
-    currency: c.currency,
-    label: `${c.currency}: Gross ${formatCurrencyAmount(c.grossRevenue, c.currency)} | Net ${formatCurrencyAmount(c.netRevenue, c.currency)}`,
-    gross: formatCurrencyAmount(c.grossRevenue, c.currency),
-    net: formatCurrencyAmount(c.netRevenue, c.currency),
-    ticketsSold: c.ticketsSold,
-  }));
+  return currencies.map((c) => {
+    const curr = (c.currency && c.currency.toUpperCase() !== 'USD') ? c.currency.toUpperCase() : 'LKR';
+    return {
+      currency: curr,
+      label: `${curr}: Gross ${formatCurrencyAmount(c.grossRevenue, curr)} | Net ${formatCurrencyAmount(c.netRevenue, curr)}`,
+      gross: formatCurrencyAmount(c.grossRevenue, curr),
+      net: formatCurrencyAmount(c.netRevenue, curr),
+      ticketsSold: c.ticketsSold,
+    };
+  });
 }
 
 /**

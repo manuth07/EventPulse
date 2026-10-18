@@ -7,7 +7,7 @@ import {
   RefreshCw,
   AlertCircle,
   FileText,
-  DollarSign,
+  Wallet,
   Ticket,
   Users,
   Layers,
@@ -911,8 +911,8 @@ function PlatformSummaryReportView({ data }) {
         <MetricCard
           title="Gross Revenue"
           value={formatReportCurrency(data.primaryGrossRevenue, data.primaryCurrency)}
-          subtitle={`Primary currency (${data.primaryCurrency || 'USD'})`}
-          icon={DollarSign}
+          subtitle={`Primary currency (${data.primaryCurrency || 'LKR'})`}
+          icon={Wallet}
         />
         <MetricCard
           title="Net Revenue"
@@ -1247,7 +1247,7 @@ function RevenueReportView({ data }) {
           title="Gross Revenue"
           value={formatReportCurrency(data.grossRevenue, data.currency)}
           subtitle={`${formatReportCount(data.successfulPurchaseCount)} successful purchases`}
-          icon={DollarSign}
+          icon={Wallet}
         />
         <MetricCard
           title="Refunded Volume"

@@ -23,8 +23,7 @@ export const BOOKING_STATUS_OPTIONS = [
 ];
 
 export const CURRENCY_OPTIONS = [
-  { value: 'ALL', label: 'All Currencies (Segregated)' },
-  { value: 'USD', label: 'USD ($)' },
+  { value: 'ALL', label: 'All Currencies (LKR)' },
   { value: 'LKR', label: 'LKR (Rs.)' },
 ];
 

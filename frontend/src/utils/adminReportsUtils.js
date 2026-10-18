@@ -32,8 +32,7 @@ export const BOOKING_STATUS_OPTIONS = [
 ];
 
 export const CURRENCY_OPTIONS = [
-  { value: 'ALL', label: 'All Currencies (Segregated)' },
-  { value: 'USD', label: 'USD ($)' },
+  { value: 'ALL', label: 'All Currencies (LKR)' },
   { value: 'LKR', label: 'LKR (Rs.)' },
 ];
 
@@ -95,22 +94,21 @@ export function formatReportRate(rate) {
  * Formats monetary amounts with currency symbol/code.
  * 
  * @param {number|string} amount
- * @param {string} [currency='USD']
+ * @param {string} [currency='LKR']
  * @returns {string}
  */
-export function formatReportCurrency(amount, currency = 'USD') {
+export function formatReportCurrency(amount, currency = 'LKR') {
   const num = Number(amount);
-  if (isNaN(num)) return '$0.00';
+  if (isNaN(num)) {
+    return 'LKR 0.00';
+  }
 
-  const code = (currency || 'USD').toUpperCase();
   const formattedNumber = num.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-  if (code === 'USD') return `$${formattedNumber}`;
-  if (code === 'LKR') return `LKR ${formattedNumber}`;
-  return `${code} ${formattedNumber}`;
+  return `LKR ${formattedNumber}`;
 }
 
 /**

@@ -33,8 +33,8 @@ describe('Admin Reports Utilities (EP-379)', () => {
     it('defines currency options', () => {
       const values = CURRENCY_OPTIONS.map(c => c.value);
       assert.ok(values.includes('ALL'));
-      assert.ok(values.includes('USD'));
       assert.ok(values.includes('LKR'));
+      assert.ok(!values.includes('USD'));
     });
   });
 
@@ -137,12 +137,12 @@ describe('Admin Reports Utilities (EP-379)', () => {
       assert.equal(formatReportRate('not-a-number'), '0.0%');
     });
 
-    it('formatReportCurrency formats USD and LKR appropriately', () => {
-      assert.equal(formatReportCurrency(0, 'USD'), '$0.00');
-      assert.equal(formatReportCurrency(1500.5, 'USD'), '$1,500.50');
+    it('formatReportCurrency formats always in LKR appropriately', () => {
+      assert.equal(formatReportCurrency(0), 'LKR 0.00');
+      assert.equal(formatReportCurrency(1500.5), 'LKR 1,500.50');
       assert.equal(formatReportCurrency(25000, 'LKR'), 'LKR 25,000.00');
-      assert.equal(formatReportCurrency(100, 'EUR'), 'EUR 100.00');
-      assert.equal(formatReportCurrency(null), '$0.00');
+      assert.equal(formatReportCurrency(null), 'LKR 0.00');
+      assert.equal(formatReportCurrency(2500), 'LKR 2,500.00');
     });
 
     it('formatReportingPeriodLabel generates clear period labels', () => {
