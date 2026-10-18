@@ -41,7 +41,7 @@ public class LoginPage
         {
             var element = d.FindElement(By.CssSelector("button[type='submit']"));
             return element.Displayed && element.Enabled ? element : null;
-        });
+        })!;
 
         ((IJavaScriptExecutor)_driver).ExecuteScript(
             "arguments[0].scrollIntoView({block: 'center', inline: 'center'});", button);
@@ -147,5 +147,17 @@ public class LoginPage
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Reusable helper that performs login and asserts redirect away from the login page.
+    /// </summary>
+    public void LoginAs(string email, string password)
+    {
+        NavigateTo();
+        EnterEmail(email);
+        EnterPassword(password);
+        Submit();
+        WaitForRedirectAwayFromLogin();
     }
 }

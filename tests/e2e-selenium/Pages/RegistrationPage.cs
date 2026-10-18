@@ -90,7 +90,7 @@ public class RegistrationPage
             return element.Displayed && element.Enabled
                 ? element
                 : null;
-        });
+        })!;
 
         ((IJavaScriptExecutor)_driver).ExecuteScript(
             "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
