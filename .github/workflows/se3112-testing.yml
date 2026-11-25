@@ -134,12 +134,12 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Start frontend web server
         working-directory: frontend
         run: |
-          npx vite --port 5173 --host 0.0.0.0 &
+          npm run dev -- --port 5173 --host 0.0.0.0 &
           # Wait up to 30 seconds for the server to become responsive
           timeout 30s bash -c 'until curl -s http://localhost:5173 > /dev/null; do sleep 1; done'
 
