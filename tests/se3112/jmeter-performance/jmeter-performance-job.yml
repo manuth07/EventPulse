@@ -1,178 +1,112 @@
-﻿# =============================================================================
-# jmeter-performance-job.yml
-# SE3112 Member 3 - Load & Performance Testing
-#
-# This file contains the 'jmeter-performance' job definition to be added
-# to the group leader's .github/workflows/se3112-testing.yml
-#
-# DO NOT modify se3112-testing.yml directly.
-# Hand this snippet to the group leader for integration.
-# =============================================================================
-#
-# Add this block inside the 'jobs:' section of se3112-testing.yml:
-#
-# ─────────────────────────────────────────────────────────────────────────────
-
+# Handoff template. Add this job under jobs: in .github/workflows/se3112-testing.yml.
   jmeter-performance:
     name: Load & Performance Testing - JMeter
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_password
+      OUTPUT_ROOT: TestResults/jmeter/runs
 
     steps:
-      # ── 1. Checkout code ───────────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── 2. Setup .NET 10 SDK ───────────────────────────────────────────────
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      # ── 3. Start infrastructure (Postgres + Kafka) ─────────────────────────
-      - name: Start Docker infrastructure
-        run: docker compose up -d postgres kafka azurite
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres_dev_password
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-      # ── 4. Restore and build backend ───────────────────────────────────────
-      - name: Restore backend dependencies
-        run: dotnet restore backend/EventPulse.Backend.sln
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Build backend
-        run: dotnet build backend/EventPulse.Backend.sln --configuration Release --no-restore
-
-      # ── 5. Start microservices and YARP gateway ────────────────────────────
-      - name: Start Identity Service
+      - name: Install verified Apache JMeter 5.6.3
         run: |
-          dotnet run --project backend/services/identity-service/src/EventPulse.IdentityService \
-            --configuration Release --no-build \
-            --urls http://localhost:7101 &
-        env:
-          ASPNETCORE_ENVIRONMENT: Development
+          set -euo pipefail
+          archive=apache-jmeter-5.6.3.tgz
+          sha512=5978a1a35edb5a7d428e270564ff49d2b1b257a65e17a759d259a9283fc17093e522fe46f474a043864aea6910683486340706d745fcdf3db1505fd71e689083
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://archive.apache.org/dist/jmeter/binaries/$archive" -o "$archive"
+          printf '%s  %s\n' "$sha512" "$archive" | sha512sum --check --strict
+          tar -xzf "$archive"
+          echo "$RUNNER_TEMP/apache-jmeter-5.6.3/bin" >> "$GITHUB_PATH"
 
-      - name: Start Event Service
+      - name: Build gateway and Event Service
         run: |
-          dotnet run --project backend/services/event-service/src/EventPulse.EventService \
-            --configuration Release --no-build \
-            --urls http://localhost:7102 &
-        env:
-          ASPNETCORE_ENVIRONMENT: Development
+          dotnet build backend/gateway/src/EventPulse.Gateway -c Release
+          dotnet build backend/services/event-service/src/EventPulse.EventService -c Release
 
-      - name: Start YARP API Gateway
+      - name: Start isolated infrastructure
         run: |
-          dotnet run --project backend/gateway/src/EventPulse.Gateway \
-            --configuration Release --no-build \
-            --urls http://localhost:7000 &
-        env:
-          ASPNETCORE_ENVIRONMENT: Development
-
-      # ── 6. Wait for gateway health check ───────────────────────────────────
-      - name: Wait for API Gateway to be ready
-        run: |
-          echo "Waiting for YARP Gateway on http://localhost:7000/api/events ..."
-          for i in $(seq 1 30); do
-            if curl -sf --max-time 5 http://localhost:7000/api/events -o /dev/null; then
-              echo "[OK] Gateway responding after ${i}x5s."
+          docker compose up -d postgres kafka azurite
+          for attempt in {1..30}; do
+            if timeout 5s docker compose exec -T postgres pg_isready -h 127.0.0.1 -U postgres \
+              && timeout 5s docker compose exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server localhost:9092 --list; then
+              for topic in event-submitted event-submitted-dlq booking-cancelled; do
+                docker compose exec -T kafka /opt/kafka/bin/kafka-topics.sh \
+                  --bootstrap-server localhost:9092 --create --if-not-exists \
+                  --topic "$topic" --partitions 1 --replication-factor 1
+              done
               exit 0
             fi
-            echo "  Attempt $i/30 — sleeping 5s ..."
-            sleep 5
+            sleep 2
           done
-          echo "[WARN] Gateway health check timed out — proceeding with JMeter run."
+          echo "PostgreSQL or Kafka failed readiness." >&2
+          exit 1
 
-      # ── 7. Install Apache JMeter 5.6.3 ────────────────────────────────────
-      - name: Install Apache JMeter
+      - name: Start Event Service and gateway, then run baseline
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ReverseProxy__Clusters__event_cluster__Destinations__event_service__Address: http://127.0.0.1:7102
+          TARGET_PROTO: http
+          TARGET_HOST: '127.0.0.1'
+          TARGET_PORT: '7000'
+          API_PATH: /api/events
+          ALLOW_NONLOCAL: '0'
         run: |
-          JMETER_VERSION=5.6.3
-          curl -fsSL \
-            "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz" \
-            -o jmeter.tgz
-          tar -xzf jmeter.tgz
-          echo "$(pwd)/apache-jmeter-${JMETER_VERSION}/bin" >> $GITHUB_PATH
+          set -euo pipefail
+          logs="$GITHUB_WORKSPACE/TestResults/jmeter/backend"
+          mkdir -p "$logs"
 
-      # ── 8. Run Baseline profile (CI profile — short, safe) ─────────────────
-      - name: Run JMeter Baseline profile (5 VU / 30 s)
-        run: |
-          mkdir -p TestResults/jmeter/reports/baseline
+          start_service() {
+            local directory="$1" assembly="$2" port="$3"
+            (
+              cd "$directory"
+              exec dotnet "bin/Release/net10.0/$assembly.dll" --urls "http://127.0.0.1:$port"
+            ) >"$logs/$assembly.log" 2>&1 </dev/null &
+            echo "$!" >> "$logs/processes.pid"
+          }
 
-          jmeter -n \
-            -t tests/se3112/jmeter-performance/eventpulse-events-load-test.jmx \
-            -Jprotocol=http \
-            -Jhost=localhost \
-            -Jport=7000 \
-            -Jusers=5 \
-            -Jrampup=10 \
-            -Jduration=30 \
-            -Jthink_time_ms=500 \
-            -l TestResults/jmeter/results-baseline.jtl \
-            -e -o TestResults/jmeter/reports/baseline \
-            -j TestResults/jmeter/jmeter-baseline.log
+          start_service backend/services/event-service/src/EventPulse.EventService EventPulse.EventService 7102
+          start_service backend/gateway/src/EventPulse.Gateway EventPulse.Gateway 7000
+          bash tests/se3112/jmeter-performance/run-tests.sh baseline
 
-      # ── 9. (Optional) Normal profile — enabled manually / on schedule ──────
-      #   Uncomment to include in CI. Expected runtime: ~55s.
-      #
-      # - name: Run JMeter Normal profile (20 VU / 30 s)
-      #   run: |
-      #     mkdir -p TestResults/jmeter/reports/normal
-      #     jmeter -n \
-      #       -t tests/se3112/jmeter-performance/eventpulse-events-load-test.jmx \
-      #       -Jprotocol=http -Jhost=localhost -Jport=7000 \
-      #       -Jusers=20 -Jrampup=20 -Jduration=30 -Jthink_time_ms=500 \
-      #       -l TestResults/jmeter/results-normal.jtl \
-      #       -e -o TestResults/jmeter/reports/normal \
-      #       -j TestResults/jmeter/jmeter-normal.log
-
-      # ── 10. Assert error rate < 5% (fail CI on high error rate) ───────────
-      - name: Check error rate from baseline results
+      - name: Capture logs and clean up isolated infrastructure
         if: always()
         run: |
-          if [ -f TestResults/jmeter/results-baseline.jtl ]; then
-            TOTAL=$(tail -n +2 TestResults/jmeter/results-baseline.jtl | wc -l)
-            ERRORS=$(tail -n +2 TestResults/jmeter/results-baseline.jtl | awk -F',' '$8=="false"' | wc -l)
-            if [ "$TOTAL" -gt 0 ]; then
-              ERROR_PCT=$(awk "BEGIN{printf \"%.2f\", ($ERRORS/$TOTAL)*100}")
-              echo "Total samples : $TOTAL"
-              echo "Errors        : $ERRORS"
-              echo "Error rate    : ${ERROR_PCT}%"
-              if awk "BEGIN{exit !($ERROR_PCT >= 5)}"; then
-                echo "ERROR: Error rate ${ERROR_PCT}% exceeds 5% threshold!"
-                exit 1
-              fi
-            else
-              echo "No samples found in JTL — check if the gateway was reachable."
-            fi
-          else
-            echo "JTL file not found — skipping error rate check."
+          set -euo pipefail
+          logs=TestResults/jmeter/backend
+          mkdir -p "$logs"
+          if [[ -f "$logs/processes.pid" ]]; then
+            while IFS= read -r pid; do
+              kill "$pid" 2>/dev/null || true
+            done < "$logs/processes.pid"
           fi
+          docker compose logs --no-color postgres kafka azurite > "$logs/compose.log" 2>&1 || true
+          docker compose down --volumes --remove-orphans
 
-      # ── 11. Upload JTL results ─────────────────────────────────────────────
-      - name: Upload JTL results
+      - name: Upload available JMeter and backend artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jmeter-jtl-results
-          path: TestResults/jmeter/*.jtl
+          name: jmeter-baseline
+          path: |
+            TestResults/jmeter/runs/
+            TestResults/jmeter/backend/*.log
           if-no-files-found: warn
-
-      # ── 12. Upload HTML dashboard ──────────────────────────────────────────
-      - name: Upload HTML Performance Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jmeter-html-report
-          path: TestResults/jmeter/reports/
-          if-no-files-found: warn
-
-      # ── 13. Upload JMeter log ──────────────────────────────────────────────
-      - name: Upload JMeter run log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jmeter-run-log
-          path: TestResults/jmeter/*.log
-          if-no-files-found: ignore
-
-# ─────────────────────────────────────────────────────────────────────────────
-# END of jmeter-performance job snippet
-# =============================================================================
