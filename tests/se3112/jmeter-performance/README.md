@@ -64,6 +64,21 @@ curl -i -H "Accept: application/json" http://localhost:7102/api/events
 
 Use curl.exe on Windows if curl resolves to a PowerShell alias. Expect HTTP 200 at all four URLs and `application/json` with an array at both Events URLs. The runners check the gateway health and Events URLs automatically and fail if readiness expires, including if the server redirects.
 
+## Seed the 100-event assessment fixture
+
+Keep the empty-dataset evidence before seeding. With the isolated stack running and migrations applied, run from the repository root:
+
+```powershell
+pwsh -NoProfile -File tests/se3112/jmeter-performance/Seed-Benchmark.ps1
+$evidence = 'tests/se3112/jmeter-performance/results/phase3'
+New-Item -ItemType Directory -Path $evidence -Force | Out-Null
+curl.exe -fsS -o (Join-Path $evidence 'populated-events.json') -w '%{http_code} %{content_type} %{size_download}' http://localhost:7000/api/events
+```
+
+The script only accepts the dedicated `eventpulse-perf2` PostgreSQL container, its local socket, loopback mapping, and named volume. The SQL runs in one transaction. It uses fixed synthetic IDs, scheduled dates from January to April 2028, valid categories, and a General Admission ticket with capacity 100 for each event. It sets the event to Published only after its ticket exists. Organizer and reviewer IDs are synthetic identifiers in the Event database and have no Identity Service foreign key. A second run adds zero events and zero tickets. It refuses to mix with unrelated visible events or seed expired dates. No API writes or extra credentials are required by this fixture.
+
+For a populated comparison, run `-Profile smoke` once as an unmeasured warm-up, then run smoke, baseline, normal, and higher sequentially with a separate `-OutputRoot`. Verify the count and resource headroom before each run. Preserve the original artifact directory. The recorded series used `results/phase3/warmup` and `results/phase3/assignment`.
+
 ## Workloads
 
 | Profile | Virtual users | Ramp-up | Scheduled duration | Delay before each request |
@@ -109,15 +124,17 @@ Each run prints its unique output directory under tests/se3112/jmeter-performanc
 
 ## GitHub Actions handoff
 
-The group leader should add the job from tests/se3112/jmeter-performance/jmeter-performance-job.yml under jobs in .github/workflows/se3112-testing.yml. It pins JMeter 5.6.3 and checks the Apache SHA-512 digest, sets up Java 17 and Python, and runs this command against the runner's local isolated stack:
+On the group branch, open `.github/workflows/se3112-testing.yml`. Append the block beginning with the two-space-indented `jmeter-performance:` from [jmeter-performance-job.yml](jmeter-performance-job.yml) as the fourth key under `jobs:`. Keep `code-quality`, `unit-testing`, and `selenium-e2e` at the same indentation. No new triggers, secrets, `needs` relationship, or GitHub permissions are required. Keep the existing `contents: read` permission. The cached workflow and appended template parse together with all four jobs. The job pins JMeter 5.6.3 and checks its Apache SHA-512, sets up Java 17, Python, and .NET 10, builds the required projects, and starts PostgreSQL, Kafka, Azurite, Event Service, and YARP on a hosted runner. It provisions the Event Service Kafka topics and runs this command against loopback:
 
 ```bash
 bash tests/se3112/jmeter-performance/run-tests.sh baseline
 ```
 
-The job uses the same readiness and result checks as local runs. The jmeter-baseline artifact contains available run output and backend logs, including on failed runs. The template tears down its own services and development volumes on the hosted runner. The group leader should verify an actual workflow run and a controlled failure after integration.
+The job passes only when readiness succeeds, JMeter exits successfully, the dashboard exists, and the CSV validator finds at least one sample and zero unexpected failures. `always()` steps capture available logs, clean up the hosted runner's isolated processes and Compose resources, and upload `jmeter-baseline`. The hosted baseline is a functional load check on the workflow's development data. Use workflow dispatch on the group branch to verify success. In a disposable workflow branch, point only the JMeter test step at an unused loopback port to verify that readiness fails and available backend logs are retained. Restore the correct port before merging that branch. GitHub Actions execution has not been verified.
 
 ## Results and limitations
+
+### Empty dataset (Phase 2)
 
 Measured on 25 November 2026 with JMeter 5.6.3 and Java 17.0.12 on the isolated Windows 11 stack. Both Events URLs returned `200 application/json` and `[]`. The smoke warmed up the same backend used for all three assignment profiles. Each row was cross-checked against the JTL, dashboard statistics, and JMeter log. Time values for individual HTTP samples are in milliseconds.
 
@@ -134,9 +151,38 @@ From Baseline to Higher, throughput increased from 8.504 to 50.378 requests/s. T
 
 A separate loopback mock returned valid nonempty events and then cycled through invalid responses. JMeter accepted 3 samples and marked 13 as failed, covering malformed JSON, unexpected event shape, HTML content type, an unfollowed HTTP 302, and HTTP 503. The runner exited 1. Separate readiness and result checks rejected a refused connection and missing and malformed JTLs.
 
+### Populated dataset (Phase 3)
+
+The same isolated stack and Java 17 toolchain returned exactly 100 events. Both gateway and direct Event Service responses returned identical 40,501-byte JSON bodies. The empty body measured 2 bytes. Response sizes here are body bytes, excluding HTTP headers. A separate 16-sample smoke warm-up passed before the measured series. The original 2,537 empty-dataset requests and their artifact hashes were preserved.
+
+| Profile | Max active / configured | Engine s | Requests (pass / fail) | Mean ms | Median | p90 | p95 | Min / max | Req/s | Error | Min free MiB / peak CPU |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Smoke | 1 / 1 | 9.537 | 14 / 0 | 10.929 | 6 | 43 | 80 | 5 / 80 | 1.578 | 0% | 583 / 97% |
+| Baseline | 5 / 5 | 29.825 | 246 / 0 | 6.520 | 5 | 9 | 11.65 | 3 / 72 | 8.425 | 0% | 541 / 97% |
+| Normal | 20 / 20 | 30.020 | 789 / 0 | 5.304 | 5 | 7 | 9 | 3 / 64 | 26.856 | 0% | 569 / 85% |
+| Higher | 50 / 50 | 30.012 | 1449 / 0 | 7.792 | 6 | 11 | 15 | 3 / 186 | 49.397 | 0% | 463 / 98% |
+
+All 2,498 measured samples passed. Compared with the empty list, populated p95 rose from 5 to 11.65 ms at Baseline, 7 to 9 ms at Normal, and 5 to 15 ms at Higher. Throughput remained close at each matching workload and increased with user count in both datasets. Extra query work, JSON serialization, transfer, and assertion parsing could contribute to higher elapsed times. The runs do not isolate those costs. Higher briefly reached 50 threads because the ramp-up uses almost its entire scheduled duration. Peak host CPU approached 98% and sampled available memory reached 463 MiB during Higher. No extended experiments were run.
+
+Run the same PowerShell commands from the repository root using a fresh output directory and the documented Java, JMeter and Python settings:
+
+```powershell
+$runner = '.\tests\se3112\jmeter-performance\Run-Tests.ps1'
+$runRoot = Join-Path ([IO.Path]::GetTempPath()) ('eventpulse-populated-' + [Guid]::NewGuid())
+pwsh -NoProfile -File $runner -Profile smoke -OutputRoot (Join-Path $runRoot 'warmup')
+if ($LASTEXITCODE) { throw 'Warm-up failed' }
+foreach ($profile in 'smoke','baseline','normal','higher') {
+    # Verify resource headroom before continuing to the next workload.
+    pwsh -NoProfile -File $runner -Profile $profile -OutputRoot (Join-Path $runRoot 'assignment')
+    if ($LASTEXITCODE) { throw "Benchmark failed for $profile" }
+}
+```
+
+See `populatedDataset` in [benchmark-evidence.json](benchmark-evidence.json) for timestamps, environment versions, exact run paths and hashes. The populated dashboards are under `results/phase3/assignment/<run>/html/index.html`. Open the chosen dashboard in a browser, or use `Invoke-Item` on that file in PowerShell. The dashboard's `statistics.json`, JTL, and JMeter log reproduce the table. Local `results/phase3` also contains fixture execution logs, response captures, the resource sampling CSV, and copied backend logs.
+
 The plan measures a read-only list on a local single-instance stack. Fixture size, startup effects, and shared load-generator and application resources can affect results. A short ramp-heavy run cannot establish a steady-state capacity limit. The plan checks each response, so JSON parsing also consumes load-generator CPU.
 
-For a representative rerun, first agree on a deterministic fixture in the isolated database, for example 100 published events with fixed IDs and event dates beyond the run date. Record the exact row count and payload size. The reported runs used an empty dataset and made no fixture changes.
+The empty benchmark used no fixture writes. The separate seeded experiment used only the dedicated local database and preserved the original files and hashes.
 
 ## Two-minute viva
 
@@ -157,5 +203,13 @@ if ($LASTEXITCODE -eq 0) {
 ```
 
 Show the Thread Group, the 500 ms timer, the GET, and the three response checks. Run the 10-second smoke, open the dashboard, and explain p95 elapsed response time, requests per second, and percentage of failed samples. Rehearse on the presentation machine to account for JVM startup and dashboard generation.
+
+| Time | Show |
+|---|---|
+| 0–25 s | Open the prepared JMX. Point out the single Thread Group, users, ramp-up, scheduled duration, and timer. |
+| 25–45 s | Show the YARP Events GET, redirects disabled, exact 200, JSON content type, and JSON array/shape assertion. |
+| 45–70 s | Run the smoke command above. Explain that it uses one thread for 10 scheduled seconds and validates the JTL after JMeter exits. |
+| 70–100 s | Open `html/index.html`. Show average response time, p95, throughput, and failed-sample percentage. |
+| 100–120 s | Show the CI template. Explain local readiness, zero unexpected failures, retained artifacts, and cleanup. |
 
 The CLI rehearsal with the stack already running took 20.63 seconds including dashboard generation. It produced 15 successful samples. Time the GUI walkthrough separately.
