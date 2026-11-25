@@ -1,0 +1,9 @@
+﻿# JMeter result output directories (generated at runtime)
+results/
+reports/
+
+# JMeter log files
+*.log
+
+# JTL result files (generated — do not commit test runs)
+*.jtl
