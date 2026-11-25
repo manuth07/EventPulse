@@ -1,111 +1,74 @@
-﻿#!/usr/bin/env bash
-# =============================================================================
-# run-tests.sh  —  EventPulse JMeter Load Test Runner
-# SE3112 Load & Performance Testing — Member 3
-#
-# Usage:
-#   ./run-tests.sh [profile]
-#
-# Profiles:
-#   baseline   (default)  5 VU / 10 s ramp / 30 s duration
-#   normal                20 VU / 20 s ramp / 30 s duration
-#   higher                50 VU / 30 s ramp / 30 s duration
-#
-# Environment variables (optional overrides):
-#   JMETER_HOME  — path to JMeter installation (default: looks for 'jmeter' on PATH)
-#   TARGET_HOST  — API Gateway hostname (default: localhost)
-#   TARGET_PORT  — API Gateway port    (default: 7000)
-#   TARGET_PROTO — http or https       (default: http)
-# =============================================================================
+#!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLAN_FILE="${SCRIPT_DIR}/eventpulse-events-load-test.jmx"
-RESULTS_DIR="${SCRIPT_DIR}/results"
-REPORTS_DIR="${SCRIPT_DIR}/reports"
-
-PROFILE="${1:-baseline}"
-
-# ── Workload profiles ─────────────────────────────────────────────────────────
-case "${PROFILE}" in
-  baseline) USERS=5;  RAMPUP=10; DURATION=30; THINK=500  ;;
-  normal)   USERS=20; RAMPUP=20; DURATION=30; THINK=500  ;;
-  higher)   USERS=50; RAMPUP=30; DURATION=30; THINK=300  ;;
-  *)
-    echo "ERROR: Unknown profile '${PROFILE}'. Use: baseline | normal | higher"
-    exit 1
-    ;;
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+profile="${1:-baseline}"
+if (( $# > 1 )); then
+  echo "Usage: bash run-tests.sh [smoke|baseline|normal|higher]" >&2
+  exit 2
+fi
+case "$profile" in
+  smoke)    default_users=1;  default_ramp=1;  default_duration=10 ;;
+  baseline) default_users=5;  default_ramp=10; default_duration=30 ;;
+  normal)   default_users=20; default_ramp=20; default_duration=30 ;;
+  higher)   default_users=50; default_ramp=30; default_duration=30 ;;
+  *) echo "Unknown JMeter profile: $profile" >&2; exit 2 ;;
 esac
 
-# ── Target server ─────────────────────────────────────────────────────────────
-HOST="${TARGET_HOST:-localhost}"
-PORT="${TARGET_PORT:-7000}"
-PROTO="${TARGET_PROTO:-http}"
+protocol="${TARGET_PROTO:-http}"
+host="${TARGET_HOST:-localhost}"
+port="${TARGET_PORT:-7000}"
+api_path="${API_PATH:-/api/events}"
+users="${USERS:-$default_users}"
+rampup="${RAMPUP:-$default_ramp}"
+duration="${DURATION:-$default_duration}"
+think_time="${THINK_TIME_MS:-500}"
+python="${PYTHON_BIN:-python3}"
+output_root="${OUTPUT_ROOT:-$script_dir/results}"
 
-# ── Locate JMeter ─────────────────────────────────────────────────────────────
-if [[ -n "${JMETER_HOME:-}" ]]; then
-  JMETER="${JMETER_HOME}/bin/jmeter"
-else
-  JMETER="$(command -v jmeter 2>/dev/null || true)"
-fi
-
-if [[ -z "${JMETER}" || ! -x "${JMETER}" ]]; then
-  echo "ERROR: 'jmeter' not found. Set JMETER_HOME or add JMeter to PATH."
+for number in "$users" "$rampup" "$duration" "$think_time"; do
+  if [[ ! "$number" =~ ^(0|[1-9][0-9]{0,9})$ ]] || (( number > 2147483647 )); then
+    echo "Workload overrides must be whole numbers between 0 and 2147483647." >&2
+    exit 2
+  fi
+done
+if (( users == 0 || duration == 0 || think_time == 0 )); then
+  echo "USERS, DURATION and THINK_TIME_MS must be positive." >&2
   exit 2
 fi
 
-TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-JTL_FILE="${RESULTS_DIR}/${PROFILE}-${TIMESTAMP}.jtl"
-REPORT_DIR="${REPORTS_DIR}/${PROFILE}-${TIMESTAMP}"
+if [[ -n "${JMETER_HOME:-}" ]]; then
+  jmeter="$JMETER_HOME/bin/jmeter"
+else
+  jmeter="$(command -v jmeter || true)"
+fi
+if [[ ! -x "$jmeter" ]]; then
+  echo "JMeter not found. Set JMETER_HOME or add JMeter/bin to PATH." >&2
+  exit 2
+fi
 
-mkdir -p "${RESULTS_DIR}" "${REPORTS_DIR}"
+ready_options=()
+if [[ "${ALLOW_NONLOCAL:-0}" == 1 ]]; then
+  ready_options+=(--allow-nonlocal)
+fi
+"$python" "$script_dir/check_run.py" ready "$protocol" "$host" "$port" "$api_path" "${ready_options[@]}"
 
-echo "============================================================"
-echo "  EventPulse JMeter Load Test"
-echo "  Profile  : ${PROFILE}"
-echo "  Target   : ${PROTO}://${HOST}:${PORT}"
-echo "  VUsers   : ${USERS}"
-echo "  Ramp-up  : ${RAMPUP}s"
-echo "  Duration : ${DURATION}s"
-echo "  Think    : ${THINK}ms"
-echo "  JTL      : ${JTL_FILE}"
-echo "  Report   : ${REPORT_DIR}"
-echo "============================================================"
+mkdir -p -- "$output_root"
+output_root="$(cd -- "$output_root" && pwd)"
+output="$(mktemp -d "$output_root/$profile-$(date +%Y%m%d_%H%M%S)-XXXXXX")"
+echo "$profile on $host port $port with $users users, ${rampup}s ramp, ${duration}s scheduled, ${think_time}ms pacing."
+echo "Artifacts: $output"
 
-# ── Health-check gateway before running test ──────────────────────────────────
-echo "Health-checking ${PROTO}://${HOST}:${PORT}/api/events ..."
-MAX_RETRIES=10
-for i in $(seq 1 $MAX_RETRIES); do
-  if curl -sf --max-time 5 "${PROTO}://${HOST}:${PORT}/api/events" -o /dev/null; then
-    echo "  [OK] Gateway is responding."
-    break
-  fi
-  if [[ $i -eq $MAX_RETRIES ]]; then
-    echo "  [WARN] Gateway did not respond after ${MAX_RETRIES} attempts — proceeding anyway."
-  fi
-  echo "  Attempt $i/$MAX_RETRIES — waiting 5s..."
-  sleep 5
-done
+jmeter_exit=0
+"$jmeter" -n -t "$script_dir/eventpulse-events-load-test.jmx" \
+  "-Jprotocol=$protocol" "-Jhost=$host" "-Jport=$port" "-Japi_path=$api_path" \
+  "-Jusers=$users" "-Jrampup=$rampup" "-Jduration=$duration" "-Jthink_time_ms=$think_time" \
+  -Jjmeter.save.saveservice.output_format=csv -Jjmeter.save.saveservice.print_field_names=true \
+  -Jjmeter.save.saveservice.default_delimiter=, -Jjmeter.save.saveservice.timestamp_format=ms \
+  -l "$output/results.jtl" -e -o "$output/html" -j "$output/jmeter.log" || jmeter_exit=$?
+if (( jmeter_exit != 0 )); then
+  echo "JMeter exited with code $jmeter_exit. Available artifacts: $output" >&2
+  exit "$jmeter_exit"
+fi
 
-# ── Execute JMeter ────────────────────────────────────────────────────────────
-"${JMETER}" \
-  -n \
-  -t "${PLAN_FILE}" \
-  -Jprotocol="${PROTO}" \
-  -Jhost="${HOST}" \
-  -Jport="${PORT}" \
-  -Jusers="${USERS}" \
-  -Jrampup="${RAMPUP}" \
-  -Jduration="${DURATION}" \
-  -Jthink_time_ms="${THINK}" \
-  -l "${JTL_FILE}" \
-  -e \
-  -o "${REPORT_DIR}" \
-  -j "${RESULTS_DIR}/jmeter-${PROFILE}-${TIMESTAMP}.log"
-
-echo ""
-echo "============================================================"
-echo "  Test complete!"
-echo "  JTL results : ${JTL_FILE}"
-echo "  HTML report : ${REPORT_DIR}/index.html"
-echo "============================================================"
+"$python" "$script_dir/check_run.py" results "$output/results.jtl" "$output/html/index.html"
