@@ -28,6 +28,7 @@ public class AdminOnlyAuthorizationHandler : AuthorizationHandler<AdminOnlyRequi
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<AdminOnlyAuthorizationHandler> _logger;
 
+    [ActivatorUtilitiesConstructor]
     public AdminOnlyAuthorizationHandler(
         UserManager<ApplicationUser> userManager,
         ILogger<AdminOnlyAuthorizationHandler> logger)

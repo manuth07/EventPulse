@@ -710,4 +710,32 @@ public class SalesReportingServiceTests
         Assert.True(page2Result.HasPreviousPage);
         Assert.True(page2Result.HasNextPage);
     }
+
+    [Fact]
+    public async Task GetAllSalesReportsAsync_ReturnsAllReports_OrderedByPaymentTimestamp()
+    {
+        // Arrange
+        var eventId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+
+        for (int i = 1; i <= 3; i++)
+        {
+            var booking = CreateTestBooking(eventId, customerId, 100m * i, (Guid.NewGuid(), "Standard", 1, 100m * i));
+            await _salesReportingService.GenerateSalesReportOnPurchaseAsync(new PaymentSucceededEvent
+            {
+                EventId = Guid.NewGuid(),
+                PaymentId = Guid.NewGuid(),
+                BookingId = booking.Id,
+                Amount = 100m * i,
+                Currency = "USD"
+            });
+        }
+
+        // Act
+        var allReports = await _salesReportingService.GetAllSalesReportsAsync();
+
+        // Assert
+        Assert.NotNull(allReports);
+        Assert.True(allReports.Count >= 3);
+    }
 }

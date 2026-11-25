@@ -4,6 +4,7 @@ using EventPulse.E2E.Tests.Pages;
 namespace EventPulse.E2E.Tests.Tests;
 
 [TestFixture]
+[Category("SE3112-E2E")]
 public class LoginTests : BaseTest
 {
     private LoginPage _page = null!;
@@ -54,11 +55,13 @@ public class LoginTests : BaseTest
     // Successful login requires JWT generation, which currently 500s.
     // -----------------------------------------------------------------
     [Test]
-    [Ignore("Blocked by BUG-07: JWT signing key not configured locally/undocumented. Remove Ignore once resolved for all environments.")]
     public void Login_WithValidVerifiedCredentials_RedirectsAwayFromLoginPage()
     {
-        _page.EnterEmail("nimal.test01@example.com");
-        _page.EnterPassword("SecurePass123!");
+        var email = Environment.GetEnvironmentVariable("TEST_CUSTOMER_EMAIL") ?? "nimal.test01@example.com";
+        var password = Environment.GetEnvironmentVariable("TEST_CUSTOMER_PASSWORD") ?? "SecurePass123!";
+
+        _page.EnterEmail(email);
+        _page.EnterPassword(password);
         _page.Submit();
 
         var redirected = _page.WaitForRedirectAwayFromLogin();

@@ -127,14 +127,14 @@ public class EventDetailsPage
                 return null;
 
             return elements[0].Displayed ? elements[0] : null;
-        });
+        })!;
 
         ((IJavaScriptExecutor)_driver).ExecuteScript(
             "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
             link
         );
 
-        Thread.Sleep(300);
+        _wait.Until(driver => link.Displayed && link.Enabled);
 
         ((IJavaScriptExecutor)_driver).ExecuteScript(
             "arguments[0].click();",

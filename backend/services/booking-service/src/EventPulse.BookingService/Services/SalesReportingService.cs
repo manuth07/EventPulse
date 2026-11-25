@@ -455,4 +455,35 @@ public class SalesReportingService : ISalesReportingService
             TotalCount = totalCount
         };
     }
+
+    /// <summary>
+    /// EP-405: Retrieves an unpaginated collection of sales reports optionally filtered by date range.
+    /// </summary>
+    public async Task<IReadOnlyList<SalesReport>> GetAllSalesReportsAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<SalesReport> query = _dbContext.SalesReports
+            .Include(s => s.Items)
+            .Include(s => s.RefundAdjustments)
+            .AsNoTracking();
+
+        if (from.HasValue)
+        {
+            var fromUtc = DateTime.SpecifyKind(from.Value, DateTimeKind.Utc);
+            query = query.Where(s => s.PaymentTimestampUtc >= fromUtc);
+        }
+
+        if (to.HasValue)
+        {
+            var toUtc = DateTime.SpecifyKind(to.Value, DateTimeKind.Utc);
+            query = query.Where(s => s.PaymentTimestampUtc <= toUtc);
+        }
+
+        return await query
+            .OrderByDescending(s => s.PaymentTimestampUtc)
+            .ThenByDescending(s => s.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
 }

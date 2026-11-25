@@ -70,6 +70,13 @@ public class BrowseEventsPage
         return _driver.FindElements(ViewDetailsLinks).Count;
     }
 
+    public bool IsEmptyStateDisplayed()
+    {
+        return _driver.PageSource.Contains("No events") ||
+               _driver.PageSource.Contains("events available") ||
+               _driver.FindElements(By.XPath("//*[contains(text(), 'No events') or contains(text(), 'events available')]")).Count > 0;
+    }
+
     public void ClickFirstEventDetails()
     {
         var link = _wait.Until(driver =>
@@ -85,7 +92,7 @@ public class BrowseEventsPage
                 return null;
 
             return firstLink;
-        });
+        })!;
 
         // Bring the link into the visible part of the viewport.
         ((IJavaScriptExecutor)_driver).ExecuteScript(
@@ -93,8 +100,8 @@ public class BrowseEventsPage
             link
         );
 
-        // Small wait for scrolling/layout to settle.
-        Thread.Sleep(300);
+        // Wait until clickable after scrolling into view
+        _wait.Until(driver => link.Displayed && link.Enabled);
 
         try
         {

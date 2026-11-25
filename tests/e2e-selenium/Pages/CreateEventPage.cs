@@ -73,8 +73,7 @@ public class CreateEventPage
     public void Submit()
     {
         var button = _wait.Until(d => d.FindElement(SubmitButton));
-        ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].scrollIntoView({block:'center'});", button);
-        System.Threading.Thread.Sleep(300);
+        _wait.Until(d => button.Displayed && button.Enabled);
         ((IJavaScriptExecutor)_driver).ExecuteScript("arguments[0].click();", button);
     }
 
