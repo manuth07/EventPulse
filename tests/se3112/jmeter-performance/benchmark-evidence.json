@@ -1,0 +1,206 @@
+{
+  "date": "2026-11-25",
+  "timezone": "Asia/Colombo (UTC+05:30)",
+  "git": {
+    "baseCommit": "d5c5a1cad7a5377e785197d20e8b09eca87ae3e4",
+    "branch": "se3112/jmeter-performance",
+    "workingTreePerformanceChangesIncluded": true,
+    "planSha256": "8a76065761ec6c681f755053f8a687b42bb8606abc77c62628b7bdf8d454324c",
+    "powerShellRunnerSha256": "6217bcd33f69d9ad5a6b4a596208b0c1d441ff03e8bd808b095880521583cadc"
+  },
+  "environment": {
+    "host": {
+      "os": "Microsoft Windows 11 Pro",
+      "build": "26200",
+      "cpu": "13th Gen Intel(R) Core(TM) i7-13620H",
+      "logicalProcessors": 16,
+      "ramGiB": 7.71
+    },
+    "java": "17.0.12",
+    "jmeter": "5.6.3",
+    "python": "3.12.14",
+    "powerShell": "7.6.9",
+    "dotnetSdk": "10.0.400",
+    "docker": "29.3.1",
+    "compose": "5.1.0",
+    "postgresql": "16.15",
+    "kafka": "4.3.1",
+    "azurite": "3.37.0",
+    "observedHostMonitorSamples": 10,
+    "observedMaximumCpuPercent": 71,
+    "observedMinimumAvailableMemoryMiB": 473
+  },
+  "target": {
+    "gateway": "http://localhost:7000",
+    "eventService": "http://localhost:7102",
+    "path": "/api/events",
+    "httpStatus": 200,
+    "mediaType": "application/json; charset=utf-8",
+    "eventsPerPreflight": 0,
+    "fixture": "Fresh isolated development volumes; zero existing published future events and no fixture writes."
+  },
+  "execution": {
+    "commandFromRepositoryRoot": "pwsh -NoProfile -File tests/se3112/jmeter-performance/results/phase2/run-profile.ps1 -Profile <profile>",
+    "profiles": [
+      "smoke",
+      "baseline",
+      "normal",
+      "higher"
+    ],
+    "backendStartupCommand": "pwsh -NoProfile -File tests/se3112/jmeter-performance/results/phase2/start-backend.ps1",
+    "composeOverride": "results/phase2/compose.override.yml",
+    "warmup": "Gateway and direct API verification plus a rejected Java 24 smoke and the successful Java 17 smoke (explicit PATH override, then made permanent in the runner) before baseline; workloads then ran sequentially against the same backend and dataset.",
+    "extensions": "Skipped because available memory reached 473 MiB during Higher on the shared host.",
+    "units": "Elapsed HTTP response times are milliseconds. Engine window is from Thread Group start to engine end notification. Throughput uses the JTL sample window."
+  },
+  "profiles": [
+    {
+      "profile": "smoke",
+      "targetUsers": 1,
+      "maximumActiveThreads": 1,
+      "rampSeconds": 1,
+      "scheduledSeconds": 10,
+      "pacingMs": 500,
+      "threadGroupStartedAt": "2026-11-25T13:01:39.923+05:30",
+      "engineWindowSeconds": 9.909,
+      "sampleWindowSeconds": 9.303,
+      "requests": 17,
+      "succeeded": 17,
+      "failed": 0,
+      "meanMs": 7.824,
+      "medianMs": 5.0,
+      "p90Ms": 15.59999999999997,
+      "p95Ms": 50.0,
+      "minMs": 4.0,
+      "maxMs": 50.0,
+      "requestsPerSecond": 1.827,
+      "errorPercent": 0.0,
+      "artifactDirectory": "results/phase2/assignment/smoke-20261125_130137487-cd6272a242b64ba29e59db26a6f7f9c7",
+      "artifactSha256": {
+        "results.jtl": "ec6ec4f3ea9fdd51c6c00d893e8791a9fd4a9afec716e93249185cfe828c1a4c",
+        "html/statistics.json": "61d0723d4c51d9a5d544e63bf270f0a2e4b642ed0c41a7c235f05a20dc25f27d",
+        "jmeter.log": "0e8829da742b6af28c178e34b241097d622cfe8b7bbe1f59534ba1ad1e940ee9"
+      }
+    },
+    {
+      "profile": "baseline",
+      "targetUsers": 5,
+      "maximumActiveThreads": 5,
+      "rampSeconds": 10,
+      "scheduledSeconds": 30,
+      "pacingMs": 500,
+      "threadGroupStartedAt": "2026-11-25T13:02:28.728+05:30",
+      "engineWindowSeconds": 29.69,
+      "sampleWindowSeconds": 29.045,
+      "requests": 247,
+      "succeeded": 247,
+      "failed": 0,
+      "meanMs": 3.927,
+      "medianMs": 4.0,
+      "p90Ms": 5.0,
+      "p95Ms": 5.0,
+      "minMs": 2.0,
+      "maxMs": 60.0,
+      "requestsPerSecond": 8.504,
+      "errorPercent": 0.0,
+      "artifactDirectory": "results/phase2/assignment/baseline-20261125_130226438-c1710d561175490bb9ee52aed390d49a",
+      "artifactSha256": {
+        "results.jtl": "de389fb84f3bed36485cd54b5a801af97568176db336de73453e0845b29a20c8",
+        "html/statistics.json": "27bff57e49361c348c0017b054d6978933f507124c410f0664618452ab386bf8",
+        "jmeter.log": "37f9ab2a92c90b2bdc279c20db21dddc8263869cb9259be681a8bb69f6b03368"
+      }
+    },
+    {
+      "profile": "normal",
+      "targetUsers": 20,
+      "maximumActiveThreads": 20,
+      "rampSeconds": 20,
+      "scheduledSeconds": 30,
+      "pacingMs": 500,
+      "threadGroupStartedAt": "2026-11-25T13:03:08.609+05:30",
+      "engineWindowSeconds": 29.99,
+      "sampleWindowSeconds": 29.361,
+      "requests": 792,
+      "succeeded": 792,
+      "failed": 0,
+      "meanMs": 4.003,
+      "medianMs": 3.0,
+      "p90Ms": 5.0,
+      "p95Ms": 7.0,
+      "minMs": 1.0,
+      "maxMs": 109.0,
+      "requestsPerSecond": 26.975,
+      "errorPercent": 0.0,
+      "artifactDirectory": "results/phase2/assignment/normal-20261125_130306317-cd971c21de4e42129ca0138d93d11fb7",
+      "artifactSha256": {
+        "results.jtl": "7b4c05b99c9eae2c5bf3bdb619c166338b9d9ac6949c55e591b36be12336483f",
+        "html/statistics.json": "6129f32291f03dce0fd380af438159dbfb2e1dd69c2b2e2955195b8a6960551f",
+        "jmeter.log": "a2aab787300a97e5503404a0b367802b151d7a2d528a40a13e690765762773b4"
+      }
+    },
+    {
+      "profile": "higher",
+      "targetUsers": 50,
+      "maximumActiveThreads": 50,
+      "rampSeconds": 30,
+      "scheduledSeconds": 30,
+      "pacingMs": 500,
+      "threadGroupStartedAt": "2026-11-25T13:03:48.681+05:30",
+      "engineWindowSeconds": 30.013,
+      "sampleWindowSeconds": 29.398,
+      "requests": 1481,
+      "succeeded": 1481,
+      "failed": 0,
+      "meanMs": 3.405,
+      "medianMs": 3.0,
+      "p90Ms": 4.0,
+      "p95Ms": 5.0,
+      "minMs": 2.0,
+      "maxMs": 46.0,
+      "requestsPerSecond": 50.378,
+      "errorPercent": 0.0,
+      "artifactDirectory": "results/phase2/assignment/higher-20261125_130346546-738e1504040142c5a309c505802c77a7",
+      "artifactSha256": {
+        "results.jtl": "5c9f16a25d11e5e8017307acd507a6e5908902875f3134bebed9fc1d6929b634",
+        "html/statistics.json": "2c19831d334189515474e155afe77a27efe0c9d55bd7e0c4f6d4e4e724ada044",
+        "jmeter.log": "30586ce1d519406d5b83e81159c9376aadcf41a82bc3504c96e56f49304a51d8"
+      }
+    }
+  ],
+  "negativeChecks": {
+    "artifactDirectory": "results/phase2/negative/smoke-20261125_130444257-405e6e5af3974122846905b103713b93",
+    "command": "pwsh -NoProfile -File tests/se3112/jmeter-performance/results/phase2/run-profile.ps1 -Profile smoke -TargetPort 17000 -Series negative",
+    "runnerExit": 1,
+    "requests": 16,
+    "succeeded": 3,
+    "failed": 13,
+    "rejected": [
+      "invalid JSON",
+      "malformed event objects",
+      "trailing JSON",
+      "HTML content type",
+      "HTTP 302 without redirect follow",
+      "HTTP 503"
+    ],
+    "additionalChecks": [
+      "connection refused at 127.0.0.1:17001",
+      "missing JTL",
+      "malformed JTL"
+    ]
+  },
+  "localEvidence": {
+    "gatewayLog": "results/phase2/gateway.log",
+    "eventServiceLog": "results/phase2/event-service.log",
+    "dockerLog": "results/phase2/docker-compose.log",
+    "monitorCsv": "results/phase2/host-monitor.csv",
+    "apiProbeFiles": "results/phase2/{7000,7102}-{health,api-events}.{headers,body}.txt",
+    "negativeConsoleLog": "results/phase2/negative-console.log"
+  },
+  "vivaConfirmation": {
+    "requests": 15,
+    "runnerSeconds": 20.63,
+    "jvm": "17.0.12",
+    "failed": 0,
+    "artifactDirectory": "results/phase2/viva-confirmation/smoke-20261125_130914310-4ccc96209c574f939503049d67ffe4d9"
+  }
+}
