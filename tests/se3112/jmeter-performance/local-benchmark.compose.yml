@@ -1,0 +1,26 @@
+services:
+  postgres:
+    container_name: eventpulse-perf2-postgres
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:15433:5432"
+  kafka:
+    container_name: eventpulse-perf2-kafka
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:19092:19092"
+    environment:
+      KAFKA_LISTENERS: PLAINTEXT://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:19092
+  azurite:
+    container_name: eventpulse-perf2-azurite
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:11000:10000"
+volumes:
+  eventpulse_postgres_data:
+    name: eventpulse_perf2_postgres_data
+  eventpulse_kafka_data:
+    name: eventpulse_perf2_kafka_data
+  eventpulse_azurite_data:
+    name: eventpulse_perf2_azurite_data
